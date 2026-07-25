@@ -1,0 +1,41 @@
+# База даних MySQL для Beekeeper of Ukraine (локальна розробка)
+# Запуск:  docker compose up -d
+# Зупинка: docker compose stop
+# Дані зберігаються у томі bofu_db_data і переживають перезапуски.
+services:
+  db:
+    image: mysql:8.0
+    container_name: bofu-mysql
+    restart: unless-stopped
+    ports:
+      - "3307:3306"          # порт 3307, щоб не конфліктувати з MySQL від XAMPP
+    environment:
+      MYSQL_DATABASE: bofu
+      MYSQL_USER: bofu
+      MYSQL_PASSWORD: bofu_secret
+      MYSQL_ROOT_PASSWORD: root_secret
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - bofu_db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-pbofu_secret"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Веб-інтерфейс до бази: http://localhost:8081 (логін bofu / bofu_secret)
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: bofu-phpmyadmin
+    restart: unless-stopped
+    ports:
+      - "8081:80"
+    environment:
+      PMA_HOST: db
+      PMA_USER: bofu
+      PMA_PASSWORD: bofu_secret
+    depends_on:
+      - db
+
+volumes:
+  bofu_db_data:

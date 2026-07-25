@@ -1,0 +1,14 @@
+# локальна конфігурація (секрети!)
+/config.local.php
+# робочі дані
+/storage/logs/*
+/storage/sessions/
+/storage/cache/*
+/storage/*.sqlite*
+# завантажені фото (контент, не код)
+/assets/uploads/*
+# сміття IDE/ОС
+.vs/
+Thumbs.db
+desktop.ini
+!**/.gitkeep

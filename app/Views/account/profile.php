@@ -1,0 +1,79 @@
+<section class="section" style="padding-top:48px">
+  <div class="container narrow" style="max-width:640px">
+    <div class="kicker">Кабінет</div>
+    <h2>Мій профіль</h2>
+    <?php if (empty($u['phone'])): ?>
+      <div class="flash" style="padding:0;margin-top:16px"><div class="flash-error">Для користування сайтом потрібен номер телефону — вкажіть його нижче.</div></div>
+    <?php endif; ?>
+
+    <form class="admin-card" method="post" action="<?= e(url('/profile')) ?>" style="margin-top:22px">
+      <?= Csrf::field() ?>
+      <div class="field"><label>Ім'я та прізвище</label><input type="text" name="name" value="<?= e($u['name']) ?>" required></div>
+      <div class="field"><label>Телефон *</label><input type="tel" name="phone" value="<?= e($u['phone']) ?>" placeholder="067 123 45 67" required></div>
+      <div class="field"><label>Email</label><input type="text" value="<?= e(str_contains($u['email'] ?? '', '.local') ? '—' : $u['email']) ?>" disabled></div>
+      <button class="btn btn-gold" type="submit">💾 Зберегти</button>
+    </form>
+
+    <div class="admin-card">
+      <h2 class="h-serif" style="font-size:20px">Месенджери для сповіщень і входу</h2>
+      <p class="dim" style="margin-bottom:16px">Підключіть месенджер — сюди приходитимуть сповіщення про замовлення та коди входу за номером телефону.</p>
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+          <b style="min-width:90px">Telegram</b>
+          <?php if (!empty($u['tg_chat_id'])): ?>
+            <span class="status-pill st-processing">✓ Підключено</span>
+          <?php elseif ($tg_ready): ?>
+            <button class="btn btn-line btn-sm" id="tgLinkBtn" type="button">Підключити Telegram</button>
+            <span class="dim" id="tgLinkHint"></span>
+          <?php else: ?>
+            <span class="dim">бот ще не налаштований адміністратором</span>
+          <?php endif; ?>
+        </div>
+        <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+          <b style="min-width:90px">Viber</b>
+          <?php if (!empty($u['viber_id'])): ?>
+            <span class="status-pill st-processing">✓ Підключено</span>
+          <?php elseif ($viber_ready && $viber_uri): ?>
+            <button class="btn btn-line btn-sm" id="viberLinkBtn" type="button">Підключити Viber</button>
+            <span class="dim" id="viberLinkHint"></span>
+          <?php else: ?>
+            <span class="dim">запрацює після публікації сайту на хостингу</span>
+          <?php endif; ?>
+        </div>
+      </div>
+    </div>
+    <p><a href="<?= e(url('/orders')) ?>">→ Мої замовлення</a></p>
+  </div>
+</section>
+<script>
+(function(){
+  var base = '<?= e(url('/')) ?>'.replace(/\/$/, '');
+  function poller(checkUrl, hintEl){
+    var n = 0;
+    var t = setInterval(function(){
+      if (++n > 40) { clearInterval(t); return; }
+      fetch(base + checkUrl).then(r=>r.json()).then(function(d){
+        if (d.linked) { clearInterval(t); location.reload(); }
+      });
+    }, 3000);
+  }
+  var tg = document.getElementById('tgLinkBtn');
+  if (tg) tg.addEventListener('click', function(){
+    fetch(base + '/profile/tg/link').then(r=>r.json()).then(function(d){
+      if (!d.ok) return;
+      window.open(d.url, '_blank');
+      document.getElementById('tgLinkHint').textContent = 'Натисніть Start у боті — сторінка оновиться сама…';
+      poller('/profile/tg/check', 'tgLinkHint');
+    });
+  });
+  var vb = document.getElementById('viberLinkBtn');
+  if (vb) vb.addEventListener('click', function(){
+    fetch(base + '/profile/viber/link').then(r=>r.json()).then(function(d){
+      if (!d.ok) return;
+      location.href = d.url;
+      document.getElementById('viberLinkHint').textContent = 'Підтвердіть у Viber — сторінка оновиться сама…';
+      poller('/profile/viber/check', 'viberLinkHint');
+    });
+  });
+})();
+</script>
