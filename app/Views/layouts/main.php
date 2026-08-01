@@ -6,6 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title><?= e($page_title ?? cfg('app_name')) ?></title>
 <meta name="description" content="<?= e($meta_description ?? Settings::get('seo_description', '')) ?>">
+<?php if (Settings::bool('seo_noindex')): ?><meta name="robots" content="noindex, nofollow"><?php endif; ?>
 <meta property="og:title" content="<?= e($page_title ?? cfg('app_name')) ?>">
 <meta property="og:description" content="<?= e($meta_description ?? Settings::get('seo_description', '')) ?>">
 <meta property="og:type" content="website">

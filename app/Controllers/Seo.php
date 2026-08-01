@@ -10,6 +10,10 @@ class Seo
     public static function robots(): never
     {
         header('Content-Type: text/plain; charset=utf-8');
+        if (Settings::bool('seo_noindex')) {
+            echo "User-agent: *\nDisallow: /\n";
+            exit;
+        }
         $host = ($_SERVER['HTTP_HOST'] ?? 'localhost');
         $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
         echo "User-agent: *\nDisallow: /admin\nDisallow: /cart\nDisallow: /checkout\n";
@@ -20,6 +24,11 @@ class Seo
     public static function sitemap(): never
     {
         header('Content-Type: application/xml; charset=utf-8');
+        if (Settings::bool('seo_noindex')) {
+            echo '<?xml version="1.0" encoding="UTF-8"?>' . "\n"
+               . '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"></urlset>';
+            exit;
+        }
         $host = ($_SERVER['HTTP_HOST'] ?? 'localhost');
         $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
         $abs = fn(string $p) => $scheme . '://' . $host . base_url($p);

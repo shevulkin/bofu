@@ -10,6 +10,9 @@ class App
         $path = request_path();
         $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
+        // Сайт закрито від пошуковиків: заголовок діє й там, де немає HTML (sitemap, JSON, файли)
+        if (Settings::bool('seo_noindex')) header('X-Robots-Tag: noindex, nofollow');
+
         // Спільні дані для всіх шаблонів
         View::share('auth_user', Auth::user());
         View::share('cart_count', Cart::count());
