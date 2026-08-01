@@ -53,7 +53,9 @@ class ContentAdmin
                 $key = preg_match('/^[a-z0-9_]+$/', (string)($_POST['key'] ?? '')) ? $_POST['key'] : null;
                 $path = (string)($_POST['media_path'] ?? '');
                 if ($key && (str_starts_with($path, 'uploads/') || str_starts_with($path, 'img/')) && !str_contains($path, '..')) {
+                    $old = Content::get($key, 'image', '');
                     Content::set($key, ['image' => $path]);
+                    self::cleanupOldImage($old, $path);
                     flash('success', 'Фото оновлено');
                 }
             }
@@ -70,10 +72,12 @@ class ContentAdmin
             if ($action === 'upload' ) {
                 $key = preg_match('/^[a-z0-9_]+$/', (string)($_POST['key'] ?? '')) ? $_POST['key'] : null;
                 if ($key) {
+                    $old = Content::get($key, 'image', '');
                     $res = Images::saveUpload($_FILES['image'] ?? [], 'content-' . $key);
                     if ($res) {
                         [$path, $w, $h, $bytes] = $res;
                         Content::set($key, ['image' => $path]);
+                        self::cleanupOldImage($old, $path);
                         flash('success', "Фото оновлено ({$w}×{$h}, " . round($bytes/1024) . ' КБ)');
                     } else flash('error', 'Не вдалося завантажити фото');
                 }
@@ -110,5 +114,12 @@ class ContentAdmin
             'gallery' => json_decode(Content::get('gallery', 'body', '[]'), true) ?: [],
             'page_title' => 'Контент сайту — адмінка',
         ], 'layouts/admin');
+    }
+
+    /** Прибрати попереднє фото блоку, якщо воно більше ніде на сайті не використовується */
+    private static function cleanupOldImage(string $old, string $new): void
+    {
+        if ($old === '' || $old === $new || !str_starts_with($old, 'uploads/')) return;
+        if (!Media::usage($old)) Images::delete($old);
     }
 }
