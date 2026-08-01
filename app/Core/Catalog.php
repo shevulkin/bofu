@@ -135,7 +135,7 @@ class Catalog
     {
         if (!empty($product['image'])) return $product['image'];
         $img = DB::row('SELECT path FROM product_images WHERE product_id = ? ORDER BY sort, id LIMIT 1', [$product['id']]);
-        return $img['path'] ?? 'img/honey-jar.png';
+        return $img['path'] ?? 'img/honey-jar.webp';
     }
 
     /** Значення фільтрованих атрибутів для категорії */

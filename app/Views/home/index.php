@@ -15,7 +15,7 @@
     </div>
   </div>
   <div class="hero-img">
-    <img src="<?= e(asset(Content::image('hero', 'img/about-photo.png'))) ?>" alt="<?= e(Content::title('hero_title')) ?>">
+    <img src="<?= e(asset(Content::image('hero', 'img/about-photo.webp'))) ?>" alt="<?= e(Content::title('hero_title')) ?>">
   </div>
 </section>
 
@@ -54,7 +54,7 @@
 <!-- ПРО МЕНЕ (тизер) -->
 <section class="section" style="background:var(--bg2)">
   <div class="container" style="display:grid;grid-template-columns:1fr 1.2fr;gap:56px;align-items:center" data-rg="1">
-    <img src="<?= e(asset(Content::image('about_teaser', 'img/about-photo.png'))) ?>" alt="Про мене" style="border-radius:4px;border:1px solid var(--line2);max-height:520px;object-fit:cover;width:100%">
+    <img src="<?= e(asset(Content::image('about_teaser', 'img/about-photo.webp'))) ?>" alt="Про мене" style="border-radius:4px;border:1px solid var(--line2);max-height:520px;object-fit:cover;width:100%">
     <div>
       <div class="kicker">Хто я</div>
       <h2><?= e(Content::title('about_teaser_title', 'Бджоляр, блогер, підприємець')) ?></h2>
@@ -74,7 +74,7 @@
     </div>
     <div class="gallery-grid">
       <?php foreach ($gallery_preview as $g): ?>
-        <div class="gallery-item"><img src="<?= e(asset($g[1])) ?>" alt="<?= e($g[0]) ?>" loading="lazy"><span><?= e($g[0]) ?></span></div>
+        <div class="gallery-item"><img src="<?= e(asset(Images::displayThumb($g[1]))) ?>" alt="<?= e($g[0]) ?>" loading="lazy"><span><?= e($g[0]) ?></span></div>
       <?php endforeach; ?>
     </div>
   </div>
