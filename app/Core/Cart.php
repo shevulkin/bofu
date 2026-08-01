@@ -3,6 +3,9 @@ declare(strict_types=1);
 
 class Cart
 {
+    /** Стеля на позицію: захист від сміттєвих значень у POST і від обнулення залишків ботом */
+    public const MAX_QTY = 999;
+
     private static bool $normalized = false;
 
     public static function items(): array { self::normalize(); return $_SESSION['cart'] ?? []; }
@@ -47,8 +50,8 @@ class Cart
         $variantId = self::resolveVariant($productId, $variantId);
         $key = self::key($productId, $variantId);
         $cart = self::items();
-        if (isset($cart[$key])) $cart[$key]['qty'] += $qty;
-        else $cart[$key] = ['product_id' => $productId, 'variant_id' => $variantId, 'qty' => max(1, $qty)];
+        if (isset($cart[$key])) $cart[$key]['qty'] = min(self::MAX_QTY, $cart[$key]['qty'] + $qty);
+        else $cart[$key] = ['product_id' => $productId, 'variant_id' => $variantId, 'qty' => min(self::MAX_QTY, max(1, $qty))];
         $_SESSION['cart'] = $cart;
     }
 
@@ -56,7 +59,7 @@ class Cart
     {
         if (!isset($_SESSION['cart'][$key])) return;
         if ($qty <= 0) unset($_SESSION['cart'][$key]);
-        else $_SESSION['cart'][$key]['qty'] = $qty;
+        else $_SESSION['cart'][$key]['qty'] = min(self::MAX_QTY, $qty);
     }
 
     public static function remove(string $key): void { unset($_SESSION['cart'][$key]); }

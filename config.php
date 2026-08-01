@@ -23,6 +23,9 @@ $config = [
     'google' => [ 'client_id' => '', 'client_secret' => '' ],
     // Демо-вхід (вимкнути на бойовому сервері!)
     'demo_login' => true,
+    // Увімкніть, лише якщо сайт стоїть за Cloudflare/балансувальником: тоді IP клієнта
+    // беремо з X-Forwarded-For. Без проксі це дало б змогу обходити ліміти підробкою заголовка.
+    'trust_proxy' => false,
     'uploads_dir' => __DIR__ . '/assets/uploads',
     'session_name' => 'bofu_sid',
 ];

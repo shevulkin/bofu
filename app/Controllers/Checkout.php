@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 namespace Controllers;
 
-use DB, View, Cart, Csrf, Auth, Catalog, Notify, Settings, AuthTokens, Newsletter;
+use DB, View, Cart, Csrf, Auth, Catalog, Notify, Settings, AuthTokens, Newsletter, RateLimit;
 
 class Checkout
 {
@@ -55,6 +55,9 @@ class Checkout
     {
         Csrf::verify();
         if (!Cart::items()) redirect('/cart');
+        // приманка для ботів: поле сховане стилями, людина його не заповнить
+        if (trim($_POST['website'] ?? '') !== '') { flash('error', 'Не вдалося оформити замовлення.'); redirect('/checkout'); }
+        RateLimit::guard('checkout', 15, 3600);
 
         $name = trim($_POST['name'] ?? '');
         // Замовлення без робочого телефону неможливе: номер нормалізуємо до +380XXXXXXXXX
@@ -68,8 +71,15 @@ class Checkout
         if (!$phone) $errors[] = 'Вкажіть коректний номер телефону — без нього ми не зможемо підтвердити замовлення';
         if ($emailRaw !== '' && !$email) $errors[] = 'Email виглядає некоректним — виправте або залиште поле порожнім';
         if (!in_array($delivery, ['np', 'pickup', 'other'], true)) $delivery = 'other';
-        $storeId = (int)($_POST['store_id'] ?? 0) ?: null;
-        if ($delivery === 'pickup' && !$storeId) $errors[] = 'Оберіть магазин для самовивозу';
+
+        // Магазин впливає на ціну (store_prices + акції магазину), тож приймаємо лише
+        // існуючий активний і лише для самовивозу — інакше id підбирається руками в POST
+        $storeId = null;
+        if ($delivery === 'pickup') {
+            $sid = (int)($_POST['store_id'] ?? 0);
+            if ($sid && DB::row('SELECT id FROM stores WHERE id = ? AND active = 1', [$sid])) $storeId = $sid;
+            if (!$storeId) $errors[] = 'Оберіть магазин для самовивозу';
+        }
 
         if ($errors) {
             flash('error', implode('. ', $errors));
@@ -77,12 +87,15 @@ class Checkout
         }
 
         $promo = self::promo();
-        $totals = Cart::total($delivery === 'pickup' ? $storeId : null, $promo);
+        $totals = Cart::total($storeId, $promo);
         $number = 'BOFU-' . date('ymd') . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 4));
+        // Адреса сторінки підтвердження: номер короткий і передбачуваний, тому
+        // посилання йде за окремим випадковим токеном
+        $token = bin2hex(random_bytes(16));
 
-        $orderId = DB::tx(function () use ($number, $name, $phone, $email, $delivery, $storeId, $totals, $promo) {
+        $orderId = DB::tx(function () use ($number, $token, $name, $phone, $email, $delivery, $storeId, $totals, $promo) {
             $orderId = DB::insert('orders', [
-                'number' => $number, 'user_id' => Auth::id(),
+                'number' => $number, 'token' => $token, 'user_id' => Auth::id(),
                 'name' => $name, 'phone' => $phone, 'email' => $email,
                 'delivery' => $delivery,
                 'city' => trim($_POST['city'] ?? '') ?: null,
@@ -94,7 +107,7 @@ class Checkout
                 'subtotal' => $totals['subtotal'], 'discount' => $totals['discount'], 'total' => $totals['total'],
                 'created_at' => now(),
             ]);
-            foreach (Cart::detailed($delivery === 'pickup' ? $storeId : null) as $r) {
+            foreach (Cart::detailed($storeId) as $r) {
                 DB::insert('order_items', [
                     'order_id' => $orderId,
                     'product_id' => $r['product']['id'], 'variant_id' => $r['variant']['id'] ?? null,
@@ -139,13 +152,14 @@ class Checkout
 
         Cart::clear();
         unset($_SESSION['promo_code']);
-        redirect('/order/success/' . $number);
+        redirect('/order/success/' . $token);
     }
 
-    public static function success(string $number): never
+    /** Підтвердження замовлення — лише за токеном із редіректу, номер для цього не годиться */
+    public static function success(string $token): never
     {
-        $order = DB::row('SELECT * FROM orders WHERE number = ?', [$number]);
-        if (!$order) redirect('/');
+        $order = DB::row('SELECT * FROM orders WHERE token = ?', [$token]);
+        if (!$order) { flash('error', 'Замовлення не знайдено.'); redirect('/'); }
         View::show('cart/success', ['order' => $order, 'page_title' => 'Замовлення прийнято — ' . cfg('app_name')]);
     }
 

@@ -4,6 +4,9 @@
     <h2>Дані для доставки</h2>
     <form method="post" action="<?= e(url('/checkout/submit')) ?>" style="margin-top:30px" id="checkoutForm">
       <?= Csrf::field() ?>
+      <div aria-hidden="true" style="position:absolute;left:-9999px;top:-9999px;height:0;overflow:hidden">
+        <label>Не заповнюйте це поле<input type="text" name="website" tabindex="-1" autocomplete="off"></label>
+      </div>
       <div class="form-grid">
         <div class="field"><label>Отримувач *</label><input type="text" name="name" value="<?= e($pre['name']) ?>" required placeholder="Ім'я та прізвище"></div>
         <div class="field"><label>Телефон *</label><input type="tel" name="phone" value="<?= e($pre['phone']) ?>" required placeholder="+380 __ ___ ____"></div>

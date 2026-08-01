@@ -7,7 +7,7 @@ declare(strict_types=1);
  */
 class Schema
 {
-    public const VERSION = 7;
+    public const VERSION = 8;
 
     /** Оновлення існуючої бази до поточної версії без втрати даних */
     public static function upgrade(): void
@@ -56,6 +56,15 @@ class Schema
             // наслідок бага з `||` вище: у MySQL телефони демо-акаунтів записались як '1'.
             // Чистимо — гейт у App::run() змусить вказати справжній номер.
             self::fixBrokenPhones();
+        }
+        if ($ver < 8) {
+            // сторінка «замовлення прийнято» більше не адресується номером,
+            // який можна перебрати, — тільки випадковим токеном
+            self::addColumn('orders', 'token', 'str null');
+            self::createAll(); // rate_hits
+            foreach (DB::all("SELECT id FROM orders WHERE token IS NULL OR token = ''") as $o) {
+                DB::update('orders', ['token' => bin2hex(random_bytes(16))], 'id = ?', [$o['id']]);
+            }
         }
         Settings::set('schema_version', (string)self::VERSION);
     }
@@ -177,7 +186,7 @@ class Schema
                 'id' => 'id', 'code' => 'str unique', 'percent' => 'num', 'active' => 'bool default 1', 'expires_at' => 'str null',
             ],
             'orders' => [
-                'id' => 'id', 'number' => 'str unique', 'user_id' => 'int null',
+                'id' => 'id', 'number' => 'str unique', 'token' => 'str null', 'user_id' => 'int null',
                 'name' => 'str', 'phone' => 'str', 'email' => 'str null',
                 'delivery' => 'str', 'city' => 'str null', 'np_office' => 'str null',
                 'address' => 'str null', 'comment' => 'text null',
@@ -228,6 +237,10 @@ class Schema
                 'active' => 'bool default 1', 'token' => 'str unique',
                 'created_at' => 'ts', 'unsubscribed_at' => 'str null',
             ],
+            // Лічильник звернень для обмеження частоти (боти, перебір, спам замовленнями)
+            'rate_hits' => [
+                'id' => 'id', 'action' => 'str', 'ident' => 'str', 'created_at' => 'ts',
+            ],
             'migrations_log' => [ 'id' => 'id', 'name' => 'str', 'ran_at' => 'ts' ],
         ];
     }
@@ -250,7 +263,9 @@ class Schema
             'variant_options' => ['variant_id', 'attribute_id'],
             'store_prices' => ['product_id', 'store_id', 'variant_id'],
             'store_stock' => ['product_id', 'store_id', 'variant_id'],
-            'orders' => ['status', 'store_id', 'user_id'],
+            'orders' => ['status', 'store_id', 'user_id', 'token'],
+            'rate_hits' => ['action', 'ident', 'created_at'],
+            'subscribers' => ['token'],
             'order_items' => ['order_id'],
             'seller_stores' => ['user_id', 'store_id'],
         ];
