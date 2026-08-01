@@ -62,7 +62,12 @@ class App
                    . '<p>Запустіть базу даних командою:</p>'
                    . '<p><code style="background:#241d15;padding:8px 14px;border-radius:4px">docker compose up -d</code></p>'
                    . '<p style="color:#8a7a5c;font-size:13px">у папці проєкту (C:\\xampp\\htdocs\\bofu), зачекайте ~20 секунд і оновіть сторінку.<br>'
-                   . htmlspecialchars($e2->getMessage()) . '</p></div></body></html>';
+                   // текст помилки PDO містить хост і користувача БД — показуємо лише в debug,
+                   // решті йде в лог
+                   . (cfg('debug') ? htmlspecialchars($e2->getMessage()) : 'Деталі — у storage/logs/app-error.log')
+                   . '</p></div></body></html>';
+                @file_put_contents(BOFU_ROOT . '/storage/logs/app-error.log',
+                    '[' . date('Y-m-d H:i:s') . '] DB: ' . $e2->getMessage() . "\n", FILE_APPEND);
                 return false;
             }
         }
@@ -109,7 +114,9 @@ class App
         if ($path === '/cart') { Controllers\CartController::index(); }
         if ($path === '/cart/add' && $method === 'POST') { Controllers\CartController::add(); }
         if ($path === '/cart/update' && $method === 'POST') { Controllers\CartController::update(); }
-        if ($path === '/checkout') { Controllers\Checkout::form(); }
+        // сторінка оформлення лише читає; POST сюди приймати нема потреби, а без нього
+        // стороння сторінка не може записати покупцеві промокод у сесію
+        if ($path === '/checkout' && $method !== 'POST') { Controllers\Checkout::form(); }
         if ($path === '/checkout' . '/submit' && $method === 'POST') { Controllers\Checkout::submit(); }
         if (preg_match('~^/order/success/([a-f0-9]{32})$~', $path, $m)) { Controllers\Checkout::success($m[1]); }
         if ($path === '/orders') { Controllers\Checkout::myOrders(); }

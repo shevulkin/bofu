@@ -42,9 +42,20 @@ class Subscribers
         fwrite($out, "\xEF\xBB\xBF"); // BOM, щоб Excel не ламав кирилицю
         fputcsv($out, ['email', 'name', 'source', 'created_at', 'unsubscribe_url']);
         foreach (DB::all('SELECT * FROM subscribers WHERE active = 1 ORDER BY id') as $r) {
-            fputcsv($out, [$r['email'], $r['name'], $r['source'], $r['created_at'], url('/unsubscribe/' . $r['token'])]);
+            fputcsv($out, array_map([self::class, 'csvCell'],
+                [$r['email'], $r['name'], $r['source'], $r['created_at'], url('/unsubscribe/' . $r['token'])]));
         }
         fclose($out);
         exit;
+    }
+
+    /**
+     * Ім'я підписника приходить із форми замовлення, тож у CSV воно може початися з "="
+     * і Excel сприйме його як формулу. Апостроф спереду робить клітинку текстом.
+     */
+    private static function csvCell(?string $value): string
+    {
+        $value = (string)$value;
+        return preg_match('/^[=+\-@\t\r]/', $value) ? "'" . $value : $value;
     }
 }

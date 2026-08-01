@@ -10,6 +10,9 @@ class Auth
             if (!is_dir($sessDir)) @mkdir($sessDir, 0775, true);
             if (is_writable($sessDir)) session_save_path($sessDir);
             session_name(cfg('session_name', 'bofu_sid'));
+            // не приймати ідентифікатор сесії, якого ми не видавали (фіксація сесії)
+            ini_set('session.use_strict_mode', '1');
+            ini_set('session.use_only_cookies', '1');
             $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
                 || ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https';
             session_set_cookie_params([

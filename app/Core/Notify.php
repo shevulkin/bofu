@@ -95,10 +95,17 @@ class Notify
     public static function email(array $user, string $text, array $vars): void
     {
         if (empty($user['email'])) return;
+        $to = filter_var((string)$user['email'], FILTER_VALIDATE_EMAIL);
+        if (!$to) return;
+        // адреса відправника задається в адмінці — перенос рядка в ній дав би змогу
+        // дописати власні заголовки листа
+        $from = (string)Settings::get('mail_from', 'noreply@' . ($_SERVER['HTTP_HOST'] ?? 'localhost'));
+        $from = str_replace(["\r", "\n"], '', $from);
+        if (!filter_var($from, FILTER_VALIDATE_EMAIL)) $from = 'noreply@' . ($_SERVER['HTTP_HOST'] ?? 'localhost');
         $subject = '=?UTF-8?B?' . base64_encode(cfg('app_name') . ' — сповіщення') . '?=';
         $headers = "MIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n" .
-                   "From: " . (Settings::get('mail_from', 'noreply@' . ($_SERVER['HTTP_HOST'] ?? 'localhost'))) . "\r\n";
-        @mail($user['email'], $subject, $text, $headers);
+                   "From: " . $from . "\r\n";
+        @mail($to, $subject, $text, $headers);
     }
 
     public static function push(array $user, string $text): void

@@ -17,7 +17,7 @@
 <link rel="stylesheet" href="<?= e(asset_v('css/app.css')) ?>">
 <link rel="canonical" href="<?= e((!empty($_SERVER['HTTPS']) ? 'https' : 'http') . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost') . strtok($_SERVER['REQUEST_URI'] ?? '/', '?')) ?>">
 <?php if (!empty($jsonld_product) && !empty($p)): ?>
-<script type="application/ld+json"><?= json_encode([
+<script type="application/ld+json"><?= json_js([
     '@context' => 'https://schema.org', '@type' => 'Product',
     'name' => $p['name'], 'description' => $p['short_desc'] ?? '',
     // усі фото товару: головне першим — Google показує їх у картці товару
@@ -25,7 +25,7 @@
     'offers' => ['@type' => 'Offer', 'priceCurrency' => 'UAH', 'price' => $price ?? 0,
         'availability' => (Catalog::stock((int)$p['id']) > 0 || !empty($p['made_to_order']))
             ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock'],
-], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?></script>
+]) ?></script>
 <?php endif; ?>
 </head>
 <body>

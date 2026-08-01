@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 namespace Controllers;
 
-use DB, Auth, Settings, WebPush, Viber;
+use DB, Auth, Csrf, Settings, WebPush, Viber;
 
 class Api
 {
@@ -65,6 +65,9 @@ class Api
     public static function pushSubscribe(): never
     {
         if (!Auth::isStaff()) json_response(['ok' => false], 403);
+        // Без CSRF стороння сторінка могла б простим POST (text/plain) підписати свій
+        // endpoint на сповіщення адміна — а в них номер, ім'я, телефон і сума замовлення.
+        Csrf::verify();
         $data = json_decode(file_get_contents('php://input') ?: '', true);
         if (empty($data['endpoint']) || empty($data['keys']['p256dh']) || empty($data['keys']['auth'])) {
             json_response(['ok' => false], 422);
