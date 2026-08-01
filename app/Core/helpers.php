@@ -61,6 +61,12 @@ function price_fmt($amount): string {
     return $s . ' грн';
 }
 
+/** Як price_fmt(), але для товарів "під замовлення" без ціни показує це замість "За запитом" */
+function price_label($amount, bool $madeToOrder): string {
+    $fmt = price_fmt($amount);
+    return ($fmt === 'За запитом' && $madeToOrder) ? 'Під замовлення' : $fmt;
+}
+
 function slugify(string $text): string {
     $map = ['а'=>'a','б'=>'b','в'=>'v','г'=>'h','ґ'=>'g','д'=>'d','е'=>'e','є'=>'ie','ж'=>'zh','з'=>'z','и'=>'y','і'=>'i','ї'=>'i','й'=>'i','к'=>'k','л'=>'l','м'=>'m','н'=>'n','о'=>'o','п'=>'p','р'=>'r','с'=>'s','т'=>'t','у'=>'u','ф'=>'f','х'=>'kh','ц'=>'ts','ч'=>'ch','ш'=>'sh','щ'=>'shch','ь'=>'','ю'=>'iu','я'=>'ia'];
     $text = mb_strtolower(trim($text), 'UTF-8');

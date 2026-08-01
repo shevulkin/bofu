@@ -93,7 +93,8 @@
       if (note) {
         var bits = [];
         if (v.sku) bits.push('Артикул: ' + v.sku);
-        bits.push(v.qty > 0 ? 'У наявності: ' + v.qty + ' шт.'
+        var t = window.BOFU_LOW_STOCK_THRESHOLD;
+        bits.push(v.qty > 0 ? (t !== null && v.qty <= t ? 'Закінчується' : 'У наявності')
           : (window.BOFU_MADE_TO_ORDER ? 'Немає на складі — виготовимо під замовлення' : 'Немає в наявності'));
         note.textContent = bits.join(' · ');
       }
@@ -120,7 +121,9 @@
         any = any || qty > 0;
         var txt = el.querySelector('.av-text');
         if (txt) {
-          txt.textContent = el.dataset.label + ': ' + (qty > 0 ? 'в наявності — ' + qty + ' шт.' : 'немає') +
+          var t = window.BOFU_LOW_STOCK_THRESHOLD;
+          var stockTxt = qty > 0 ? (t !== null && qty <= t ? 'закінчується' : 'в наявності') : 'немає';
+          txt.textContent = el.dataset.label + ': ' + stockTxt +
             (el.dataset.price ? ' · ціна тут: ' + el.dataset.price : '');
         }
         el.classList.toggle('yes', qty > 0);
