@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 namespace Controllers;
 
-use DB, View, Auth, Csrf, AuthTokens, Telegram, Viber;
+use DB, View, Auth, Csrf, AuthTokens, Telegram, Viber, Newsletter;
 
 class Profile
 {
@@ -21,15 +21,21 @@ class Profile
                 $busy = DB::row('SELECT id FROM users WHERE phone = ? AND id != ?', [$phone, $u['id']]);
                 if ($busy) flash('error', 'Цей номер вже привʼязано до іншого акаунта');
                 else {
-                    DB::update('users', ['phone' => $phone, 'name' => trim($_POST['name'] ?? $u['name']) ?: $u['name']], 'id = ?', [$u['id']]);
+                    $name = trim($_POST['name'] ?? $u['name']) ?: $u['name'];
+                    DB::update('users', ['phone' => $phone, 'name' => $name], 'id = ?', [$u['id']]);
+                    $email = Newsletter::normEmail((string)$u['email']);
+                    if ($email) Newsletter::apply(!empty($_POST['newsletter']), $email, $name, (int)$u['id'], 'profile');
                     flash('success', 'Профіль збережено');
                 }
             }
             redirect('/profile');
         }
 
+        $fresh = DB::row('SELECT * FROM users WHERE id = ?', [$u['id']]);
         View::show('account/profile', [
-            'u' => DB::row('SELECT * FROM users WHERE id = ?', [$u['id']]),
+            'u' => $fresh,
+            'mail_email' => Newsletter::normEmail((string)$fresh['email']),
+            'subscribed' => Newsletter::isSubscribed(Newsletter::normEmail((string)$fresh['email'])),
             'tg_ready' => Telegram::configured(),
             'tg_bot' => Telegram::configured() ? Telegram::username() : '',
             'viber_ready' => Viber::configured(),

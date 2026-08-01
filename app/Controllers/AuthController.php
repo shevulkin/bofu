@@ -74,7 +74,8 @@ class AuthController
 
     private static function loginIfConfirmed(string $token, string $purpose): never
     {
-        $row = DB::row('SELECT * FROM auth_tokens WHERE token = ? AND purpose = ?', [$token, $purpose]);
+        $row = DB::row('SELECT * FROM auth_tokens WHERE token = ? AND purpose = ? AND expires_at > ?',
+            [$token, $purpose, now()]);
         if ($row && $row['confirmed_user_id']) {
             Auth::login((int)$row['confirmed_user_id']);
             unset($_SESSION['login_token']);

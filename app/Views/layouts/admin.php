@@ -34,6 +34,7 @@
         ['/admin/promos', 'Акції та промокоди', Auth::isAdmin()],
         ['/admin/diplomas', 'Дипломи', Auth::isAdmin()],
         ['/admin/users', 'Користувачі', Auth::isAdmin()],
+        ['/admin/subscribers', 'Розсилка', Auth::isAdmin()],
         ['/admin/content', 'Контент сайту', Auth::isAdmin()],
         ['/admin/media', 'Медіа-бібліотека', Auth::isAdmin()],
         ['/admin/notifications', 'Сповіщення', Auth::isAdmin()],

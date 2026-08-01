@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 namespace Controllers;
 
-use DB, View, Cart, Csrf, Auth, Catalog, Notify, Settings;
+use DB, View, Cart, Csrf, Auth, Catalog, Notify, Settings, AuthTokens, Newsletter;
 
 class Checkout
 {
@@ -22,12 +22,19 @@ class Checkout
                 }
             }
         }
+        // Дані залогіненого покупця підставляємо самі: email приходить з Google,
+        // телефон уже перевірений гейтом у App::run()
+        $u = Auth::user();
+        $email = $u && !str_ends_with((string)$u['email'], '.local') ? (string)$u['email'] : '';
+
         View::show('cart/checkout', [
             'rows' => $rows,
             'totals' => Cart::total(null, self::promo()),
             'stores' => $stores, 'missing' => $missing,
             'promo' => self::promo(),
             'np_enabled' => Settings::get('np_api_key') !== null && Settings::get('np_api_key') !== '',
+            'pre' => ['name' => $u['name'] ?? '', 'phone' => $u['phone'] ?? '', 'email' => $email],
+            'subscribed' => Newsletter::isSubscribed($email ?: null),
             'page_title' => 'Оформлення замовлення — ' . cfg('app_name'),
         ]);
     }
@@ -50,11 +57,16 @@ class Checkout
         if (!Cart::items()) redirect('/cart');
 
         $name = trim($_POST['name'] ?? '');
-        $phone = trim($_POST['phone'] ?? '');
+        // Замовлення без робочого телефону неможливе: номер нормалізуємо до +380XXXXXXXXX
+        // (або міжнародного E.164) і зберігаємо вже у цьому вигляді
+        $phone = AuthTokens::normPhoneAny($_POST['phone'] ?? '');
+        $emailRaw = trim($_POST['email'] ?? '');
+        $email = $emailRaw === '' ? null : Newsletter::normEmail($emailRaw);
         $delivery = $_POST['delivery'] ?? 'np';
         $errors = [];
         if (mb_strlen($name) < 2) $errors[] = 'Вкажіть ім\'я отримувача';
-        if (!preg_match('/\d{6,}/', preg_replace('/\D/', '', $phone) ?? '')) $errors[] = 'Вкажіть коректний телефон';
+        if (!$phone) $errors[] = 'Вкажіть коректний номер телефону — без нього ми не зможемо підтвердити замовлення';
+        if ($emailRaw !== '' && !$email) $errors[] = 'Email виглядає некоректним — виправте або залиште поле порожнім';
         if (!in_array($delivery, ['np', 'pickup', 'other'], true)) $delivery = 'other';
         $storeId = (int)($_POST['store_id'] ?? 0) ?: null;
         if ($delivery === 'pickup' && !$storeId) $errors[] = 'Оберіть магазин для самовивозу';
@@ -68,10 +80,10 @@ class Checkout
         $totals = Cart::total($delivery === 'pickup' ? $storeId : null, $promo);
         $number = 'BOFU-' . date('ymd') . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 4));
 
-        $orderId = DB::tx(function () use ($number, $name, $phone, $delivery, $storeId, $totals, $promo) {
+        $orderId = DB::tx(function () use ($number, $name, $phone, $email, $delivery, $storeId, $totals, $promo) {
             $orderId = DB::insert('orders', [
                 'number' => $number, 'user_id' => Auth::id(),
-                'name' => $name, 'phone' => $phone, 'email' => trim($_POST['email'] ?? '') ?: null,
+                'name' => $name, 'phone' => $phone, 'email' => $email,
                 'delivery' => $delivery,
                 'city' => trim($_POST['city'] ?? '') ?: null,
                 'np_office' => trim($_POST['np_office'] ?? '') ?: null,
@@ -111,6 +123,11 @@ class Checkout
             }
             return $orderId;
         });
+
+        // Розсилка — лише за явною галкою і лише коли вказано email
+        if ($email) {
+            Newsletter::apply(!empty($_POST['newsletter']), $email, $name, Auth::id(), 'checkout');
+        }
 
         $storeName = $storeId ? (DB::val('SELECT name FROM stores WHERE id = ?', [$storeId]) ?? '—') : 'Онлайн';
         Notify::fire('order_new', [

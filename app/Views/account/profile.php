@@ -10,7 +10,15 @@
       <?= Csrf::field() ?>
       <div class="field"><label>Ім'я та прізвище</label><input type="text" name="name" value="<?= e($u['name']) ?>" required></div>
       <div class="field"><label>Телефон *</label><input type="tel" name="phone" value="<?= e($u['phone']) ?>" placeholder="067 123 45 67" required></div>
-      <div class="field"><label>Email</label><input type="text" value="<?= e(str_contains($u['email'] ?? '', '.local') ? '—' : $u['email']) ?>" disabled></div>
+      <div class="field"><label>Email</label><input type="text" value="<?= e($mail_email ?: '—') ?>" disabled>
+        <?php if (!$mail_email): ?><p class="dim" style="margin:6px 0 0">Email підтягнеться автоматично, якщо увійти через Google.</p><?php endif; ?>
+      </div>
+      <?php if ($mail_email): ?>
+        <label class="checkbox" style="align-items:flex-start;margin-bottom:18px">
+          <input type="checkbox" name="newsletter" value="1" style="margin-top:3px"<?= $subscribed ? ' checked' : '' ?>>
+          <span>Отримувати новини та акції на <?= e($mail_email) ?>. Зніміть галку, щоб відписатись.</span>
+        </label>
+      <?php endif; ?>
       <button class="btn btn-gold" type="submit">💾 Зберегти</button>
     </form>
 
