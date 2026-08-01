@@ -10,7 +10,7 @@
 <link rel="manifest" href="<?= e(url('/manifest.webmanifest')) ?>">
 <link rel="apple-touch-icon" href="<?= e(asset('img/avatar.png')) ?>">
 <link rel="stylesheet" href="<?= e(asset('css/fonts.css')) ?>">
-<link rel="stylesheet" href="<?= e(asset('css/app.css')) ?>">
+<link rel="stylesheet" href="<?= e(asset_v('css/app.css')) ?>">
 </head>
 <body>
 <div class="admin-mobilebar">

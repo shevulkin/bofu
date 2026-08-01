@@ -5,6 +5,7 @@
       <h2><?= e($current_cat['name'] ?? 'Всі товари') ?></h2>
       <div style="display:flex;gap:16px;align-items:center">
         <span class="dim"><?= count($products) ?> позицій</span>
+        <button type="button" class="btn btn-line btn-sm" id="filtersToggle">Фільтри <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" style="margin-left:4px;vertical-align:-1px"><path d="M3 5l5 6 5-6"/></svg></button>
         <div class="view-switch" id="viewSwitch" title="Вигляд каталогу">
           <button type="button" data-view="v3" title="3 в ряд" aria-label="3 в ряд"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><rect x="0" y="0" width="4.4" height="4.4" rx="1"/><rect x="5.8" y="0" width="4.4" height="4.4" rx="1"/><rect x="11.6" y="0" width="4.4" height="4.4" rx="1"/><rect x="0" y="5.8" width="4.4" height="4.4" rx="1"/><rect x="5.8" y="5.8" width="4.4" height="4.4" rx="1"/><rect x="11.6" y="5.8" width="4.4" height="4.4" rx="1"/><rect x="0" y="11.6" width="4.4" height="4.4" rx="1"/><rect x="5.8" y="11.6" width="4.4" height="4.4" rx="1"/><rect x="11.6" y="11.6" width="4.4" height="4.4" rx="1"/></svg></button>
           <button type="button" data-view="v4" title="Компактно" aria-label="Компактно"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><rect x="0" y="0" width="3.1" height="3.1" rx=".8"/><rect x="4.3" y="0" width="3.1" height="3.1" rx=".8"/><rect x="8.6" y="0" width="3.1" height="3.1" rx=".8"/><rect x="12.9" y="0" width="3.1" height="3.1" rx=".8"/><rect x="0" y="4.3" width="3.1" height="3.1" rx=".8"/><rect x="4.3" y="4.3" width="3.1" height="3.1" rx=".8"/><rect x="8.6" y="4.3" width="3.1" height="3.1" rx=".8"/><rect x="12.9" y="4.3" width="3.1" height="3.1" rx=".8"/><rect x="0" y="8.6" width="3.1" height="3.1" rx=".8"/><rect x="4.3" y="8.6" width="3.1" height="3.1" rx=".8"/><rect x="8.6" y="8.6" width="3.1" height="3.1" rx=".8"/><rect x="12.9" y="8.6" width="3.1" height="3.1" rx=".8"/><rect x="0" y="12.9" width="3.1" height="3.1" rx=".8"/><rect x="4.3" y="12.9" width="3.1" height="3.1" rx=".8"/><rect x="8.6" y="12.9" width="3.1" height="3.1" rx=".8"/><rect x="12.9" y="12.9" width="3.1" height="3.1" rx=".8"/></svg></button>
@@ -20,7 +21,8 @@
       <?php endforeach; ?>
     </div>
 
-    <form class="filters" method="get" action="<?= e(url('/shop')) ?>">
+    <?php $hasActiveFilters = $filters['q'] !== '' || $filters['min'] !== '' || $filters['max'] !== '' || !empty($filters['store_id']) || $filters['sort'] !== '' || array_filter($filters['attr']); ?>
+    <form class="filters" id="filtersPanel" method="get" action="<?= e(url('/shop')) ?>" style="<?= $hasActiveFilters ? '' : 'display:none' ?>">
       <?php if ($current_cat): ?><input type="hidden" name="cat" value="<?= e($current_cat['slug']) ?>"><?php endif; ?>
       <div class="filters-row">
         <div><label>Пошук</label><input type="text" name="q" value="<?= e($filters['q']) ?>" placeholder="Назва, опис, артикул…"></div>
@@ -83,6 +85,17 @@
 </section>
 
 <script>
+(function(){
+  var toggle = document.getElementById('filtersToggle');
+  var panel = document.getElementById('filtersPanel');
+  if (toggle && panel) {
+    <?php if ($hasActiveFilters): ?>toggle.classList.add('btn-gold'); toggle.classList.remove('btn-line');<?php endif; ?>
+    toggle.addEventListener('click', function(){
+      var open = panel.style.display !== 'none';
+      panel.style.display = open ? 'none' : '';
+    });
+  }
+})();
 (function(){
   var grid = document.getElementById('productGrid');
   var sw = document.getElementById('viewSwitch');

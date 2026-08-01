@@ -7,6 +7,26 @@ use DB, View, Auth, Images;
 
 class Media
 {
+    /** Де використовується фото: товари, банери, галерея */
+    public static function usage(string $path): array
+    {
+        $uses = [];
+        foreach (DB::all(
+            'SELECT DISTINCT p.id, p.name FROM product_images pi JOIN products p ON p.id = pi.product_id WHERE pi.path = ?',
+            [$path]
+        ) as $p) {
+            $uses[] = ['label' => 'Товар: ' . $p['name'], 'url' => url('/admin/products/' . $p['id'])];
+        }
+        foreach (DB::all('SELECT `key` FROM content_blocks WHERE image = ?', [$path]) as $c) {
+            $uses[] = ['label' => 'Банер/фото сайту: ' . $c['key'], 'url' => url('/admin/content')];
+        }
+        $gallery = json_decode(\Content::get('gallery', 'body', '[]'), true) ?: [];
+        foreach ($gallery as $g) {
+            if (($g[1] ?? '') === $path) { $uses[] = ['label' => 'Галерея: ' . ($g[0] ?: 'фото'), 'url' => url('/admin/content')]; break; }
+        }
+        return $uses;
+    }
+
     /** Список усіх фото сайту (для сторінки і для вікна вибору) */
     public static function listAll(): array
     {
@@ -17,10 +37,12 @@ class Media
             $name = basename($f);
             if (str_contains($name, '-thumb.')) continue;
             $size = @getimagesize($f);
+            $path = 'uploads/' . $name;
             $items[] = [
-                'path' => 'uploads/' . $name, 'thumb' => 'uploads/' . preg_replace('/\.(\w+)$/', '-thumb.$1', $name),
+                'path' => $path, 'thumb' => 'uploads/' . preg_replace('/\.(\w+)$/', '-thumb.$1', $name),
                 'width' => $size[0] ?? 0, 'height' => $size[1] ?? 0,
                 'bytes' => filesize($f) ?: 0, 'mtime' => filemtime($f) ?: 0, 'builtin' => false,
+                'usage' => self::usage($path),
             ];
         }
         usort($items, fn($a, $b) => $b['mtime'] <=> $a['mtime']);
@@ -57,16 +79,16 @@ class Media
             if ($action === 'delete') {
                 $path = (string)($_POST['path'] ?? '');
                 if (str_starts_with($path, 'uploads/') && !str_contains($path, '..')) {
-                    Images::delete($path);
-                    // прибрати всі використання
-                    DB::delete('product_images', 'path = ?', [$path]);
-                    DB::query('UPDATE products SET image = NULL WHERE image = ?', [$path]);
-                    DB::query('UPDATE content_blocks SET image = NULL WHERE image = ?', [$path]);
-                    $g = json_decode(\Content::get('gallery', 'body', '[]'), true) ?: [];
-                    $g = array_values(array_filter($g, fn($x) => ($x[1] ?? '') !== $path));
-                    \Content::set('gallery', ['body' => json_encode($g, JSON_UNESCAPED_UNICODE)]);
-                    if (($_POST['format'] ?? '') === 'json') json_response(['ok' => true]);
-                    flash('success', 'Фото видалено із сайту');
+                    $uses = self::usage($path);
+                    if ($uses) {
+                        $msg = 'Фото використовується (' . implode(', ', array_column($uses, 'label')) . ') — спочатку приберіть або замініть його там.';
+                        if (($_POST['format'] ?? '') === 'json') json_response(['ok' => false, 'error' => $msg, 'usage' => $uses], 409);
+                        flash('error', $msg);
+                    } else {
+                        Images::delete($path);
+                        if (($_POST['format'] ?? '') === 'json') json_response(['ok' => true]);
+                        flash('success', 'Фото видалено із сайту');
+                    }
                 } elseif (($_POST['format'] ?? '') === 'json') json_response(['ok' => false], 422);
             }
             redirect('/admin/media');

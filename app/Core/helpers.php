@@ -34,6 +34,13 @@ function base_url(string $path = ''): string {
 function url(string $path = ''): string { return base_url($path); }
 function asset(string $path): string { return base_url('assets/' . ltrim($path, '/')); }
 
+/** Посилання на статичний файл з версією (mtime) для скидання кешу браузера після змін */
+function asset_v(string $path): string {
+    $abs = BOFU_ROOT . '/assets/' . ltrim($path, '/');
+    $v = is_file($abs) ? filemtime($abs) : time();
+    return asset($path) . '?v=' . $v;
+}
+
 function redirect(string $path): never {
     header('Location: ' . (preg_match('~^https?://~', $path) ? $path : base_url($path)));
     exit;

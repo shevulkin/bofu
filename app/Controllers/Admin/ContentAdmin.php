@@ -18,6 +18,13 @@ class ContentAdmin
         'Соцмережі' => ['social_instagram', 'social_youtube', 'social_tiktok'],
     ];
 
+    /** Людські підписи для окремих ключів (замість технічної назви KEY) */
+    private const FIELD_LABELS = [
+        'social_instagram' => 'Посилання на Instagram (напр. https://www.instagram.com/ваш_акаунт/)',
+        'social_youtube' => 'Посилання на YouTube-канал',
+        'social_tiktok' => 'Посилання на TikTok (напр. https://www.tiktok.com/@ваш_акаунт)',
+    ];
+
     public static function index(): never
     {
         Auth::requireAdmin();
@@ -97,6 +104,7 @@ class ContentAdmin
 
         View::show('admin/content', [
             'groups' => self::GROUPS,
+            'field_labels' => self::FIELD_LABELS,
             'blocks' => Content::all(),
             'faq' => json_decode(Content::get('faq', 'body', '[]'), true) ?: [],
             'gallery' => json_decode(Content::get('gallery', 'body', '[]'), true) ?: [],

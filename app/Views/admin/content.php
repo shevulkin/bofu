@@ -9,7 +9,7 @@
       <?php foreach ($keys as $key): $b = $blocks[$key] ?? ['title' => '', 'body' => '']; ?>
         <div class="form-grid">
           <div class="field">
-            <label><?= e($key) ?> — заголовок/значення</label>
+            <label><?= e($field_labels[$key] ?? ($key . ' — заголовок/значення')) ?></label>
             <input type="text" name="block[<?= e($key) ?>][title]" value="<?= e($b['title'] ?? '') ?>">
           </div>
           <div class="field">
