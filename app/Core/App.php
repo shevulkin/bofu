@@ -77,12 +77,13 @@ class App
         if ($path === '/auth/google') { Controllers\AuthController::google(); }
         if ($path === '/auth/google/callback') { Controllers\AuthController::googleCallback(); }
         if ($path === '/auth/demo' && $method === 'POST') { Controllers\AuthController::demo(); }
-        if ($path === '/auth/tg/start') { Controllers\AuthController::tgStart(); }
+        // створення токенів входу — найдешевша для бота дія, тому з лімітом
+        if ($path === '/auth/tg/start') { RateLimit::guard('login_start', 20, 3600, null, true); Controllers\AuthController::tgStart(); }
         if ($path === '/auth/tg/status') { Controllers\AuthController::tgStatus(); }
-        if ($path === '/auth/viber/start') { Controllers\AuthController::viberStart(); }
+        if ($path === '/auth/viber/start') { RateLimit::guard('login_start', 20, 3600, null, true); Controllers\AuthController::viberStart(); }
         if ($path === '/auth/viber/status') { Controllers\AuthController::viberStatus(); }
-        if ($path === '/auth/phone/start' && $method === 'POST') { Controllers\AuthController::phoneStart(); }
-        if ($path === '/auth/phone/verify' && $method === 'POST') { Controllers\AuthController::phoneVerify(); }
+        if ($path === '/auth/phone/start' && $method === 'POST') { RateLimit::guard('phone_start', 10, 3600, null, true); Controllers\AuthController::phoneStart(); }
+        if ($path === '/auth/phone/verify' && $method === 'POST') { RateLimit::guard('phone_verify', 20, 3600, null, true); Controllers\AuthController::phoneVerify(); }
         if ($path === '/profile') { Controllers\Profile::index(); }
         if ($path === '/profile/tg/link') { Controllers\Profile::tgLink(); }
         if ($path === '/profile/tg/check') { Controllers\Profile::tgCheck(); }
@@ -99,7 +100,7 @@ class App
         if ($path === '/gallery') { Controllers\Home::gallery(); }
         if ($path === '/social') { Controllers\Home::social(); }
         if ($path === '/diploma') { Controllers\Home::diploma(); }
-        if ($path === '/diploma/check' && $method === 'POST') { Controllers\Home::diplomaCheck(); }
+        if ($path === '/diploma/check' && $method === 'POST') { RateLimit::guard('diploma', 40, 3600); Controllers\Home::diplomaCheck(); }
 
         // --- кошик і замовлення ---
         if ($path === '/cart') { Controllers\CartController::index(); }
@@ -107,15 +108,16 @@ class App
         if ($path === '/cart/update' && $method === 'POST') { Controllers\CartController::update(); }
         if ($path === '/checkout') { Controllers\Checkout::form(); }
         if ($path === '/checkout' . '/submit' && $method === 'POST') { Controllers\Checkout::submit(); }
-        if (preg_match('~^/order/success/([A-Z0-9-]+)$~', $path, $m)) { Controllers\Checkout::success($m[1]); }
+        if (preg_match('~^/order/success/([a-f0-9]{32})$~', $path, $m)) { Controllers\Checkout::success($m[1]); }
         if ($path === '/orders') { Controllers\Checkout::myOrders(); }
 
         // --- розсилка ---
         if (preg_match('~^/unsubscribe/([a-f0-9]{32})$~', $path, $m)) { Controllers\NewsletterController::unsubscribe($m[1]); }
 
         // --- API ---
-        if ($path === '/api/np/cities') { Controllers\Api::npCities(); }
-        if ($path === '/api/np/warehouses') { Controllers\Api::npWarehouses(); }
+        // проксі до Нової Пошти витрачає наш API-ключ — не даємо викачувати довідник
+        if ($path === '/api/np/cities') { RateLimit::guard('np', 300, 3600, null, true); Controllers\Api::npCities(); }
+        if ($path === '/api/np/warehouses') { RateLimit::guard('np', 300, 3600, null, true); Controllers\Api::npWarehouses(); }
         if ($path === '/api/push/subscribe' && $method === 'POST') { Controllers\Api::pushSubscribe(); }
         if ($path === '/api/viber/webhook' && $method === 'POST') { Controllers\Api::viberWebhook(); }
 
