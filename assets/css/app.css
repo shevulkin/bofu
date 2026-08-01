@@ -92,8 +92,8 @@ h2{font-size:38px}
 
 /* ---------- картки товарів ---------- */
 .grid{display:grid;gap:16px}
-.grid-3{grid-template-columns:repeat(3,1fr)}
-.grid-4{grid-template-columns:repeat(4,1fr)}
+.grid-3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.grid-4{grid-template-columns:repeat(4,minmax(0,1fr))}
 .card{background:var(--bg2);border:1px solid var(--line);border-radius:4px;overflow:hidden;display:flex;flex-direction:column;transition:border-color .2s, transform .2s}
 .card:hover{border-color:var(--line2);transform:translateY(-3px)}
 .card-img{aspect-ratio:1/1;background:var(--bg3);overflow:hidden;position:relative}
@@ -143,8 +143,8 @@ label{display:block;font-size:12.5px;color:var(--muted);font-weight:600;letter-s
 .view-switch button:hover{border-color:var(--gold);color:var(--gold)}
 .view-switch button.active{background:var(--gold);border-color:var(--gold);color:var(--bg)}
 .pgrid{display:grid;gap:16px}
-.pgrid.v3{grid-template-columns:repeat(3,1fr)}
-.pgrid.v4{grid-template-columns:repeat(4,1fr)}
+.pgrid.v3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.pgrid.v4{grid-template-columns:repeat(4,minmax(0,1fr))}
 .pgrid.vlist{grid-template-columns:1fr;gap:12px}
 .pgrid.vlist .card{flex-direction:row;align-items:stretch}
 .pgrid.vlist .card-img{aspect-ratio:auto;width:170px;min-width:170px}
@@ -152,7 +152,7 @@ label{display:block;font-size:12.5px;color:var(--muted);font-weight:600;letter-s
 .pgrid.vlist .card-desc{display:block;-webkit-line-clamp:unset}
 .pgrid.vlist .card-title{font-size:19px}
 @media (max-width:900px){
-  .pgrid.v3,.pgrid.v4{grid-template-columns:repeat(2,1fr)}
+  .pgrid.v3,.pgrid.v4{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
 @media (max-width:760px){
   .pgrid.vlist .card-img{width:110px;min-width:110px}
@@ -161,7 +161,7 @@ label{display:block;font-size:12.5px;color:var(--muted);font-weight:600;letter-s
   .card-foot{flex-wrap:wrap;gap:8px}
 }
 @media (max-width:400px){
-  .pgrid.v3,.pgrid.v4{grid-template-columns:1fr 1fr;gap:10px}
+  .pgrid.v3,.pgrid.v4{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
   .card-body{padding:10px 12px 12px}
   .card-title{font-size:14.5px}
   .btn-sm{padding:8px 12px;font-size:11px}
@@ -233,7 +233,7 @@ footer{border-top:1px solid var(--line);padding:44px 0 60px;margin-top:40px}
 
 /* ---------- адаптив ---------- */
 @media (max-width:1000px){
-  .grid-4{grid-template-columns:repeat(3,1fr)}
+  .grid-4{grid-template-columns:repeat(3,minmax(0,1fr))}
   .hero{grid-template-columns:1fr;padding:56px 24px}
   .hero-img img{height:420px}
   .product-page{grid-template-columns:1fr;gap:32px}
@@ -242,7 +242,7 @@ footer{border-top:1px solid var(--line);padding:44px 0 60px;margin-top:40px}
 @media (max-width:760px){
   h1{font-size:38px} h2{font-size:30px}
   .section{padding:56px 0}
-  .grid-3,.grid-4{grid-template-columns:repeat(2,1fr)}
+  .grid-3,.grid-4{grid-template-columns:repeat(2,minmax(0,1fr))}
   .gallery-grid{grid-template-columns:1fr 1fr}
   .counters{grid-template-columns:repeat(3,1fr);gap:10px}
   .counter b{font-size:30px}
@@ -253,7 +253,7 @@ footer{border-top:1px solid var(--line);padding:44px 0 60px;margin-top:40px}
   .cart-table th:nth-child(2),.cart-table td:nth-child(2){display:none}
 }
 @media (max-width:480px){
-  .grid-3,.grid-4{grid-template-columns:1fr 1fr}
+  .grid-3,.grid-4{grid-template-columns:repeat(2,minmax(0,1fr))}
   .gallery-grid{grid-template-columns:1fr}
   .hero-actions .btn{width:100%}
 }

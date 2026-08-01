@@ -13,7 +13,7 @@
 <meta name="theme-color" content="#141110">
 <link rel="icon" href="<?= e(asset('img/avatar.png')) ?>">
 <link rel="stylesheet" href="<?= e(asset('css/fonts.css')) ?>">
-<link rel="stylesheet" href="<?= e(asset('css/app.css')) ?>">
+<link rel="stylesheet" href="<?= e(asset_v('css/app.css')) ?>">
 <link rel="canonical" href="<?= e((!empty($_SERVER['HTTPS']) ? 'https' : 'http') . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost') . strtok($_SERVER['REQUEST_URI'] ?? '/', '?')) ?>">
 <?php if (!empty($jsonld_product) && !empty($p)): ?>
 <script type="application/ld+json"><?= json_encode([
