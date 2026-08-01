@@ -10,9 +10,13 @@ class Auth
             if (!is_dir($sessDir)) @mkdir($sessDir, 0775, true);
             if (is_writable($sessDir)) session_save_path($sessDir);
             session_name(cfg('session_name', 'bofu_sid'));
+            $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+                || ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https';
             session_set_cookie_params([
                 'httponly' => true,
                 'samesite' => 'Lax',
+                // на HTTPS-хостингу кука не має витікати у відкритий http
+                'secure' => $https,
                 'path' => base_url('/'),
             ]);
             session_start();

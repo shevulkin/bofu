@@ -7,7 +7,7 @@ declare(strict_types=1);
  */
 class Schema
 {
-    public const VERSION = 5;
+    public const VERSION = 7;
 
     /** Оновлення існуючої бази до поточної версії без втрати даних */
     public static function upgrade(): void
@@ -20,7 +20,9 @@ class Schema
             // нові таблиці створяться через createAll (IF NOT EXISTS)
             self::createAll();
             // демо-користувачам телефони, щоб гейт не блокував
-            DB::query("UPDATE users SET phone = '+38067000000' || id WHERE email LIKE '%@bofu.local' AND (phone IS NULL OR phone = '')");
+            // (|| — конкатенація лише в SQLite, у MySQL це логічне «або»)
+            $cat = DB::driver() === 'sqlite' ? "'+38067000000' || id" : "CONCAT('+38067000000', id)";
+            DB::query("UPDATE users SET phone = $cat WHERE email LIKE '%@bofu.local' AND (phone IS NULL OR phone = '')");
             // правила сповіщень для каналу viber
             foreach (Notify::EVENTS as $event => $label) {
                 $exists = DB::row('SELECT id FROM notification_rules WHERE event = ? AND channel = ?', [$event, 'viber']);
@@ -46,6 +48,15 @@ class Schema
             // наявність товарів з варіантами тепер рахується по варіантах у кожному магазині
             self::moveStockToVariants();
         }
+        if ($ver < 6) {
+            // згода на розсилку: окрема таблиця, бо підписатись може й гість без акаунта
+            self::createAll();
+        }
+        if ($ver < 7) {
+            // наслідок бага з `||` вище: у MySQL телефони демо-акаунтів записались як '1'.
+            // Чистимо — гейт у App::run() змусить вказати справжній номер.
+            self::fixBrokenPhones();
+        }
         Settings::set('schema_version', (string)self::VERSION);
     }
 
@@ -68,6 +79,16 @@ class Schema
                 else DB::insert('store_stock', ['product_id' => $pid, 'store_id' => $sid, 'variant_id' => $vid, 'qty' => $qty]);
             }
             DB::delete('store_stock', 'id = ?', [(int)$r['id']]);
+        }
+    }
+
+    /** Телефони, які не проходять нормалізацію, робимо порожніми — краще перепитати, ніж мати сміття */
+    private static function fixBrokenPhones(): void
+    {
+        foreach (DB::all("SELECT id, phone FROM users WHERE phone IS NOT NULL AND phone != ''") as $u) {
+            $norm = AuthTokens::normPhoneAny((string)$u['phone']);
+            if ($norm === null) DB::update('users', ['phone' => null], 'id = ?', [$u['id']]);
+            elseif ($norm !== $u['phone']) DB::update('users', ['phone' => $norm], 'id = ?', [$u['id']]);
         }
     }
 
@@ -198,6 +219,14 @@ class Schema
                 'token' => 'str unique', 'code' => 'str null', 'phone' => 'str null',
                 'chat_id' => 'str null', 'confirmed_user_id' => 'int null',
                 'expires_at' => 'str', 'used' => 'bool default 0', 'created_at' => 'ts',
+            ],
+            // Підписники розсилки: email гостя або зареєстрованого користувача.
+            // token — для відписки одним кліком з листа, без входу на сайт.
+            'subscribers' => [
+                'id' => 'id', 'email' => 'str unique', 'name' => 'str null', 'user_id' => 'int null',
+                'source' => "str default 'checkout'", // checkout|profile
+                'active' => 'bool default 1', 'token' => 'str unique',
+                'created_at' => 'ts', 'unsubscribed_at' => 'str null',
             ],
             'migrations_log' => [ 'id' => 'id', 'name' => 'str', 'ran_at' => 'ts' ],
         ];

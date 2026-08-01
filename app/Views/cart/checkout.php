@@ -5,10 +5,15 @@
     <form method="post" action="<?= e(url('/checkout/submit')) ?>" style="margin-top:30px" id="checkoutForm">
       <?= Csrf::field() ?>
       <div class="form-grid">
-        <div class="field"><label>Отримувач *</label><input type="text" name="name" required placeholder="Ім'я та прізвище"></div>
-        <div class="field"><label>Телефон *</label><input type="tel" name="phone" required placeholder="+380 __ ___ ____"></div>
-        <div class="field"><label>Email</label><input type="email" name="email" placeholder="для підтвердження"></div>
+        <div class="field"><label>Отримувач *</label><input type="text" name="name" value="<?= e($pre['name']) ?>" required placeholder="Ім'я та прізвище"></div>
+        <div class="field"><label>Телефон *</label><input type="tel" name="phone" value="<?= e($pre['phone']) ?>" required placeholder="+380 __ ___ ____"></div>
+        <div class="field"><label>Email <span class="dim">(необовʼязково)</span></label><input type="email" name="email" id="orderEmail" value="<?= e($pre['email']) ?>" placeholder="для підтвердження замовлення"></div>
       </div>
+
+      <label class="checkbox" id="newsletterRow" style="align-items:flex-start;margin-bottom:18px;<?= $pre['email'] === '' ? 'display:none' : '' ?>">
+        <input type="checkbox" name="newsletter" value="1" style="margin-top:3px"<?= $subscribed ? ' checked' : '' ?>>
+        <span>Хочу отримувати новини та акції на цей email. Відписатись можна будь-коли — посиланням у листі або в профілі.</span>
+      </label>
 
       <div class="field">
         <label>Спосіб доставки</label>
@@ -77,6 +82,14 @@
       ot.style.display = v === 'other' ? '' : 'none';
     });
   });
+  // галка розсилки має сенс лише коли вказано email
+  var em = document.getElementById('orderEmail'), nlRow = document.getElementById('newsletterRow');
+  if (em && nlRow) {
+    em.addEventListener('input', function(){
+      nlRow.style.display = em.value.trim() ? '' : 'none';
+      if (!em.value.trim()) nlRow.querySelector('input').checked = false;
+    });
+  }
   // самовивіз: показуємо, чого бракує в обраному магазині
   var store = document.getElementById('pickupStore'), note = document.getElementById('pickupNote');
   if (store && note) {

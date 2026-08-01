@@ -30,6 +30,19 @@ class AuthTokens
         return null;
     }
 
+    /**
+     * Як normPhone(), але не відсікає закордонних покупців: приймає міжнародний
+     * номер у форматі +<код країни><номер> (E.164, 10–15 цифр).
+     */
+    public static function normPhoneAny(string $phone): ?string
+    {
+        $ua = self::normPhone($phone);
+        if ($ua) return $ua;
+        $d = preg_replace('/\D/', '', $phone) ?? '';
+        if (str_starts_with(trim($phone), '+') && strlen($d) >= 10 && strlen($d) <= 15) return '+' . $d;
+        return null;
+    }
+
     /** Створити код входу за телефоном; false якщо перевищено ліміт */
     public static function createPhoneCode(string $phone): array|false
     {

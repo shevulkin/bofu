@@ -55,7 +55,12 @@ class GoogleAuth
         $resp = curl_exec($ch);
         curl_close($ch);
         $profile = json_decode((string)$resp, true);
-        return (is_array($profile) && !empty($profile['sub']) && !empty($profile['email'])) ? $profile : null;
+        if (!is_array($profile) || empty($profile['sub']) || empty($profile['email'])) return null;
+        // непідтверджений email не можна довіряти: інакше через нього можна
+        // «під'єднатись» до чужого акаунта, який має ту саму адресу
+        if (array_key_exists('email_verified', $profile)
+            && !filter_var($profile['email_verified'], FILTER_VALIDATE_BOOLEAN)) return null;
+        return $profile;
     }
 
     private static function post(string $url, array $data): array

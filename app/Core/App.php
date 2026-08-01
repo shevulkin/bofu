@@ -14,12 +14,14 @@ class App
         View::share('auth_user', Auth::user());
         View::share('cart_count', Cart::count());
 
-        // Обовʼязковий телефон: доки не вказаний — лише профіль
+        // Обовʼязковий телефон: доки не вказаний коректний номер — лише профіль.
+        // Перевіряємо саме валідність, а не «непорожність», інакше сміття на кшталт '1' пройде гейт.
         $u = Auth::user();
-        if ($u && empty($u['phone'])) {
+        if ($u && AuthTokens::normPhoneAny((string)($u['phone'] ?? '')) === null) {
             $p = rtrim(request_path(), '/') ?: '/';
             $allowed = ['/profile', '/profile/tg/link', '/profile/tg/check', '/profile/viber/link', '/profile/viber/check', '/logout', '/sw.js', '/manifest.webmanifest'];
-            if (!in_array($p, $allowed, true)) {
+            // відписка від розсилки має працювати завжди — це вимога закону про згоду
+            if (!in_array($p, $allowed, true) && !str_starts_with($p, '/unsubscribe/')) {
                 flash('error', 'Вкажіть, будь ласка, номер телефону, щоб продовжити.');
                 redirect('/profile');
             }
@@ -108,6 +110,9 @@ class App
         if (preg_match('~^/order/success/([A-Z0-9-]+)$~', $path, $m)) { Controllers\Checkout::success($m[1]); }
         if ($path === '/orders') { Controllers\Checkout::myOrders(); }
 
+        // --- розсилка ---
+        if (preg_match('~^/unsubscribe/([a-f0-9]{32})$~', $path, $m)) { Controllers\NewsletterController::unsubscribe($m[1]); }
+
         // --- API ---
         if ($path === '/api/np/cities') { Controllers\Api::npCities(); }
         if ($path === '/api/np/warehouses') { Controllers\Api::npWarehouses(); }
@@ -141,6 +146,7 @@ class App
             '/admin/promos'             => [$A.'Promos', 'index'],
             '/admin/diplomas'           => [$A.'Diplomas', 'index'],
             '/admin/users'              => [$A.'Users', 'index'],
+            '/admin/subscribers'        => [$A.'Subscribers', 'index'],
             '/admin/content'            => [$A.'ContentAdmin', 'index'],
             '/admin/media'              => [$A.'Media', 'index'],
             '/admin/settings'           => [$A.'SettingsAdmin', 'index'],
