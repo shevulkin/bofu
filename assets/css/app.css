@@ -341,6 +341,9 @@ footer{border-top:1px solid var(--line);padding:44px 0 60px;margin-top:40px}
 .matrix th{white-space:nowrap}
 .matrix tr.sub th{font-size:10.5px;padding:6px 13px;color:var(--dim)}
 .matrix input{min-width:78px}
+/* рядок варіанта в масовому редагуванні */
+.tbl tr.variant-sub td{background:rgba(240,180,41,.035);border-top:1px dashed var(--bg3);font-size:13px}
+.tbl tr.variant-sub td:first-child{white-space:nowrap}
 /* прихована кнопка сабміту: задає дію за замовчуванням для Enter у полях */
 .submit-default{position:absolute;width:0;height:0;padding:0;border:0;overflow:hidden;opacity:0}
 .attr-item summary{cursor:pointer;font-size:15px;line-height:1.5}

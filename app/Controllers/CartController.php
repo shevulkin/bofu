@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 namespace Controllers;
 
-use View, Cart, Csrf, DB;
+use View, Cart, Csrf, DB, Catalog;
 
 class CartController
 {
@@ -12,6 +12,7 @@ class CartController
         View::show('cart/index', [
             'rows' => Cart::detailed(),
             'totals' => Cart::total(),
+            'stores' => Catalog::stores(),
             'page_title' => 'Кошик — ' . cfg('app_name'),
         ]);
     }

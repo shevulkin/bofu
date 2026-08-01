@@ -10,10 +10,22 @@ class Checkout
     public static function form(): never
     {
         if (!Cart::items()) redirect('/cart');
+        $rows = Cart::detailed();
+        $stores = Catalog::stores();
+        // чого бракує в кожному магазині для самовивозу (з урахуванням варіанта)
+        $missing = [];
+        foreach ($stores as $s) {
+            $sid = (int)$s['id'];
+            foreach ($rows as $r) {
+                if ((int)($r['stock'][$sid] ?? 0) < $r['qty']) {
+                    $missing[$sid][] = $r['product']['name'] . ($r['variant'] ? ' — ' . $r['variant']['name'] : '');
+                }
+            }
+        }
         View::show('cart/checkout', [
-            'rows' => Cart::detailed(),
+            'rows' => $rows,
             'totals' => Cart::total(null, self::promo()),
-            'stores' => Catalog::stores(),
+            'stores' => $stores, 'missing' => $missing,
             'promo' => self::promo(),
             'np_enabled' => Settings::get('np_api_key') !== null && Settings::get('np_api_key') !== '',
             'page_title' => 'Оформлення замовлення — ' . cfg('app_name'),
@@ -77,16 +89,24 @@ class Checkout
                     'title' => $r['product']['name'], 'variant_name' => $r['variant']['name'] ?? null,
                     'price' => $r['price'] ?? 0, 'qty' => $r['qty'], 'sum' => $r['sum'] ?? 0,
                 ]);
-                // списання залишків з магазину (якщо відомий) або з першого, де є
+                // списання залишків саме того варіанта, що замовили:
+                // з обраного магазину або з того, де його найбільше
+                $pid = (int)$r['product']['id'];
+                $vid = isset($r['variant']['id']) ? (int)$r['variant']['id'] : null;
+                // товар з варіантами без вибраного варіанта (старий кошик) — списувати нема з чого
+                if ($vid === null && Catalog::hasVariants($pid)) continue;
+                $byStore = Catalog::stockByStore($pid, $vid);
                 $sid = $storeId;
                 if (!$sid) {
-                    $row = DB::row('SELECT store_id FROM store_stock WHERE product_id = ? AND qty > 0 ORDER BY qty DESC LIMIT 1', [$r['product']['id']]);
-                    $sid = $row['store_id'] ?? null;
+                    arsort($byStore);
+                    foreach ($byStore as $candidate => $qty) { if ($qty > 0) { $sid = $candidate; break; } }
                 }
                 if ($sid) {
                     $fn = DB::driver() === 'sqlite' ? 'MAX' : 'GREATEST';
-                    DB::query("UPDATE store_stock SET qty = $fn(0, qty - ?) WHERE product_id = ? AND store_id = ? AND variant_id IS NULL",
-                        [$r['qty'], $r['product']['id'], $sid]);
+                    $cond = $vid === null ? 'variant_id IS NULL' : 'variant_id = ?';
+                    $params = [$r['qty'], $pid, $sid];
+                    if ($vid !== null) $params[] = $vid;
+                    DB::query("UPDATE store_stock SET qty = $fn(0, qty - ?) WHERE product_id = ? AND store_id = ? AND $cond", $params);
                 }
             }
             return $orderId;

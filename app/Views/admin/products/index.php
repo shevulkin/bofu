@@ -18,8 +18,8 @@
   <button class="btn btn-gold btn-sm" type="submit">Знайти</button>
 </form>
 <table class="tbl">
-  <tr><th></th><th>Назва</th><th>Категорія</th><th>Ціна</th><th>Статус</th><th></th></tr>
-  <?php foreach ($products as $p): ?>
+  <tr><th></th><th>Назва</th><th>Категорія</th><th>Ціна</th><th>Наявність</th><th>Статус</th><th></th></tr>
+  <?php foreach ($products as $p): $pid = (int)$p['id']; ?>
     <tr>
       <td style="width:64px">
         <?php $ph = Catalog::photo($p); ?>
@@ -28,6 +28,16 @@
       <td><b><?= e($p['name']) ?></b><?php if ($p['sku']): ?><div class="dim"><?= e($p['sku']) ?></div><?php endif; ?></td>
       <td class="muted"><?= e($p['cat_name'] ?? '—') ?></td>
       <td><?= e(price_fmt($p['base_price'])) ?></td>
+      <td>
+        <?php $byStore = $stocks[$pid] ?? []; $total = array_sum($byStore); ?>
+        <b><?= $total ?></b> шт
+        <div class="dim">
+          <?php $bits = [];
+            foreach ($stores as $s) $bits[] = e($s['city'] ?: $s['name']) . ': ' . (int)($byStore[(int)$s['id']] ?? 0);
+            echo implode(' · ', $bits);
+            if (!empty($variant_count[$pid])) echo '<br>з варіантів: ' . (int)$variant_count[$pid]; ?>
+        </div>
+      </td>
       <td><?= $p['active'] ? '<span class="status-pill st-processing">Активний</span>' : '<span class="status-pill st-canceled">Прихований</span>' ?>
           <?= $p['featured'] ? ' <span class="status-pill st-new">Хіт</span>' : '' ?></td>
       <td><a class="btn btn-line btn-xs" href="<?= e(url('/admin/products/' . $p['id'])) ?>">Редагувати</a></td>

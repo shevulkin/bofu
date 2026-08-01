@@ -28,12 +28,16 @@
 
       <div id="pickupFields" style="display:none">
         <div class="field"><label>Магазин</label>
-          <select name="store_id">
+          <select name="store_id" id="pickupStore">
             <option value="">— оберіть магазин —</option>
-            <?php foreach ($stores as $s): ?>
-              <option value="<?= (int)$s['id'] ?>"><?= e($s['name'] . ($s['city'] ? ', ' . $s['city'] : '') . ($s['address'] ? ', ' . $s['address'] : '')) ?></option>
+            <?php foreach ($stores as $s): $sid = (int)$s['id']; $miss = $missing[$sid] ?? []; ?>
+              <option value="<?= $sid ?>" data-missing="<?= e(implode(', ', $miss)) ?>">
+                <?= e($s['name'] . ($s['city'] ? ', ' . $s['city'] : '') . ($s['address'] ? ', ' . $s['address'] : '')) ?>
+                <?= $miss ? ' — немає частини позицій' : ' — все є в наявності' ?>
+              </option>
             <?php endforeach; ?>
           </select>
+          <p class="dim" id="pickupNote" style="margin:8px 0 0"></p>
         </div>
       </div>
 
@@ -73,6 +77,15 @@
       ot.style.display = v === 'other' ? '' : 'none';
     });
   });
+  // самовивіз: показуємо, чого бракує в обраному магазині
+  var store = document.getElementById('pickupStore'), note = document.getElementById('pickupNote');
+  if (store && note) {
+    store.addEventListener('change', function () {
+      var opt = store.options[store.selectedIndex];
+      var miss = opt ? (opt.dataset.missing || '') : '';
+      note.textContent = miss ? 'У цьому магазині зараз немає: ' + miss + '. Замовлення приймемо — узгодимо строки.' : '';
+    });
+  }
   // Автопідказки Нової Пошти (працюють за наявності API-ключа)
   var enabled = <?= $np_enabled ? 'true' : 'false' ?>;
   if (enabled) {

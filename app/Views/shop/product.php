@@ -68,11 +68,11 @@
 
         <?php $lowStock = ($p['low_stock_threshold'] ?? null) !== null && $p['low_stock_threshold'] !== '' ? (int)$p['low_stock_threshold'] : null; ?>
         <div class="availability" id="availability">
+          <?php if ($variants): ?><p class="dim" style="margin:0 0 8px">Наявність показана для обраного варіанта</p><?php endif; ?>
           <?php $anyStock = false; foreach ($availability as $av): $sid = (int)$av['store']['id']; $anyStock = $anyStock || $av['qty'] > 0; ?>
             <span class="<?= $av['qty'] > 0 ? 'yes' : 'no' ?>" data-store="<?= $sid ?>"
                   data-stock="<?= e(json_encode($av['by_variant'], JSON_UNESCAPED_UNICODE)) ?>"
-                  data-label="<?= e($av['store']['name'] . ($av['store']['city'] ? ' (' . $av['store']['city'] . ')' : '')) ?>"
-                  data-price="<?= $av['price'] !== null && $av['price'] != $price ? e(price_fmt($av['price'])) : '' ?>">
+                  data-label="<?= e($av['store']['name'] . ($av['store']['city'] ? ' (' . $av['store']['city'] . ')' : '')) ?>">
               <span class="av-text"><?= e($av['store']['name'] . ($av['store']['city'] ? ' (' . $av['store']['city'] . ')' : '')) ?>:
               <?= $av['qty'] > 0 ? ($lowStock !== null && $av['qty'] <= $lowStock ? 'закінчується' : 'в наявності') : 'немає' ?>
               <?php if ($av['price'] !== null && $av['price'] != $price): ?> · ціна тут: <?= e(price_fmt($av['price'])) ?><?php endif; ?></span>
