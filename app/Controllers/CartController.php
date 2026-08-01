@@ -27,7 +27,7 @@ class CartController
         if ($p) Cart::add($pid, $vid, $qty);
         if (($_POST['ajax'] ?? '') === '1') json_response(['ok' => true, 'count' => Cart::count()]);
         flash('success', 'Додано до кошика');
-        redirect($_POST['back'] ?? '/cart');
+        redirect(safe_back($_POST['back'] ?? null, '/cart'));
     }
 
     public static function update(): never

@@ -31,7 +31,11 @@
           });
         }).then(function (sub) {
           return fetch(base.replace(/\/$/, '') + '/api/push/subscribe', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-CSRF-Token': (window.BOFU && BOFU.csrf) || ''
+            },
             body: JSON.stringify(sub)
           });
         }).then(function () {

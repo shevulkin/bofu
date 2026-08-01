@@ -129,7 +129,7 @@
 
     <?php if ($variants): ?>
       <script>
-        window.BOFU_VARIANTS = <?= json_encode($variant_data, JSON_UNESCAPED_UNICODE) ?>;
+        window.BOFU_VARIANTS = <?= json_js($variant_data) ?>;
         window.BOFU_MADE_TO_ORDER = <?= $p['made_to_order'] ? 'true' : 'false' ?>;
         window.BOFU_LOW_STOCK_THRESHOLD = <?= $lowStock !== null ? $lowStock : 'null' ?>;
       </script>

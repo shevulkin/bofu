@@ -63,6 +63,9 @@ class Media
 
     public static function index(): never
     {
+        // Медіа-бібліотека спільна для всього сайту (банери, галерея, фото товарів),
+        // тому нею керує адмін — інакше продавець одного магазину міняє картинки всім.
+        Auth::requireAdmin();
         if (($_GET['format'] ?? '') === 'json') {
             json_response(['items' => self::listAll()]);
         }

@@ -10,6 +10,26 @@ Options -Indexes
   RewriteCond %{REQUEST_FILENAME} !-d
   RewriteRule ^ index.php [QSA,L]
 </IfModule>
-<FilesMatch "\.(sqlite|log|md|lock)$">
-  Require all denied
+
+# Заборони нижче навмисно дублюють RewriteRule вище: якщо mod_rewrite вимкнений
+# або AllowOverride обмежений, конфіг із паролями БД не має віддаватися жодним шляхом.
+<FilesMatch "\.(sqlite|log|md|lock|yml|yaml|ini|sh)$">
+  <IfModule mod_authz_core.c>
+    Require all denied
+  </IfModule>
+  <IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+  </IfModule>
+</FilesMatch>
+
+# config.php / config.local.php — секрети; фронт-контролер підключає їх сам
+<FilesMatch "^config.*\.php$">
+  <IfModule mod_authz_core.c>
+    Require all denied
+  </IfModule>
+  <IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+  </IfModule>
 </FilesMatch>

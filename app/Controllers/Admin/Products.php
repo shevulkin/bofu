@@ -35,13 +35,18 @@ class Products
     {
         $stores = Catalog::stores();
         if (is_post()) {
+            // Картка товару (назва, базова ціна, видимість) — спільна для всього сайту,
+            // тож належить адміну. Продавцю лишаються ціни й залишки його магазинів.
+            $isAdmin = Auth::isAdmin();
             $rows = $_POST['p'] ?? [];
             foreach ($rows as $id => $data) {
                 $id = (int)$id;
                 $upd = [];
-                if (isset($data['name']) && trim($data['name']) !== '') $upd['name'] = trim($data['name']);
-                if (array_key_exists('base_price', $data)) $upd['base_price'] = $data['base_price'] === '' ? null : (float)$data['base_price'];
-                if (isset($data['active'])) $upd['active'] = (int)(bool)$data['active'];
+                if ($isAdmin) {
+                    if (isset($data['name']) && trim($data['name']) !== '') $upd['name'] = trim($data['name']);
+                    if (array_key_exists('base_price', $data)) $upd['base_price'] = $data['base_price'] === '' ? null : (float)$data['base_price'];
+                    if (isset($data['active'])) $upd['active'] = (int)(bool)$data['active'];
+                }
                 if ($upd) { $upd['updated_at'] = now(); DB::update('products', $upd, 'id = ?', [$id]); }
 
                 $variantIds = array_map('intval', array_column(
@@ -79,6 +84,7 @@ class Products
 
     public static function create(): never
     {
+        Auth::requireAdmin();
         if (is_post()) {
             $name = trim($_POST['name'] ?? '');
             if ($name === '') { flash('error', 'Вкажіть назву'); redirect('/admin/products/new'); }
@@ -141,11 +147,27 @@ class Products
         ], 'layouts/admin');
     }
 
+    /**
+     * Хто що редагує в товарі.
+     * Картка товару (назва, опис, ціни, варіанти, характеристики, фото) — спільна для
+     * всього сайту, тож нею керує лише адмін. Продавцю лишаються ціни й залишки його
+     * магазинів: саме їх він і веде щодня. Перевірка тут — джерело істини, форма лише
+     * повторює її візуально.
+     */
     private static function save(int $id, array $p): void
     {
         $action = $_POST['_action'] ?? 'save';
+        $isAdmin = Auth::isAdmin();
 
-        if ($action === 'delete' && Auth::isAdmin()) {
+        // дії з карткою товару — тільки адмін; продавцю мовчки нічого не робимо
+        if (!$isAdmin && in_array($action, [
+            'delete', 'attach_image', 'upload_image', 'delete_image', 'main_image', 'move_image', 'gen_variants',
+        ], true)) {
+            flash('error', 'Змінювати картку товару може лише адміністратор.');
+            redirect('/admin/products/' . $id);
+        }
+
+        if ($action === 'delete' && $isAdmin) {
             $paths = array_column(DB::all('SELECT path FROM product_images WHERE product_id = ?', [$id]), 'path');
             foreach (DB::all('SELECT id FROM product_variants WHERE product_id = ?', [$id]) as $v) {
                 DB::delete('variant_options', 'variant_id = ?', [(int)$v['id']]);
@@ -238,56 +260,58 @@ class Products
             if ($selection) $generated = Attrs::generateVariants($id, $selection);
         }
 
-        // Основне збереження
-        DB::update('products', [
-            'name' => trim($_POST['name'] ?? $p['name']),
-            'category_id' => (int)($_POST['category_id'] ?? $p['category_id']),
-            'sku' => trim($_POST['sku'] ?? '') ?: null,
-            'short_desc' => trim($_POST['short_desc'] ?? '') ?: null,
-            'description' => trim($_POST['description'] ?? '') ?: null,
-            'base_price' => ($_POST['base_price'] ?? '') === '' ? null : (float)$_POST['base_price'],
-            'old_price' => ($_POST['old_price'] ?? '') === '' ? null : (float)$_POST['old_price'],
-            'type' => in_array($_POST['type'] ?? '', ['product','service','video','course'], true) ? $_POST['type'] : $p['type'],
-            'active' => isset($_POST['active']) ? 1 : 0,
-            'featured' => isset($_POST['featured']) ? 1 : 0,
-            'made_to_order' => isset($_POST['made_to_order']) ? 1 : 0,
-            'low_stock_threshold' => ($_POST['low_stock_threshold'] ?? '') === '' ? null : (int)$_POST['low_stock_threshold'],
-            'updated_at' => now(),
-        ], 'id = ?', [$id]);
+        // Основне збереження (картка товару — лише адмін)
+        if ($isAdmin) {
+            DB::update('products', [
+                'name' => trim($_POST['name'] ?? $p['name']),
+                'category_id' => (int)($_POST['category_id'] ?? $p['category_id']),
+                'sku' => trim($_POST['sku'] ?? '') ?: null,
+                'short_desc' => trim($_POST['short_desc'] ?? '') ?: null,
+                'description' => trim($_POST['description'] ?? '') ?: null,
+                'base_price' => ($_POST['base_price'] ?? '') === '' ? null : (float)$_POST['base_price'],
+                'old_price' => ($_POST['old_price'] ?? '') === '' ? null : (float)$_POST['old_price'],
+                'type' => in_array($_POST['type'] ?? '', ['product','service','video','course'], true) ? $_POST['type'] : $p['type'],
+                'active' => isset($_POST['active']) ? 1 : 0,
+                'featured' => isset($_POST['featured']) ? 1 : 0,
+                'made_to_order' => isset($_POST['made_to_order']) ? 1 : 0,
+                'low_stock_threshold' => ($_POST['low_stock_threshold'] ?? '') === '' ? null : (int)$_POST['low_stock_threshold'],
+                'updated_at' => now(),
+            ], 'id = ?', [$id]);
 
-        // Варіанти: назви з характеристик не чіпаємо — вони збираються автоматично
-        $withOptions = Attrs::variantOptionsFor($id);
-        $sort = 0;
-        foreach ((array)($_POST['variant'] ?? []) as $vid => $v) {
-            if (str_starts_with((string)$vid, 'new')) continue;
-            $vid = (int)$vid;
-            if (!empty($v['_delete'])) { self::deleteVariant($id, $vid); continue; }
-            $name = trim($v['name'] ?? '');
-            $auto = !empty($withOptions[$vid]);
-            if (!$auto && $name === '') continue; // текстовий варіант без назви — не чіпаємо
-            $upd = [
-                'price' => ($v['price'] ?? '') === '' ? null : (float)$v['price'],
-                'sku' => trim($v['sku'] ?? '') ?: null,
-                'active' => !empty($v['active']) ? 1 : 0,
-                'sort' => $sort++,
-            ];
-            if (!$auto) $upd['name'] = $name;
-            DB::update('product_variants', $upd, 'id = ? AND product_id = ?', [$vid, $id]);
-        }
-        foreach ((array)($_POST['variant'] ?? []) as $vid => $v) {
-            if (!str_starts_with((string)$vid, 'new')) continue;
-            if (trim($v['name'] ?? '') === '') continue;
-            DB::insert('product_variants', [
-                'product_id' => $id, 'name' => trim($v['name']),
-                'price' => ($v['price'] ?? '') === '' ? null : (float)$v['price'],
-                'sku' => trim($v['sku'] ?? '') ?: null,
-                'active' => !empty($v['active']) ? 1 : 0,
-                'sort' => $sort++,
-            ]);
-        }
+            // Варіанти: назви з характеристик не чіпаємо — вони збираються автоматично
+            $withOptions = Attrs::variantOptionsFor($id);
+            $sort = 0;
+            foreach ((array)($_POST['variant'] ?? []) as $vid => $v) {
+                if (str_starts_with((string)$vid, 'new')) continue;
+                $vid = (int)$vid;
+                if (!empty($v['_delete'])) { self::deleteVariant($id, $vid); continue; }
+                $name = trim($v['name'] ?? '');
+                $auto = !empty($withOptions[$vid]);
+                if (!$auto && $name === '') continue; // текстовий варіант без назви — не чіпаємо
+                $upd = [
+                    'price' => ($v['price'] ?? '') === '' ? null : (float)$v['price'],
+                    'sku' => trim($v['sku'] ?? '') ?: null,
+                    'active' => !empty($v['active']) ? 1 : 0,
+                    'sort' => $sort++,
+                ];
+                if (!$auto) $upd['name'] = $name;
+                DB::update('product_variants', $upd, 'id = ? AND product_id = ?', [$vid, $id]);
+            }
+            foreach ((array)($_POST['variant'] ?? []) as $vid => $v) {
+                if (!str_starts_with((string)$vid, 'new')) continue;
+                if (trim($v['name'] ?? '') === '') continue;
+                DB::insert('product_variants', [
+                    'product_id' => $id, 'name' => trim($v['name']),
+                    'price' => ($v['price'] ?? '') === '' ? null : (float)$v['price'],
+                    'sku' => trim($v['sku'] ?? '') ?: null,
+                    'active' => !empty($v['active']) ? 1 : 0,
+                    'sort' => $sort++,
+                ]);
+            }
 
-        // Характеристики: словник + значення зі списку (рядки перезаписуються цілком)
-        Attrs::saveProductAttrs($id, (array)($_POST['attr'] ?? []), (int)($_POST['category_id'] ?? $p['category_id']));
+            // Характеристики: словник + значення зі списку (рядки перезаписуються цілком)
+            Attrs::saveProductAttrs($id, (array)($_POST['attr'] ?? []), (int)($_POST['category_id'] ?? $p['category_id']));
+        }
 
         // Ціни та залишки: по товару загалом і окремо по кожному варіанту.
         // Якщо варіанти є — залишок товару без варіанта не приймаємо: наявність рахується з варіантів.

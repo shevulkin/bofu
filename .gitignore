@@ -5,8 +5,9 @@
 /storage/sessions/
 /storage/cache/*
 /storage/*.sqlite*
-# завантажені фото (контент, не код)
+# завантажені фото (контент, не код) — крім правил доступу до теки
 /assets/uploads/*
+!/assets/uploads/.htaccess
 # сміття IDE/ОС
 .vs/
 Thumbs.db

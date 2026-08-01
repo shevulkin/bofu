@@ -16,6 +16,16 @@ function e($value): string {
     return htmlspecialchars((string)($value ?? ''), ENT_QUOTES, 'UTF-8');
 }
 
+/**
+ * JSON для вставки всередину <script>. Екранує < > & ' " у \uXXXX, тому назва товару
+ * на кшталт «</script><script>…» не може розірвати тег і виконатись як код.
+ * Для JS і для JSON-LD результат лишається валідним JSON.
+ */
+function json_js($data): string {
+    return (string)json_encode($data,
+        JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
+}
+
 /** Базовий URL застосунку (авто: піддиректорія XAMPP чи корінь домену) */
 function base_url(string $path = ''): string {
     static $base = null;
@@ -39,6 +49,18 @@ function asset_v(string $path): string {
     $abs = BOFU_ROOT . '/assets/' . ltrim($path, '/');
     $v = is_file($abs) ? filemtime($abs) : time();
     return asset($path) . '?v=' . $v;
+}
+
+/**
+ * Куди повертати після форми. Приймаємо лише свій відносний шлях: значення з POST
+ * інакше відправило б покупця на чужий домен (і виглядало б як наше посилання).
+ */
+function safe_back($path, string $fallback = '/'): string {
+    $path = (string)($path ?? '');
+    if ($path === '' || $path[0] !== '/') return $fallback;
+    if (str_starts_with($path, '//') || str_starts_with($path, '/\\')) return $fallback; // протокол-відносний URL
+    if (strpbrk($path, "\r\n") !== false) return $fallback;
+    return $path;
 }
 
 function redirect(string $path): never {

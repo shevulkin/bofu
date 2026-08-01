@@ -66,8 +66,8 @@
   </main>
 </div>
 <script>
-window.BOFU = { base: '<?= e(url('/')) ?>', vapid: '<?= e(Settings::get('vapid_public', '')) ?>' };
+window.BOFU = { base: '<?= e(url('/')) ?>', vapid: '<?= e(Settings::get('vapid_public', '')) ?>', csrf: '<?= e(Csrf::token()) ?>' };
 </script>
-<script src="<?= e(asset('js/admin.js')) ?>" defer></script>
+<script src="<?= e(asset_v('js/admin.js')) ?>" defer></script>
 </body>
 </html>

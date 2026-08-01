@@ -2,11 +2,23 @@
 /** @var array|null $p @var array $variants @var array $variant_options @var array $attrs @var array $dict */
 $isNew = $p === null;
 $canStore = fn(int $sid): bool => Auth::isAdmin() || in_array($sid, Auth::storeIds(), true);
+// Картку товару веде адмін, продавець — лише ціни й залишки своїх магазинів.
+// Форма повторює те, що перевіряє Products::save(): показувати поля, які все одно
+// не збережуться, — гірше, ніж не показувати їх зовсім.
+$canEdit = Auth::isAdmin();
+$roEdit = $canEdit ? '' : 'disabled';
 ?>
 <div class="admin-head">
   <h1 class="h-serif"><?= $isNew ? 'Новий товар' : e($p['name']) ?></h1>
   <a class="btn btn-line btn-sm" href="<?= e(url('/admin/products')) ?>">← До списку</a>
 </div>
+
+<?php if (!$canEdit): ?>
+  <div class="admin-card" style="border-color:var(--gold)">
+    Картку товару (назву, опис, базові ціни, варіанти, фото) редагує адміністратор.
+    Вам доступні <b>ціни та залишки ваших магазинів</b> — нижче на цій сторінці.
+  </div>
+<?php endif; ?>
 
 <form method="post" action="<?= e(url($isNew ? '/admin/products/new' : '/admin/products/' . $p['id'])) ?>" id="productForm">
   <?= Csrf::field() ?>
@@ -15,39 +27,40 @@ $canStore = fn(int $sid): bool => Auth::isAdmin() || in_array($sid, Auth::storeI
   <div class="admin-card">
     <h2 class="h-serif">Основне</h2>
     <div class="form-grid">
-      <div class="field"><label>Назва *</label><input type="text" name="name" required value="<?= e($p['name'] ?? '') ?>"></div>
+      <div class="field"><label>Назва *</label><input type="text" name="name" required value="<?= e($p['name'] ?? '') ?>" <?= $roEdit ?>></div>
       <div class="field"><label>Категорія</label>
-        <select name="category_id" id="catSelect">
+        <select name="category_id" id="catSelect" <?= $roEdit ?>>
           <?php foreach ($categories as $c): ?>
             <option value="<?= (int)$c['id'] ?>" <?= ($p['category_id'] ?? 0) == $c['id'] ? 'selected' : '' ?>><?= e($c['name']) ?></option>
           <?php endforeach; ?>
         </select>
       </div>
-      <div class="field"><label>Артикул</label><input type="text" name="sku" value="<?= e($p['sku'] ?? '') ?>"></div>
+      <div class="field"><label>Артикул</label><input type="text" name="sku" value="<?= e($p['sku'] ?? '') ?>" <?= $roEdit ?>></div>
       <div class="field"><label>Тип</label>
-        <select name="type">
+        <select name="type" <?= $roEdit ?>>
           <?php foreach (['product' => 'Товар', 'service' => 'Послуга', 'video' => 'Відео', 'course' => 'Курс'] as $t => $lbl): ?>
             <option value="<?= $t ?>" <?= ($p['type'] ?? 'product') === $t ? 'selected' : '' ?>><?= $lbl ?></option>
           <?php endforeach; ?>
         </select>
       </div>
-      <div class="field"><label>Базова ціна, грн (порожньо = «За запитом»)</label><input type="number" step="0.01" name="base_price" value="<?= e($p['base_price'] ?? '') ?>"></div>
-      <div class="field"><label>Стара ціна (закреслена)</label><input type="number" step="0.01" name="old_price" value="<?= e($p['old_price'] ?? '') ?>"></div>
+      <div class="field"><label>Базова ціна, грн (порожньо = «За запитом»)</label><input type="number" step="0.01" name="base_price" value="<?= e($p['base_price'] ?? '') ?>" <?= $roEdit ?>></div>
+      <div class="field"><label>Стара ціна (закреслена)</label><input type="number" step="0.01" name="old_price" value="<?= e($p['old_price'] ?? '') ?>" <?= $roEdit ?>></div>
     </div>
-    <div class="field"><label>Короткий опис</label><input type="text" name="short_desc" value="<?= e($p['short_desc'] ?? '') ?>"></div>
-    <div class="field"><label>Повний опис</label><textarea name="description" rows="5"><?= e($p['description'] ?? '') ?></textarea></div>
+    <div class="field"><label>Короткий опис</label><input type="text" name="short_desc" value="<?= e($p['short_desc'] ?? '') ?>" <?= $roEdit ?>></div>
+    <div class="field"><label>Повний опис</label><textarea name="description" rows="5" <?= $roEdit ?>><?= e($p['description'] ?? '') ?></textarea></div>
     <div style="display:flex;gap:26px;flex-wrap:wrap">
-      <label class="checkbox"><input type="checkbox" name="active" <?= ($p['active'] ?? 1) ? 'checked' : '' ?>> Активний (видно на сайті)</label>
-      <label class="checkbox"><input type="checkbox" name="featured" <?= ($p['featured'] ?? 0) ? 'checked' : '' ?>> Рекомендований (на головній)</label>
-      <label class="checkbox"><input type="checkbox" name="made_to_order" <?= ($p['made_to_order'] ?? 1) ? 'checked' : '' ?>> Виготовляємо під замовлення</label>
+      <label class="checkbox"><input type="checkbox" name="active" <?= ($p['active'] ?? 1) ? 'checked' : '' ?> <?= $roEdit ?>> Активний (видно на сайті)</label>
+      <label class="checkbox"><input type="checkbox" name="featured" <?= ($p['featured'] ?? 0) ? 'checked' : '' ?> <?= $roEdit ?>> Рекомендований (на головній)</label>
+      <label class="checkbox"><input type="checkbox" name="made_to_order" <?= ($p['made_to_order'] ?? 1) ? 'checked' : '' ?> <?= $roEdit ?>> Виготовляємо під замовлення</label>
     </div>
     <div class="field" style="max-width:360px">
       <label>Поріг «закінчується», шт.</label>
-      <input type="number" min="0" step="1" name="low_stock_threshold" value="<?= e($p['low_stock_threshold'] ?? '') ?>" placeholder="порожньо — показувати просто «в наявності»">
+      <input type="number" min="0" step="1" name="low_stock_threshold" value="<?= e($p['low_stock_threshold'] ?? '') ?>" placeholder="порожньо — показувати просто «в наявності»" <?= $roEdit ?>>
     </div>
   </div>
 
   <?php if (!$isNew): ?>
+  <?php if ($canEdit): ?>
   <div class="admin-card">
     <h2 class="h-serif">Характеристики</h2>
     <p class="dim" style="margin:-8px 0 14px">
@@ -97,6 +110,7 @@ $canStore = fn(int $sid): bool => Auth::isAdmin() || in_array($sid, Auth::storeI
       <button class="btn btn-gold btn-sm" type="submit" name="_action" value="gen_variants" style="margin-top:12px">⚙ Створити комбінації</button>
     </div>
   </div>
+  <?php endif; ?>
 
   <?php $activeVariants = array_values(array_filter($variants, fn($v) => (int)$v['active'] === 1)); ?>
   <div class="admin-card">
@@ -150,7 +164,7 @@ $canStore = fn(int $sid): bool => Auth::isAdmin() || in_array($sid, Auth::storeI
   </div>
 </form>
 
-<?php if (!$isNew): ?>
+<?php if (!$isNew && $canEdit): ?>
 <div class="admin-card" style="margin-top:22px">
   <h2 class="h-serif">Фотографії</h2>
   <p class="dim" style="margin:0 0 14px">Перше фото — головне: воно у каталозі, кошику та при поширенні в соцмережах.
@@ -200,12 +214,12 @@ $canStore = fn(int $sid): bool => Auth::isAdmin() || in_array($sid, Auth::storeI
 <?= View::partial('partials/media_picker') ?>
 
 <script>
-window.BOFU_DICT = <?= json_encode($dict, JSON_UNESCAPED_UNICODE) ?>;
-window.BOFU_PRODUCT_ATTRS = <?= json_encode(array_map(fn($a) => [
+window.BOFU_DICT = <?= json_js($dict) ?>;
+window.BOFU_PRODUCT_ATTRS = <?= json_js(array_map(fn($a) => [
     'attribute_id' => (int)$a['attribute_id'],
     'value_id' => (int)$a['value_id'],
     'value' => $a['value'],
-], array_values(array_filter($attrs, fn($a) => !empty($a['attribute_id'])))), JSON_UNESCAPED_UNICODE) ?>;
+], array_values(array_filter($attrs, fn($a) => !empty($a['attribute_id']))))) ?>;
 </script>
 <script src="<?= e(asset_v('js/product-form.js')) ?>" defer></script>
 <?php endif; ?>
