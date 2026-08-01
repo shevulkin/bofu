@@ -35,7 +35,18 @@
 <main><?= $content ?></main>
 <?= View::partial('partials/footer') ?>
 <?= View::partial('partials/auth_modal') ?>
+<div class="cart-toast" id="cartToast" role="status" aria-live="polite">
+  <div class="cart-toast-icon">✓</div>
+  <div class="cart-toast-body">
+    <div class="cart-toast-text">Товар додано в кошик</div>
+    <div class="cart-toast-actions">
+      <button type="button" class="btn btn-line btn-xs" id="cartToastContinue">Продовжити покупки</button>
+      <a href="<?= e(url('/checkout')) ?>" class="btn btn-gold btn-xs">Оформити замовлення</a>
+    </div>
+  </div>
+  <button type="button" class="cart-toast-close" id="cartToastClose" aria-label="Закрити">×</button>
+</div>
 <button class="to-top" id="toTop" aria-label="Догори">↑</button>
-<script src="<?= e(asset('js/app.js')) ?>" defer></script>
+<script src="<?= e(asset_v('js/app.js')) ?>" defer></script>
 </body>
 </html>

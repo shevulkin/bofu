@@ -18,7 +18,7 @@
         <h1 style="font-size:40px"><?= e($p['name']) ?></h1>
         <p class="lead" style="margin:16px 0 20px"><?= e($p['short_desc'] ?? '') ?></p>
 
-        <form method="post" action="<?= e(url('/cart/add')) ?>">
+        <form method="post" action="<?= e(url('/cart/add')) ?>" class="add-cart-form" data-product-name="<?= e($p['name']) ?>">
           <?= Csrf::field() ?>
           <input type="hidden" name="product_id" value="<?= (int)$p['id'] ?>">
           <input type="hidden" name="back" value="/product/<?= e($p['slug']) ?>">

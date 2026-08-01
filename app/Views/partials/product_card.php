@@ -12,7 +12,7 @@
     <div class="card-desc"><?= e($prod['short_desc'] ?? '') ?></div>
     <div class="card-foot">
       <span class="price"><?php if ($old !== null): ?><s><?= e(price_fmt($old)) ?></s><?php endif; ?><?= e(price_fmt($pr)) ?></span>
-      <form method="post" action="<?= e(url('/cart/add')) ?>"><?= Csrf::field() ?>
+      <form method="post" action="<?= e(url('/cart/add')) ?>" class="add-cart-form" data-product-name="<?= e($prod['name']) ?>"><?= Csrf::field() ?>
         <input type="hidden" name="product_id" value="<?= (int)$prod['id'] ?>">
         <input type="hidden" name="back" value="<?= e(request_path()) ?>">
         <button class="btn btn-gold btn-sm" type="submit">До кошика</button>
