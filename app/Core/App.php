@@ -135,6 +135,7 @@ class App
             '/admin/products/new'       => [$A.'Products', 'create'],
             '/admin/products/bulk'      => [$A.'Products', 'bulk'],
             '/admin/categories'         => [$A.'Categories', 'index'],
+            '/admin/attributes'         => [$A.'Attributes', 'index'],
             '/admin/stores'             => [$A.'Stores', 'index'],
             '/admin/orders'             => [$A.'Orders', 'index'],
             '/admin/promos'             => [$A.'Promos', 'index'],

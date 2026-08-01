@@ -7,7 +7,7 @@ declare(strict_types=1);
  */
 class Schema
 {
-    public const VERSION = 2;
+    public const VERSION = 3;
 
     /** Оновлення існуючої бази до поточної версії без втрати даних */
     public static function upgrade(): void
@@ -31,6 +31,13 @@ class Schema
                     ]);
                 }
             }
+        }
+        if ($ver < 3) {
+            // словник характеристик + звʼязки варіантів
+            self::createAll();
+            self::addColumn('product_attrs', 'attribute_id', 'int null');
+            self::addColumn('product_attrs', 'value_id', 'int null');
+            Attrs::backfill();
         }
         Settings::set('schema_version', (string)self::VERSION);
     }
@@ -85,6 +92,24 @@ class Schema
             ],
             'product_attrs' => [
                 'id' => 'id', 'product_id' => 'int', 'name' => 'str', 'value' => 'str', 'filterable' => 'bool default 0', 'sort' => 'int default 0',
+                'attribute_id' => 'int null', 'value_id' => 'int null',
+            ],
+            // Словник характеристик: спільний для всіх товарів
+            'attributes' => [
+                'id' => 'id', 'name' => 'str', 'slug' => 'str unique', 'unit' => 'str null',
+                'type' => "str default 'select'", // select|text|number|color
+                'filterable' => 'bool default 1', 'sort' => 'int default 0', 'active' => 'bool default 1',
+            ],
+            'attribute_values' => [
+                'id' => 'id', 'attribute_id' => 'int', 'value' => 'str', 'color' => 'str null', 'sort' => 'int default 0',
+            ],
+            // Для яких категорій пропонувати характеристику (немає рядків = для всіх)
+            'attribute_categories' => [
+                'id' => 'id', 'attribute_id' => 'int', 'category_id' => 'int',
+            ],
+            // Варіант = набір значень характеристик (Розмір: M + Колір: Червоний)
+            'variant_options' => [
+                'id' => 'id', 'variant_id' => 'int', 'attribute_id' => 'int', 'value_id' => 'int null', 'value' => 'str',
             ],
             'store_prices' => [
                 'id' => 'id', 'product_id' => 'int', 'variant_id' => 'int null', 'store_id' => 'int', 'price' => 'num',
@@ -160,7 +185,10 @@ class Schema
             'products' => ['category_id', 'active', 'featured'],
             'product_variants' => ['product_id'],
             'product_images' => ['product_id'],
-            'product_attrs' => ['product_id'],
+            'product_attrs' => ['product_id', 'attribute_id'],
+            'attribute_values' => ['attribute_id'],
+            'attribute_categories' => ['attribute_id', 'category_id'],
+            'variant_options' => ['variant_id', 'attribute_id'],
             'store_prices' => ['product_id', 'store_id'],
             'store_stock' => ['product_id', 'store_id'],
             'orders' => ['status', 'store_id', 'user_id'],

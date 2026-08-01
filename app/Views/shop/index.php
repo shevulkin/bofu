@@ -47,17 +47,28 @@
         <button class="btn btn-gold btn-sm" type="submit">Застосувати</button>
       </div>
       <?php if ($attr_options): ?>
-        <div class="filters-row" style="grid-template-columns:repeat(4,1fr);margin-top:14px">
-          <?php foreach (array_slice($attr_options, 0, 4, true) as $aname => $values): ?>
-            <div><label><?= e($aname) ?></label>
-              <select name="attr[<?= e($aname) ?>]">
-                <option value="">Будь-яке</option>
-                <?php foreach ($values as $v): ?>
-                  <option value="<?= e($v) ?>" <?= ($filters['attr'][$aname] ?? '') === $v ? 'selected' : '' ?>><?= e($v) ?></option>
+        <div class="attr-filters">
+          <?php foreach ($attr_options as $slug => $a): $chosen = (array)($filters['attr'][$slug] ?? []); ?>
+            <div class="attr-filter">
+              <label><?= e($a['name']) ?><?= $a['unit'] ? ', ' . e($a['unit']) : '' ?></label>
+              <div class="attr-values">
+                <?php foreach ($a['values'] as $v): ?>
+                  <label class="checkbox">
+                    <input type="checkbox" name="attr[<?= e($slug) ?>][]" value="<?= e($v['value']) ?>"
+                           <?= in_array((string)$v['value'], array_map('strval', $chosen), true) ? 'checked' : '' ?>>
+                    <?php if (!empty($v['color'])): ?><i class="swatch" style="background:<?= e($v['color']) ?>"></i><?php endif; ?>
+                    <?= e($v['value']) ?> <span class="dim">(<?= (int)$v['count'] ?>)</span>
+                  </label>
                 <?php endforeach; ?>
-              </select>
+              </div>
             </div>
           <?php endforeach; ?>
+        </div>
+        <div style="display:flex;gap:12px;margin-top:14px;flex-wrap:wrap">
+          <button class="btn btn-gold btn-sm" type="submit">Застосувати фільтри</button>
+          <?php if ($hasActiveFilters): ?>
+            <a class="btn btn-line btn-sm" href="<?= e(url('/shop' . ($current_cat ? '?cat=' . $current_cat['slug'] : ''))) ?>">Скинути</a>
+          <?php endif; ?>
         </div>
       <?php endif; ?>
     </form>

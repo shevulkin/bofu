@@ -71,6 +71,16 @@ class Catalog
         return (int)DB::val($sql, $params);
     }
 
+    /** Залишки товару одним запитом: [store_id][variant_id|0] = qty */
+    public static function stockMap(int $productId): array
+    {
+        $out = [];
+        foreach (DB::all('SELECT store_id, variant_id, SUM(qty) AS qty FROM store_stock WHERE product_id = ? GROUP BY store_id, variant_id', [$productId]) as $r) {
+            $out[(int)$r['store_id']][(int)($r['variant_id'] ?? 0)] = (int)$r['qty'];
+        }
+        return $out;
+    }
+
     public static function categories(): array
     {
         return DB::all('SELECT * FROM categories WHERE active = 1 ORDER BY sort, id');
@@ -99,10 +109,23 @@ class Catalog
             $params[] = (int)$f['store_id'];
         }
         if (!empty($f['attr']) && is_array($f['attr'])) {
-            foreach ($f['attr'] as $name => $value) {
-                if ($value === '') continue;
-                $where[] = 'EXISTS (SELECT 1 FROM product_attrs pa WHERE pa.product_id = p.id AND pa.name = ? AND pa.value = ?)';
-                $params[] = $name; $params[] = $value;
+            foreach ($f['attr'] as $slug => $values) {
+                // приймаємо і один рядок (старі посилання), і масив значень
+                $values = array_values(array_filter(array_map('strval', (array)$values), fn($v) => $v !== ''));
+                if (!$values) continue;
+                $in = implode(',', array_fill(0, count($values), '?'));
+                // значення може бути як характеристикою товару, так і віссю варіанта
+                // ключем може бути slug або назва — старі збережені посилання теж працюють
+                $where[] = "(EXISTS (SELECT 1 FROM product_attrs pa JOIN attributes a ON a.id = pa.attribute_id
+                                     WHERE pa.product_id = p.id AND (a.slug = ? OR a.name = ?) AND pa.value IN ($in))
+                         OR EXISTS (SELECT 1 FROM variant_options vo
+                                     JOIN product_variants pv ON pv.id = vo.variant_id AND pv.active = 1
+                                     JOIN attributes a2 ON a2.id = vo.attribute_id
+                                     WHERE pv.product_id = p.id AND (a2.slug = ? OR a2.name = ?) AND vo.value IN ($in)))";
+                $params[] = (string)$slug; $params[] = (string)$slug;
+                foreach ($values as $v) $params[] = $v;
+                $params[] = (string)$slug; $params[] = (string)$slug;
+                foreach ($values as $v) $params[] = $v;
             }
         }
         $order = match ($f['sort'] ?? '') {
@@ -122,7 +145,33 @@ class Catalog
 
     public static function attrs(int $productId): array
     {
-        return DB::all('SELECT * FROM product_attrs WHERE product_id = ? ORDER BY sort, id', [$productId]);
+        return DB::all(
+            'SELECT pa.*, a.slug AS attr_slug, a.unit, a.type AS attr_type, av.color
+             FROM product_attrs pa
+             LEFT JOIN attributes a ON a.id = pa.attribute_id
+             LEFT JOIN attribute_values av ON av.id = pa.value_id
+             WHERE pa.product_id = ? ORDER BY pa.sort, pa.id', [$productId]);
+    }
+
+    /**
+     * Осі варіантів товару: [attribute_id => ['name'=>…, 'type'=>…, 'values'=>[value => ['value','color']]]].
+     * Повертає порожньо, якщо варіанти не описані характеристиками (старі текстові варіанти).
+     */
+    public static function variantAxes(array $variants, array $optionsByVariant): array
+    {
+        $axes = [];
+        foreach ($variants as $v) {
+            $opts = $optionsByVariant[(int)$v['id']] ?? [];
+            if (!$opts) return []; // хоч один варіант без характеристик — показуємо простим списком
+            foreach ($opts as $o) {
+                $aid = (int)$o['attribute_id'];
+                $axes[$aid]['id'] = $aid;
+                $axes[$aid]['name'] = $o['attr_name'];
+                $axes[$aid]['type'] = $o['attr_type'];
+                $axes[$aid]['values'][$o['value']] = ['value' => $o['value'], 'color' => $o['color'] ?? null];
+            }
+        }
+        return $axes;
     }
 
     public static function images(int $productId): array
@@ -138,17 +187,51 @@ class Catalog
         return $img['path'] ?? 'img/honey-jar.webp';
     }
 
-    /** Значення фільтрованих атрибутів для категорії */
+    /**
+     * Характеристики для фільтрів: лише ті, що позначені у словнику й реально
+     * зустрічаються серед активних товарів категорії. Значення — з кількістю товарів.
+     * [['id','name','slug','unit','type','values'=>[['value','color','count'], …]], …]
+     */
     public static function filterableAttrs(?int $categoryId): array
     {
-        $sql = 'SELECT pa.name, pa.value FROM product_attrs pa
-                JOIN products p ON p.id = pa.product_id AND p.active = 1
-                WHERE pa.filterable = 1';
-        $params = [];
-        if ($categoryId) { $sql .= ' AND p.category_id = ?'; $params[] = $categoryId; }
-        $sql .= ' GROUP BY pa.name, pa.value ORDER BY pa.name, pa.value';
+        $catSql = $categoryId ? ' AND p.category_id = ?' : '';
+        $params = $categoryId ? [$categoryId] : [];
+
+        // значення з характеристик товару
+        $rows = DB::all(
+            'SELECT a.id, a.name, a.slug, a.unit, a.type, a.sort, pa.value, av.color, COUNT(DISTINCT p.id) AS cnt
+             FROM product_attrs pa
+             JOIN attributes a ON a.id = pa.attribute_id AND a.filterable = 1 AND a.active = 1
+             JOIN products p ON p.id = pa.product_id AND p.active = 1
+             LEFT JOIN attribute_values av ON av.id = pa.value_id
+             WHERE 1=1' . $catSql . '
+             GROUP BY a.id, a.name, a.slug, a.unit, a.type, a.sort, pa.value, av.color', $params);
+
+        // значення, що є осями варіантів (розмір, колір)
+        $rows = array_merge($rows, DB::all(
+            'SELECT a.id, a.name, a.slug, a.unit, a.type, a.sort, vo.value, av.color, COUNT(DISTINCT p.id) AS cnt
+             FROM variant_options vo
+             JOIN attributes a ON a.id = vo.attribute_id AND a.filterable = 1 AND a.active = 1
+             JOIN product_variants pv ON pv.id = vo.variant_id AND pv.active = 1
+             JOIN products p ON p.id = pv.product_id AND p.active = 1
+             LEFT JOIN attribute_values av ON av.id = vo.value_id
+             WHERE 1=1' . $catSql . '
+             GROUP BY a.id, a.name, a.slug, a.unit, a.type, a.sort, vo.value, av.color', $params));
+
         $out = [];
-        foreach (DB::all($sql, $params) as $r) $out[$r['name']][] = $r['value'];
+        foreach ($rows as $r) {
+            $slug = $r['slug'];
+            $out[$slug] ??= ['id' => (int)$r['id'], 'name' => $r['name'], 'slug' => $slug,
+                             'unit' => $r['unit'], 'type' => $r['type'], 'sort' => (int)$r['sort'], 'values' => []];
+            $v = $r['value'];
+            if (isset($out[$slug]['values'][$v])) $out[$slug]['values'][$v]['count'] += (int)$r['cnt'];
+            else $out[$slug]['values'][$v] = ['value' => $v, 'color' => $r['color'], 'count' => (int)$r['cnt']];
+        }
+        uasort($out, fn($a, $b) => [$a['sort'], $a['name']] <=> [$b['sort'], $b['name']]);
+        foreach ($out as &$a) {
+            uasort($a['values'], fn($x, $y) => strnatcasecmp($x['value'], $y['value']));
+            $a['values'] = array_values($a['values']);
+        }
         return $out;
     }
 }

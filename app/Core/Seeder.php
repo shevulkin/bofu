@@ -73,6 +73,24 @@ class Seeder
             DB::insert('store_stock', ['product_id' => $pid, 'variant_id' => null, 'store_id' => $store2, 'qty' => $half]);
         }
 
+        // --- словник характеристик зі щойно засіяних товарів ---
+        Attrs::backfill();
+
+        // варіанти свічок описуємо характеристикою, щоб покупець обирав відтінок чіпами
+        $shade = Attrs::ensure('Відтінок');
+        if ($shade) {
+            Attrs::setCategories((int)$shade['id'], [$catIds['candles']]);
+            $rows = DB::all('SELECT pv.id, pv.name FROM product_variants pv
+                             JOIN products p ON p.id = pv.product_id WHERE p.category_id = ?', [$catIds['candles']]);
+            foreach ($rows as $v) {
+                $val = Attrs::ensureValue((int)$shade['id'], $v['name']);
+                if ($val) DB::insert('variant_options', [
+                    'variant_id' => (int)$v['id'], 'attribute_id' => (int)$shade['id'],
+                    'value_id' => (int)$val['id'], 'value' => $val['value'],
+                ]);
+            }
+        }
+
         // --- промокоди (з дизайну) ---
         DB::insert('promo_codes', ['code' => 'MED10', 'percent' => 10, 'active' => 1]);
         DB::insert('promo_codes', ['code' => 'BDJILY15', 'percent' => 15, 'active' => 1]);
