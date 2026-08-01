@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 namespace Controllers\Admin;
 
-use DB, View, Auth, Catalog, Images;
+use DB, View, Auth, Catalog, Images, Attrs;
 
 class Products
 {
@@ -97,6 +97,7 @@ class Products
         View::show('admin/products/form', [
             'p' => null, 'categories' => Catalog::categories(), 'stores' => Catalog::stores(),
             'variants' => [], 'attrs' => [], 'images' => [], 'store_prices' => [], 'store_stock' => [],
+            'variant_options' => [], 'variant_prices' => [], 'variant_stock' => [], 'dict' => Attrs::all(),
             'page_title' => 'Новий товар — адмінка',
         ], 'layouts/admin');
     }
@@ -109,15 +110,25 @@ class Products
         if (is_post()) { self::save($id, $p); }
 
         $store_prices = []; $store_stock = [];
-        foreach (DB::all('SELECT * FROM store_prices WHERE product_id = ? AND variant_id IS NULL', [$id]) as $r) $store_prices[$r['store_id']] = $r['price'];
-        foreach (DB::all('SELECT * FROM store_stock WHERE product_id = ? AND variant_id IS NULL', [$id]) as $r) $store_stock[$r['store_id']] = $r['qty'];
+        $variant_prices = []; $variant_stock = [];
+        foreach (DB::all('SELECT * FROM store_prices WHERE product_id = ?', [$id]) as $r) {
+            if ($r['variant_id'] === null) $store_prices[$r['store_id']] = $r['price'];
+            else $variant_prices[(int)$r['variant_id']][(int)$r['store_id']] = $r['price'];
+        }
+        foreach (DB::all('SELECT * FROM store_stock WHERE product_id = ?', [$id]) as $r) {
+            if ($r['variant_id'] === null) $store_stock[$r['store_id']] = $r['qty'];
+            else $variant_stock[(int)$r['variant_id']][(int)$r['store_id']] = $r['qty'];
+        }
 
         View::show('admin/products/form', [
             'p' => $p, 'categories' => Catalog::categories(), 'stores' => Catalog::stores(),
             'variants' => DB::all('SELECT * FROM product_variants WHERE product_id = ? ORDER BY sort, id', [$id]),
+            'variant_options' => Attrs::variantOptionsFor($id),
             'attrs' => DB::all('SELECT * FROM product_attrs WHERE product_id = ? ORDER BY sort, id', [$id]),
             'images' => DB::all('SELECT * FROM product_images WHERE product_id = ? ORDER BY sort, id', [$id]),
             'store_prices' => $store_prices, 'store_stock' => $store_stock,
+            'variant_prices' => $variant_prices, 'variant_stock' => $variant_stock,
+            'dict' => Attrs::all(),
             'page_title' => 'Товар: ' . $p['name'] . ' — адмінка',
         ], 'layouts/admin');
     }
@@ -128,6 +139,9 @@ class Products
 
         if ($action === 'delete' && Auth::isAdmin()) {
             $paths = array_column(DB::all('SELECT path FROM product_images WHERE product_id = ?', [$id]), 'path');
+            foreach (DB::all('SELECT id FROM product_variants WHERE product_id = ?', [$id]) as $v) {
+                DB::delete('variant_options', 'variant_id = ?', [(int)$v['id']]);
+            }
             foreach (['product_images','product_variants','product_attrs','store_prices','store_stock'] as $t) DB::delete($t, 'product_id = ?', [$id]);
             DB::delete('products', 'id = ?', [$id]);
             // видаляти файл лише якщо фото не прикріплене ще до якогось іншого товару/банера/галереї
@@ -179,6 +193,18 @@ class Products
             redirect('/admin/products/' . $id);
         }
 
+        // Генератор варіантів: усі комбінації обраних значень. Працює разом зі збереженням,
+        // тому незбережені правки у формі не губляться.
+        $generated = 0;
+        if ($action === 'gen_variants') {
+            $selection = [];
+            foreach ((array)($_POST['gen'] ?? []) as $aid => $valueIds) {
+                $ids = array_filter(array_map('intval', (array)$valueIds));
+                if ($ids) $selection[(int)$aid] = $ids;
+            }
+            if ($selection) $generated = Attrs::generateVariants($id, $selection);
+        }
+
         // Основне збереження
         DB::update('products', [
             'name' => trim($_POST['name'] ?? $p['name']),
@@ -195,62 +221,90 @@ class Products
             'updated_at' => now(),
         ], 'id = ?', [$id]);
 
-        // Варіанти
+        // Варіанти: назви з характеристик не чіпаємо — вони збираються автоматично
+        $withOptions = Attrs::variantOptionsFor($id);
+        $sort = 0;
         foreach ((array)($_POST['variant'] ?? []) as $vid => $v) {
-            if ($vid === 'new') continue;
-            if (!empty($v['_delete'])) { DB::delete('product_variants', 'id = ? AND product_id = ?', [(int)$vid, $id]); continue; }
-            DB::update('product_variants', [
-                'name' => trim($v['name'] ?? ''),
+            if (str_starts_with((string)$vid, 'new')) continue;
+            $vid = (int)$vid;
+            if (!empty($v['_delete'])) { self::deleteVariant($id, $vid); continue; }
+            $name = trim($v['name'] ?? '');
+            $auto = !empty($withOptions[$vid]);
+            if (!$auto && $name === '') continue; // текстовий варіант без назви — не чіпаємо
+            $upd = [
                 'price' => ($v['price'] ?? '') === '' ? null : (float)$v['price'],
-            ], 'id = ? AND product_id = ?', [(int)$vid, $id]);
+                'sku' => trim($v['sku'] ?? '') ?: null,
+                'active' => !empty($v['active']) ? 1 : 0,
+                'sort' => $sort++,
+            ];
+            if (!$auto) $upd['name'] = $name;
+            DB::update('product_variants', $upd, 'id = ? AND product_id = ?', [$vid, $id]);
         }
-        $newV = $_POST['variant']['new'] ?? null;
-        if ($newV && trim($newV['name'] ?? '') !== '') {
+        foreach ((array)($_POST['variant'] ?? []) as $vid => $v) {
+            if (!str_starts_with((string)$vid, 'new')) continue;
+            if (trim($v['name'] ?? '') === '') continue;
             DB::insert('product_variants', [
-                'product_id' => $id, 'name' => trim($newV['name']),
-                'price' => ($newV['price'] ?? '') === '' ? null : (float)$newV['price'],
-                'sort' => (int)DB::val('SELECT COALESCE(MAX(sort),0)+1 FROM product_variants WHERE product_id = ?', [$id]),
-                'active' => 1,
+                'product_id' => $id, 'name' => trim($v['name']),
+                'price' => ($v['price'] ?? '') === '' ? null : (float)$v['price'],
+                'sku' => trim($v['sku'] ?? '') ?: null,
+                'active' => !empty($v['active']) ? 1 : 0,
+                'sort' => $sort++,
             ]);
         }
 
-        // Атрибути
-        foreach ((array)($_POST['attr'] ?? []) as $aid => $a) {
-            if ($aid === 'new') continue;
-            if (!empty($a['_delete'])) { DB::delete('product_attrs', 'id = ? AND product_id = ?', [(int)$aid, $id]); continue; }
-            DB::update('product_attrs', [
-                'name' => trim($a['name'] ?? ''), 'value' => trim($a['value'] ?? ''),
-                'filterable' => !empty($a['filterable']) ? 1 : 0,
-            ], 'id = ? AND product_id = ?', [(int)$aid, $id]);
-        }
-        $newA = $_POST['attr']['new'] ?? null;
-        if ($newA && trim($newA['name'] ?? '') !== '' && trim($newA['value'] ?? '') !== '') {
-            DB::insert('product_attrs', [
-                'product_id' => $id, 'name' => trim($newA['name']), 'value' => trim($newA['value']),
-                'filterable' => !empty($newA['filterable']) ? 1 : 0,
-                'sort' => (int)DB::val('SELECT COALESCE(MAX(sort),0)+1 FROM product_attrs WHERE product_id = ?', [$id]),
-            ]);
+        // Характеристики: словник + значення зі списку (рядки перезаписуються цілком)
+        Attrs::saveProductAttrs($id, (array)($_POST['attr'] ?? []), (int)($_POST['category_id'] ?? $p['category_id']));
+
+        // Ціни та залишки: по товару загалом і окремо по кожному варіанту
+        self::syncStore($id, null, (array)($_POST['store_price'] ?? []), (array)($_POST['store_stock'] ?? []));
+        $variantIds = array_map('intval', array_column(DB::all('SELECT id FROM product_variants WHERE product_id = ?', [$id]), 'id'));
+        foreach ((array)($_POST['vprice'] ?? []) as $vid => $prices) {
+            if (!in_array((int)$vid, $variantIds, true)) continue;
+            self::syncStore($id, (int)$vid, (array)$prices, (array)($_POST['vstock'][$vid] ?? []));
         }
 
-        // Ціни та залишки по магазинах
-        foreach ((array)($_POST['store_price'] ?? []) as $sid => $priceVal) {
+        if ($action === 'gen_variants') {
+            flash($generated ? 'success' : 'error', $generated
+                ? 'Збережено. Створено варіантів: ' . $generated . ' — задайте їм ціни й залишки.'
+                : 'Збережено, але нових комбінацій не додано: оберіть значення, яких ще немає.');
+        } else {
+            flash('success', 'Збережено');
+        }
+        redirect('/admin/products/' . $id);
+    }
+
+    /** Видалення варіанта разом з його цінами, залишками та характеристиками */
+    private static function deleteVariant(int $productId, int $variantId): void
+    {
+        DB::delete('variant_options', 'variant_id = ?', [$variantId]);
+        DB::delete('store_prices', 'product_id = ? AND variant_id = ?', [$productId, $variantId]);
+        DB::delete('store_stock', 'product_id = ? AND variant_id = ?', [$productId, $variantId]);
+        DB::delete('product_variants', 'id = ? AND product_id = ?', [$variantId, $productId]);
+    }
+
+    /** Ціни/залишки по магазинах для товару ($variantId = null) або конкретного варіанта */
+    private static function syncStore(int $productId, ?int $variantId, array $prices, array $stock): void
+    {
+        $cond = $variantId === null ? 'variant_id IS NULL' : 'variant_id = ?';
+        $extra = $variantId === null ? [] : [$variantId];
+
+        foreach ($prices as $sid => $priceVal) {
             $sid = (int)$sid;
             if (!Auth::isAdmin() && !in_array($sid, Auth::storeIds(), true)) continue;
-            $exists = DB::row('SELECT id FROM store_prices WHERE product_id = ? AND store_id = ? AND variant_id IS NULL', [$id, $sid]);
+            $exists = DB::row("SELECT id FROM store_prices WHERE product_id = ? AND store_id = ? AND $cond",
+                array_merge([$productId, $sid], $extra));
             if ($priceVal === '') { if ($exists) DB::delete('store_prices', 'id = ?', [$exists['id']]); }
             elseif ($exists) DB::update('store_prices', ['price' => (float)$priceVal], 'id = ?', [$exists['id']]);
-            else DB::insert('store_prices', ['product_id' => $id, 'store_id' => $sid, 'variant_id' => null, 'price' => (float)$priceVal]);
+            else DB::insert('store_prices', ['product_id' => $productId, 'store_id' => $sid, 'variant_id' => $variantId, 'price' => (float)$priceVal]);
         }
-        foreach ((array)($_POST['store_stock'] ?? []) as $sid => $qty) {
+        foreach ($stock as $sid => $qty) {
             $sid = (int)$sid;
             if (!Auth::isAdmin() && !in_array($sid, Auth::storeIds(), true)) continue;
-            if ($qty === '') continue;
-            $exists = DB::row('SELECT id FROM store_stock WHERE product_id = ? AND store_id = ? AND variant_id IS NULL', [$id, $sid]);
+            $exists = DB::row("SELECT id FROM store_stock WHERE product_id = ? AND store_id = ? AND $cond",
+                array_merge([$productId, $sid], $extra));
+            if ($qty === '') { if ($exists) DB::delete('store_stock', 'id = ?', [$exists['id']]); continue; }
             if ($exists) DB::update('store_stock', ['qty' => (int)$qty], 'id = ?', [$exists['id']]);
-            else DB::insert('store_stock', ['product_id' => $id, 'store_id' => $sid, 'variant_id' => null, 'qty' => (int)$qty]);
+            else DB::insert('store_stock', ['product_id' => $productId, 'store_id' => $sid, 'variant_id' => $variantId, 'qty' => (int)$qty]);
         }
-
-        flash('success', 'Збережено');
-        redirect('/admin/products/' . $id);
     }
 }

@@ -1,17 +1,23 @@
-<?php $isNew = $p === null; ?>
+<?php
+/** @var array|null $p @var array $variants @var array $variant_options @var array $attrs @var array $dict */
+$isNew = $p === null;
+$canStore = fn(int $sid): bool => Auth::isAdmin() || in_array($sid, Auth::storeIds(), true);
+?>
 <div class="admin-head">
   <h1 class="h-serif"><?= $isNew ? 'Новий товар' : e($p['name']) ?></h1>
   <a class="btn btn-line btn-sm" href="<?= e(url('/admin/products')) ?>">← До списку</a>
 </div>
 
-<form method="post" action="<?= e(url($isNew ? '/admin/products/new' : '/admin/products/' . $p['id'])) ?>">
+<form method="post" action="<?= e(url($isNew ? '/admin/products/new' : '/admin/products/' . $p['id'])) ?>" id="productForm">
   <?= Csrf::field() ?>
+  <?php /* Enter у будь-якому полі має зберігати товар, а не запускати генератор варіантів */ ?>
+  <button type="submit" class="submit-default" tabindex="-1" aria-hidden="true"></button>
   <div class="admin-card">
     <h2 class="h-serif">Основне</h2>
     <div class="form-grid">
       <div class="field"><label>Назва *</label><input type="text" name="name" required value="<?= e($p['name'] ?? '') ?>"></div>
       <div class="field"><label>Категорія</label>
-        <select name="category_id">
+        <select name="category_id" id="catSelect">
           <?php foreach ($categories as $c): ?>
             <option value="<?= (int)$c['id'] ?>" <?= ($p['category_id'] ?? 0) == $c['id'] ? 'selected' : '' ?>><?= e($c['name']) ?></option>
           <?php endforeach; ?>
@@ -39,58 +45,85 @@
 
   <?php if (!$isNew): ?>
   <div class="admin-card">
+    <h2 class="h-serif">Характеристики</h2>
+    <p class="dim" style="margin:-8px 0 14px">
+      Обирайте зі спільного словника — так значення однакові в усіх товарів і працюють фільтри.
+      Список залежить від категорії товару.
+      <?php if (Auth::isAdmin()): ?><a href="<?= e(url('/admin/attributes')) ?>">Керувати словником →</a><?php endif; ?>
+    </p>
+    <div id="attrRows" class="row-list"></div>
+    <button class="btn btn-line btn-sm" type="button" id="attrAdd" style="margin-top:12px">+ Додати характеристику</button>
+  </div>
+
+  <div class="admin-card">
+    <h2 class="h-serif">Варіанти</h2>
+    <p class="dim" style="margin:-8px 0 14px">Різні виконання того самого товару: розмір, колір, об'єм. Покупець обирає їх на сторінці товару.</p>
+
+    <div class="row-list" id="variantRows">
+      <?php foreach ($variants as $v): $vid = (int)$v['id']; $opts = $variant_options[$vid] ?? []; ?>
+        <div class="grid-row variant-row" data-vid="<?= $vid ?>">
+          <div class="gr-main">
+            <?php if ($opts): ?>
+              <div class="variant-tags">
+                <?php foreach ($opts as $o): ?>
+                  <span class="tag" title="<?= e($o['attr_name']) ?>">
+                    <?php if (!empty($o['color'])): ?><i class="swatch" style="background:<?= e($o['color']) ?>"></i><?php endif; ?>
+                    <?= e($o['attr_name']) ?>: <b><?= e($o['value']) ?></b>
+                  </span>
+                <?php endforeach; ?>
+              </div>
+            <?php else: ?>
+              <input type="text" name="variant[<?= $vid ?>][name]" value="<?= e($v['name']) ?>" placeholder="Назва варіанта">
+            <?php endif; ?>
+          </div>
+          <input type="number" step="0.01" name="variant[<?= $vid ?>][price]" value="<?= e($v['price']) ?>" placeholder="ціна" title="Порожньо = базова ціна товару">
+          <input type="text" name="variant[<?= $vid ?>][sku]" value="<?= e($v['sku'] ?? '') ?>" placeholder="артикул">
+          <label class="checkbox" title="Показувати покупцям"><input type="checkbox" name="variant[<?= $vid ?>][active]" <?= $v['active'] ? 'checked' : '' ?>> вкл.</label>
+          <button class="btn btn-danger btn-xs row-del" type="button" title="Видалити варіант">✕</button>
+          <input type="hidden" name="variant[<?= $vid ?>][_delete]" value="" disabled>
+        </div>
+      <?php endforeach; ?>
+    </div>
+    <button class="btn btn-line btn-sm" type="button" id="variantAdd" style="margin-top:12px">+ Додати варіант вручну</button>
+
+    <div class="gen-box" id="genBox" style="margin-top:22px">
+      <b>Згенерувати варіанти з характеристик</b>
+      <p class="dim" style="margin:6px 0 12px">Відмітьте значення — створяться всі їхні комбінації (напр. 3 розміри × 2 кольори = 6 варіантів). Наявні комбінації не дублюються.</p>
+      <div id="genAxes"></div>
+      <button class="btn btn-gold btn-sm" type="submit" name="_action" value="gen_variants" style="margin-top:12px">⚙ Створити комбінації</button>
+    </div>
+  </div>
+
+  <div class="admin-card">
     <h2 class="h-serif">Ціни та залишки по магазинах</h2>
-    <table class="tbl">
-      <tr><th>Магазин</th><th class="w-price">Ціна тут (порожньо = базова)</th><th class="w-stock">Залишок, шт</th></tr>
-      <?php foreach ($stores as $s): ?>
+    <p class="dim" style="margin:-8px 0 14px">Порожня ціна = діє базова. Порожній залишок = немає в наявності (товар усе одно можна замовити, якщо ввімкнено «під замовлення»).</p>
+    <div style="overflow-x:auto">
+      <table class="tbl matrix">
         <tr>
-          <td><?= e($s['name']) ?><?= $s['city'] ? ' · ' . e($s['city']) : '' ?></td>
-          <td><input type="number" step="0.01" name="store_price[<?= (int)$s['id'] ?>]" value="<?= e($store_prices[$s['id']] ?? '') ?>" placeholder="базова"></td>
-          <td><input type="number" name="store_stock[<?= (int)$s['id'] ?>]" value="<?= e($store_stock[$s['id']] ?? '') ?>"></td>
+          <th>Магазин</th>
+          <th colspan="2">Товар без варіанта</th>
+          <?php foreach ($variants as $v): ?><th colspan="2"><?= e($v['name']) ?></th><?php endforeach; ?>
         </tr>
-      <?php endforeach; ?>
-    </table>
-  </div>
-
-  <div class="admin-card">
-    <h2 class="h-serif">Варіанти (напр. відтінок, об'єм)</h2>
-    <table class="tbl">
-      <tr><th>Назва варіанта</th><th class="w-price">Ціна (порожньо = базова)</th><th></th></tr>
-      <?php foreach ($variants as $v): ?>
-        <tr>
-          <td><input type="text" name="variant[<?= (int)$v['id'] ?>][name]" value="<?= e($v['name']) ?>"></td>
-          <td><input type="number" step="0.01" name="variant[<?= (int)$v['id'] ?>][price]" value="<?= e($v['price']) ?>"></td>
-          <td><label class="checkbox"><input type="checkbox" name="variant[<?= (int)$v['id'] ?>][_delete]" value="1"> видалити</label></td>
+        <tr class="sub"><th></th>
+          <th>ціна</th><th>шт</th>
+          <?php foreach ($variants as $v): ?><th>ціна</th><th>шт</th><?php endforeach; ?>
         </tr>
-      <?php endforeach; ?>
-      <tr>
-        <td><input type="text" name="variant[new][name]" placeholder="+ новий варіант"></td>
-        <td><input type="number" step="0.01" name="variant[new][price]"></td>
-        <td></td>
-      </tr>
-    </table>
+        <?php foreach ($stores as $s): $sid = (int)$s['id']; $ro = $canStore($sid) ? '' : 'disabled title="Немає доступу до цього магазину"'; ?>
+          <tr>
+            <td><?= e($s['name']) ?><?= $s['city'] ? ' · ' . e($s['city']) : '' ?></td>
+            <td><input type="number" step="0.01" name="store_price[<?= $sid ?>]" value="<?= e($store_prices[$sid] ?? '') ?>" placeholder="базова" <?= $ro ?>></td>
+            <td><input type="number" name="store_stock[<?= $sid ?>]" value="<?= e($store_stock[$sid] ?? '') ?>" <?= $ro ?>></td>
+            <?php foreach ($variants as $v): $vid = (int)$v['id']; ?>
+              <td><input type="number" step="0.01" name="vprice[<?= $vid ?>][<?= $sid ?>]" value="<?= e($variant_prices[$vid][$sid] ?? '') ?>" placeholder="базова" <?= $ro ?>></td>
+              <td><input type="number" name="vstock[<?= $vid ?>][<?= $sid ?>]" value="<?= e($variant_stock[$vid][$sid] ?? '') ?>" <?= $ro ?>></td>
+            <?php endforeach; ?>
+          </tr>
+        <?php endforeach; ?>
+      </table>
+    </div>
   </div>
-
-  <div class="admin-card">
-    <h2 class="h-serif">Атрибути / характеристики</h2>
-    <table class="tbl">
-      <tr><th>Назва</th><th>Значення</th><th>У фільтрах</th><th></th></tr>
-      <?php foreach ($attrs as $a): ?>
-        <tr>
-          <td><input type="text" name="attr[<?= (int)$a['id'] ?>][name]" value="<?= e($a['name']) ?>"></td>
-          <td><input type="text" name="attr[<?= (int)$a['id'] ?>][value]" value="<?= e($a['value']) ?>"></td>
-          <td style="text-align:center"><input type="checkbox" name="attr[<?= (int)$a['id'] ?>][filterable]" <?= $a['filterable'] ? 'checked' : '' ?>></td>
-          <td><label class="checkbox"><input type="checkbox" name="attr[<?= (int)$a['id'] ?>][_delete]" value="1"> видалити</label></td>
-        </tr>
-      <?php endforeach; ?>
-      <tr>
-        <td><input type="text" name="attr[new][name]" placeholder="+ нова характеристика"></td>
-        <td><input type="text" name="attr[new][value]"></td>
-        <td style="text-align:center"><input type="checkbox" name="attr[new][filterable]"></td>
-        <td></td>
-      </tr>
-    </table>
-  </div>
+  <?php else: ?>
+    <p class="dim">Характеристики, варіанти та ціни по магазинах зʼявляться одразу після створення товару.</p>
   <?php endif; ?>
 
   <div style="display:flex;gap:12px;align-items:center">
@@ -132,4 +165,14 @@
   </form>
 </div>
 <?= View::partial('partials/media_picker') ?>
+
+<script>
+window.BOFU_DICT = <?= json_encode($dict, JSON_UNESCAPED_UNICODE) ?>;
+window.BOFU_PRODUCT_ATTRS = <?= json_encode(array_map(fn($a) => [
+    'attribute_id' => (int)$a['attribute_id'],
+    'value_id' => (int)$a['value_id'],
+    'value' => $a['value'],
+], array_values(array_filter($attrs, fn($a) => !empty($a['attribute_id'])))), JSON_UNESCAPED_UNICODE) ?>;
+</script>
+<script src="<?= e(asset_v('js/product-form.js')) ?>" defer></script>
 <?php endif; ?>

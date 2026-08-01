@@ -24,21 +24,38 @@
           <input type="hidden" name="back" value="/product/<?= e($p['slug']) ?>">
 
           <?php if ($variants): ?>
-            <label>Варіант</label>
-            <div class="variants">
-              <?php foreach ($variants as $i => $v): ?>
-                <label class="chip" style="display:inline-flex;align-items:center;gap:7px">
-                  <input type="radio" name="variant_id" value="<?= (int)$v['id'] ?>" <?= $i === 0 ? 'checked' : '' ?> style="width:auto">
-                  <?= e($v['name']) ?><?php if ($v['price'] !== null && $v['price'] !== ''): ?> · <?= e(price_fmt($v['price'])) ?><?php endif; ?>
-                </label>
-              <?php endforeach; ?>
+            <div id="variantPicker" data-first="<?= (int)$variants[0]['id'] ?>">
+              <?php if ($variant_axes): ?>
+                <?php foreach ($variant_axes as $ax): ?>
+                  <label><?= e($ax['name']) ?></label>
+                  <div class="variants" data-axis="<?= (int)$ax['id'] ?>">
+                    <?php foreach ($ax['values'] as $val): ?>
+                      <button type="button" class="chip opt" data-axis="<?= (int)$ax['id'] ?>" data-value="<?= e($val['value']) ?>">
+                        <?php if (!empty($val['color'])): ?><i class="swatch" style="background:<?= e($val['color']) ?>"></i><?php endif; ?>
+                        <?= e($val['value']) ?>
+                      </button>
+                    <?php endforeach; ?>
+                  </div>
+                <?php endforeach; ?>
+              <?php else: ?>
+                <label>Варіант</label>
+                <div class="variants">
+                  <?php foreach ($variants as $i => $v): ?>
+                    <button type="button" class="chip opt-plain <?= $i === 0 ? 'active' : '' ?>" data-variant="<?= (int)$v['id'] ?>">
+                      <?= e($v['name']) ?>
+                    </button>
+                  <?php endforeach; ?>
+                </div>
+              <?php endif; ?>
+              <input type="hidden" name="variant_id" id="variantId" value="<?= (int)$variants[0]['id'] ?>">
+              <p class="dim" id="variantNote" style="margin:10px 0 0"></p>
             </div>
           <?php endif; ?>
 
           <div style="display:flex;align-items:center;gap:18px;margin:22px 0">
             <span class="price" style="font-size:30px">
-              <?php if ($old_price !== null): ?><s><?= e(price_fmt($old_price)) ?></s><?php endif; ?>
-              <?= e(price_fmt($price)) ?>
+              <s id="priceOld" <?= $old_price === null ? 'hidden' : '' ?>><?= $old_price !== null ? e(price_fmt($old_price)) : '' ?></s>
+              <span id="priceNow"><?= e(price_fmt($price)) ?></span>
             </span>
             <div class="qty-box">
               <button type="button" onclick="var i=this.parentNode.querySelector('input');i.value=Math.max(1,+i.value-1)">−</button>
@@ -49,16 +66,19 @@
           </div>
         </form>
 
-        <div class="availability">
-          <?php $anyStock = false; foreach ($availability as $av): $anyStock = $anyStock || $av['qty'] > 0; ?>
-            <span class="<?= $av['qty'] > 0 ? 'yes' : 'no' ?>">
-              <?= e($av['store']['name'] . ($av['store']['city'] ? ' (' . $av['store']['city'] . ')' : '')) ?>:
+        <div class="availability" id="availability">
+          <?php $anyStock = false; foreach ($availability as $av): $sid = (int)$av['store']['id']; $anyStock = $anyStock || $av['qty'] > 0; ?>
+            <span class="<?= $av['qty'] > 0 ? 'yes' : 'no' ?>" data-store="<?= $sid ?>"
+                  data-stock="<?= e(json_encode($av['by_variant'], JSON_UNESCAPED_UNICODE)) ?>"
+                  data-label="<?= e($av['store']['name'] . ($av['store']['city'] ? ' (' . $av['store']['city'] . ')' : '')) ?>"
+                  data-price="<?= $av['price'] !== null && $av['price'] != $price ? e(price_fmt($av['price'])) : '' ?>">
+              <span class="av-text"><?= e($av['store']['name'] . ($av['store']['city'] ? ' (' . $av['store']['city'] . ')' : '')) ?>:
               <?= $av['qty'] > 0 ? 'в наявності — ' . (int)$av['qty'] . ' шт.' : 'немає' ?>
-              <?php if ($av['price'] !== null && $av['price'] != $price): ?> · ціна тут: <?= e(price_fmt($av['price'])) ?><?php endif; ?>
+              <?php if ($av['price'] !== null && $av['price'] != $price): ?> · ціна тут: <?= e(price_fmt($av['price'])) ?><?php endif; ?></span>
             </span>
           <?php endforeach; ?>
-          <?php if (!$anyStock && $p['made_to_order']): ?>
-            <span class="yes" style="color:var(--gold)">Виготовимо під замовлення — ми виробник 🍯</span>
+          <?php if ($p['made_to_order']): ?>
+            <span class="yes" id="madeToOrder" style="color:var(--gold)<?= $anyStock ? ';display:none' : '' ?>">Виготовимо під замовлення — ми виробник 🍯</span>
           <?php endif; ?>
         </div>
 
@@ -66,7 +86,18 @@
           <h2 style="font-size:22px;margin-top:34px">Характеристики</h2>
           <table class="specs">
             <?php foreach ($attrs as $a): ?>
-              <tr><td><?= e($a['name']) ?></td><td><?= e($a['value']) ?></td></tr>
+              <tr>
+                <td><?= e($a['name']) ?><?= !empty($a['unit']) ? ', ' . e($a['unit']) : '' ?></td>
+                <td>
+                  <?php if (!empty($a['color'])): ?><i class="swatch" style="background:<?= e($a['color']) ?>"></i> <?php endif; ?>
+                  <?php if (!empty($a['filterable']) && !empty($a['attr_slug'])): ?>
+                    <a href="<?= e(url('/shop?' . http_build_query([
+                        'cat' => $cat['slug'] ?? null,
+                        'attr' => [$a['attr_slug'] => [$a['value']]],
+                      ]))) ?>" title="Показати всі товари з таким значенням"><?= e($a['value']) ?></a>
+                  <?php else: ?><?= e($a['value']) ?><?php endif; ?>
+                </td>
+              </tr>
             <?php endforeach; ?>
           </table>
         <?php endif; ?>
@@ -77,6 +108,13 @@
         <?php endif; ?>
       </div>
     </div>
+
+    <?php if ($variants): ?>
+      <script>
+        window.BOFU_VARIANTS = <?= json_encode($variant_data, JSON_UNESCAPED_UNICODE) ?>;
+        window.BOFU_MADE_TO_ORDER = <?= $p['made_to_order'] ? 'true' : 'false' ?>;
+      </script>
+    <?php endif; ?>
 
     <?php if ($related): ?>
       <div class="kicker" style="margin-top:72px">Схожі товари</div>

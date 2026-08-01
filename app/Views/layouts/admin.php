@@ -29,6 +29,7 @@
         ['/admin/products', 'Товари', true],
         ['/admin/products/bulk', 'Масове редагування', true],
         ['/admin/categories', 'Категорії', Auth::isAdmin()],
+        ['/admin/attributes', 'Характеристики', Auth::isAdmin()],
         ['/admin/stores', 'Магазини', Auth::isAdmin()],
         ['/admin/promos', 'Акції та промокоди', Auth::isAdmin()],
         ['/admin/diplomas', 'Дипломи', Auth::isAdmin()],

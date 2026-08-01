@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 namespace Controllers;
 
-use DB, View, Catalog, Content;
+use DB, View, Catalog, Content, Attrs;
 
 class Shop
 {
@@ -51,20 +51,46 @@ class Shop
         $images = Catalog::images((int)$p['id']);
         $stores = Catalog::stores();
 
-        // наявність по магазинах
+        // варіанти як комбінації характеристик (розмір, колір…)
+        $variantOptions = Attrs::variantOptionsFor((int)$p['id']);
+        $axes = Catalog::variantAxes($variants, $variantOptions);
+        $stockMap = Catalog::stockMap((int)$p['id']);
+
+        // наявність по магазинах: сумарна і окремо по кожному варіанту
         $availability = [];
         foreach ($stores as $s) {
+            $sid = (int)$s['id'];
             $availability[] = [
                 'store' => $s,
-                'qty' => Catalog::stock((int)$p['id'], null, (int)$s['id']),
-                'price' => Catalog::price($p, null, (int)$s['id'])[0],
+                'qty' => Catalog::stock((int)$p['id'], null, $sid),
+                'price' => Catalog::price($p, null, $sid)[0],
+                'by_variant' => $stockMap[$sid] ?? [],
             ];
         }
         [$price, $old] = Catalog::price($p);
+
+        // дані для миттєвого перерахунку ціни й наявності при виборі варіанта
+        $variantData = [];
+        foreach ($variants as $v) {
+            $vid = (int)$v['id'];
+            [$vp, $vo] = Catalog::price($p, $v);
+            $opts = [];
+            foreach ($variantOptions[$vid] ?? [] as $o) $opts[(int)$o['attribute_id']] = $o['value'];
+            $qty = 0;
+            foreach ($stockMap as $byVariant) $qty += (int)($byVariant[$vid] ?? 0);
+            $variantData[] = [
+                'id' => $vid, 'name' => $v['name'], 'sku' => $v['sku'] ?? '',
+                'price' => $vp, 'price_fmt' => $vp !== null ? price_fmt($vp) : 'Ціна за запитом',
+                'old_fmt' => $vo !== null ? price_fmt($vo) : '',
+                'qty' => $qty, 'opts' => $opts,
+            ];
+        }
+
         $related = DB::all('SELECT * FROM products WHERE active = 1 AND category_id = ? AND id != ? LIMIT 4', [$p['category_id'], $p['id']]);
 
         View::show('shop/product', [
             'p' => $p, 'cat' => $cat, 'variants' => $variants, 'attrs' => $attrs,
+            'variant_axes' => $axes, 'variant_data' => $variantData,
             'images' => $images, 'availability' => $availability,
             'price' => $price, 'old_price' => $old, 'related' => $related,
             'page_title' => $p['name'] . ' — ' . cfg('app_name'),
