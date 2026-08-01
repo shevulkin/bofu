@@ -5,7 +5,7 @@
     <h1 style="font-size:44px">Моє життя у галереї</h1>
     <div class="gallery-grid" style="margin-top:36px">
       <?php foreach ($gallery as $g): ?>
-        <div class="gallery-item"><img src="<?= e(asset($g[1])) ?>" alt="<?= e($g[0]) ?>" loading="lazy"><span><?= e($g[0]) ?></span></div>
+        <div class="gallery-item"><img src="<?= e(asset(Images::displayThumb($g[1]))) ?>" alt="<?= e($g[0]) ?>" loading="lazy"><span><?= e($g[0]) ?></span></div>
       <?php endforeach; ?>
     </div>
   </div>

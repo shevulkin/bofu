@@ -2,7 +2,7 @@
 <div class="card">
   <a class="card-img" href="<?= e(url('/product/' . $prod['slug'])) ?>">
     <?php $photo = Catalog::photo($prod); if ($photo): ?>
-      <img src="<?= e(asset($photo)) ?>" alt="<?= e($prod['name']) ?>" loading="lazy">
+      <img src="<?= e(asset(Images::displayThumb($photo))) ?>" alt="<?= e($prod['name']) ?>" loading="lazy">
     <?php else: ?><span class="ph">🍯</span><?php endif; ?>
     <?php if ($old !== null): ?><span class="badge red">Акція</span>
     <?php elseif ($prod['featured']): ?><span class="badge">Хіт</span><?php endif; ?>

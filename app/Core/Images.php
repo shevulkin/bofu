@@ -58,6 +58,13 @@ class Images
         return preg_replace('/\.(webp|jpg|png)$/', '-thumb.$1', $path) ?? $path;
     }
 
+    /** Шлях до маленького превью для сіток (каталог, галерея); якщо превью немає — повертає оригінал */
+    public static function displayThumb(string $path): string
+    {
+        $thumb = self::thumbPath($path);
+        return is_file(BOFU_ROOT . '/assets/' . $thumb) ? $thumb : $path;
+    }
+
     public static function delete(string $path): void
     {
         $abs = BOFU_ROOT . '/assets/' . $path;

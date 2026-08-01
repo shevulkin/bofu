@@ -45,7 +45,7 @@
     <?php foreach (['hero' => 'Головний банер', 'about_teaser' => 'Фото «Хто я» (головна)', 'about_full' => 'Фото сторінки «Про мене»'] as $key => $label): ?>
       <div style="text-align:center">
         <?php $img = $blocks[$key]['image'] ?? ''; ?>
-        <img src="<?= e(asset($img ?: 'img/about-photo.png')) ?>" style="width:150px;height:150px;object-fit:cover;border-radius:4px;border:1px solid var(--line)">
+        <img src="<?= e(asset($img ?: 'img/about-photo.webp')) ?>" style="width:150px;height:150px;object-fit:cover;border-radius:4px;border:1px solid var(--line)">
         <div class="dim" style="margin:6px 0"><?= e($label) ?></div>
         <form method="post" action="<?= e(url('/admin/content')) ?>" id="setImg_<?= $key ?>" style="display:none">
           <?= Csrf::field() ?><input type="hidden" name="_action" value="set_image"><input type="hidden" name="key" value="<?= $key ?>"><input type="hidden" name="media_path" value="">
