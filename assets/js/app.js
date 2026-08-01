@@ -38,4 +38,61 @@
     });
     io.observe(counter);
   }
+
+  // додавання в кошик без перезавантаження сторінки
+  var cartToast = document.getElementById('cartToast');
+  var cartToastTimer = null;
+  function showCartToast(name) {
+    if (!cartToast) return;
+    var textEl = cartToast.querySelector('.cart-toast-text');
+    if (textEl) textEl.textContent = (name ? '«' + name + '»' : 'Товар') + ' додано в кошик';
+    cartToast.classList.add('show');
+    clearTimeout(cartToastTimer);
+    cartToastTimer = setTimeout(function () { cartToast.classList.remove('show'); }, 6000);
+  }
+  if (cartToast) {
+    ['cartToastClose', 'cartToastContinue'].forEach(function (id) {
+      var b = document.getElementById(id);
+      if (b) b.addEventListener('click', function () {
+        cartToast.classList.remove('show');
+        clearTimeout(cartToastTimer);
+      });
+    });
+  }
+  function updateCartBadge(count) {
+    var link = document.querySelector('.cart-link');
+    if (!link) return;
+    var badge = link.querySelector('.cart-badge');
+    if (count > 0) {
+      if (!badge) {
+        badge = document.createElement('span');
+        badge.className = 'cart-badge';
+        link.appendChild(badge);
+      }
+      badge.textContent = count;
+    } else if (badge) {
+      badge.remove();
+    }
+  }
+  document.addEventListener('submit', function (e) {
+    var form = e.target;
+    if (!form.matches || !form.matches('.add-cart-form')) return;
+    e.preventDefault();
+    var btn = form.querySelector('button[type=submit]');
+    var data = new FormData(form);
+    data.set('ajax', '1');
+    if (btn) btn.disabled = true;
+    fetch(form.action, { method: 'POST', body: data, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (res && res.ok) {
+          updateCartBadge(res.count);
+          showCartToast(form.dataset.productName);
+        } else {
+          form.submit();
+        }
+      })
+      .catch(function () { form.submit(); })
+      .finally(function () { if (btn) btn.disabled = false; });
+  });
 })();
