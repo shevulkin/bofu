@@ -21,7 +21,8 @@
     'name' => $p['name'], 'description' => $p['short_desc'] ?? '',
     'image' => asset(Catalog::photo($p)),
     'offers' => ['@type' => 'Offer', 'priceCurrency' => 'UAH', 'price' => $price ?? 0,
-        'availability' => 'https://schema.org/InStock'],
+        'availability' => (Catalog::stock((int)$p['id']) > 0 || !empty($p['made_to_order']))
+            ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock'],
 ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?></script>
 <?php endif; ?>
 </head>

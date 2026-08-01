@@ -98,15 +98,19 @@ $canStore = fn(int $sid): bool => Auth::isAdmin() || in_array($sid, Auth::storeI
     </div>
   </div>
 
+  <?php $activeVariants = array_values(array_filter($variants, fn($v) => (int)$v['active'] === 1)); ?>
   <div class="admin-card">
     <h2 class="h-serif">Ціни та залишки по магазинах</h2>
-    <p class="dim" style="margin:-8px 0 14px">Порожня ціна = діє базова. Порожній залишок = немає в наявності (товар усе одно можна замовити, якщо ввімкнено «під замовлення»).</p>
+    <p class="dim" style="margin:-8px 0 14px">
+      Порожня ціна = діє базова. Порожній залишок = немає в наявності (товар усе одно можна замовити, якщо ввімкнено «під замовлення»).
+      <?php if ($activeVariants): ?><br>У товару є варіанти, тому наявність рахується <b>по варіантах у кожному магазині</b> — залишок «без варіанта» не враховується.<?php endif; ?>
+    </p>
     <div style="overflow-x:auto">
       <table class="tbl matrix">
         <tr>
           <th>Магазин</th>
           <th colspan="2">Товар без варіанта</th>
-          <?php foreach ($variants as $v): ?><th colspan="2"><?= e($v['name']) ?></th><?php endforeach; ?>
+          <?php foreach ($variants as $v): ?><th colspan="2"><?= e($v['name']) ?><?= (int)$v['active'] === 1 ? '' : ' (вимк.)' ?></th><?php endforeach; ?>
         </tr>
         <tr class="sub"><th></th>
           <th>ціна</th><th>шт</th>
@@ -116,7 +120,14 @@ $canStore = fn(int $sid): bool => Auth::isAdmin() || in_array($sid, Auth::storeI
           <tr>
             <td><?= e($s['name']) ?><?= $s['city'] ? ' · ' . e($s['city']) : '' ?></td>
             <td><input type="number" step="0.01" name="store_price[<?= $sid ?>]" value="<?= e($store_prices[$sid] ?? '') ?>" placeholder="базова" <?= $ro ?>></td>
-            <td><input type="number" name="store_stock[<?= $sid ?>]" value="<?= e($store_stock[$sid] ?? '') ?>" <?= $ro ?>></td>
+            <td>
+              <?php if ($activeVariants): ?>
+                <?php $sum = 0; foreach ($activeVariants as $v) $sum += (int)($variant_stock[(int)$v['id']][$sid] ?? 0); ?>
+                <span class="dim" title="Сума по варіантах цього магазину — редагуйте в колонках варіантів">Σ <?= $sum ?></span>
+              <?php else: ?>
+                <input type="number" name="store_stock[<?= $sid ?>]" value="<?= e($store_stock[$sid] ?? '') ?>" <?= $ro ?>>
+              <?php endif; ?>
+            </td>
             <?php foreach ($variants as $v): $vid = (int)$v['id']; ?>
               <td><input type="number" step="0.01" name="vprice[<?= $vid ?>][<?= $sid ?>]" value="<?= e($variant_prices[$vid][$sid] ?? '') ?>" placeholder="базова" <?= $ro ?>></td>
               <td><input type="number" name="vstock[<?= $vid ?>][<?= $sid ?>]" value="<?= e($variant_stock[$vid][$sid] ?? '') ?>" <?= $ro ?>></td>

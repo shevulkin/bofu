@@ -9,7 +9,15 @@
       <tr><th>Товар</th><th>Ціна</th><th>К-сть</th><th>Сума</th></tr>
       <?php foreach ($order_items as $it): ?>
         <tr>
-          <td><?= e($it['title']) ?><?= $it['variant_name'] ? ' · ' . e($it['variant_name']) : '' ?></td>
+          <td><?= e($it['title']) ?><?= $it['variant_name'] ? ' · ' . e($it['variant_name']) : '' ?>
+            <?php $st = $item_stock[(int)$it['id']] ?? null; if ($st !== null): ?>
+              <div class="dim">Зараз на складі:
+                <?php $bits = [];
+                  foreach ($stores as $s) $bits[] = e($s['city'] ?: $s['name']) . ' — ' . (int)($st[(int)$s['id']] ?? 0);
+                  echo implode(' · ', $bits); ?>
+              </div>
+            <?php endif; ?>
+          </td>
           <td><?= e(price_fmt($it['price'])) ?></td>
           <td><?= (int)$it['qty'] ?></td>
           <td><b><?= e(price_fmt($it['sum'])) ?></b></td>

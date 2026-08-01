@@ -56,18 +56,21 @@ class Shop
         $axes = Catalog::variantAxes($variants, $variantOptions);
         $stockMap = Catalog::stockMap((int)$p['id']);
 
-        // наявність по магазинах: сумарна і окремо по кожному варіанту
+        // варіант, обраний за замовчуванням — з нього беремо ціну й наявність до першого кліку
+        $first = $variants[0] ?? null;
+
+        // наявність по магазинах: для обраного варіанта (або товару без варіантів)
         $availability = [];
         foreach ($stores as $s) {
             $sid = (int)$s['id'];
             $availability[] = [
                 'store' => $s,
-                'qty' => Catalog::stock((int)$p['id'], null, $sid),
-                'price' => Catalog::price($p, null, $sid)[0],
+                'qty' => Catalog::stock((int)$p['id'], $first['id'] ?? null, $sid),
+                'price' => Catalog::price($p, $first, $sid)[0],
                 'by_variant' => $stockMap[$sid] ?? [],
             ];
         }
-        [$price, $old] = Catalog::price($p);
+        [$price, $old] = Catalog::price($p, $first);
 
         // дані для миттєвого перерахунку ціни й наявності при виборі варіанта
         $variantData = [];
@@ -77,12 +80,18 @@ class Shop
             $opts = [];
             foreach ($variantOptions[$vid] ?? [] as $o) $opts[(int)$o['attribute_id']] = $o['value'];
             $qty = 0;
-            foreach ($stockMap as $byVariant) $qty += (int)($byVariant[$vid] ?? 0);
+            $storePrices = [];
+            foreach ($stores as $s) {
+                $sid = (int)$s['id'];
+                $qty += (int)($stockMap[$sid][$vid] ?? 0);
+                $sp = Catalog::price($p, $v, $sid)[0];
+                $storePrices[$sid] = ($sp !== null && $sp != $vp) ? price_fmt($sp) : '';
+            }
             $variantData[] = [
                 'id' => $vid, 'name' => $v['name'], 'sku' => $v['sku'] ?? '',
                 'price' => $vp, 'price_fmt' => $vp !== null ? price_fmt($vp) : 'Ціна за запитом',
                 'old_fmt' => $vo !== null ? price_fmt($vo) : '',
-                'qty' => $qty, 'opts' => $opts,
+                'qty' => $qty, 'opts' => $opts, 'store_price' => $storePrices,
             ];
         }
 

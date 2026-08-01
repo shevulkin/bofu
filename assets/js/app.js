@@ -123,8 +123,9 @@
         if (txt) {
           var t = window.BOFU_LOW_STOCK_THRESHOLD;
           var stockTxt = qty > 0 ? (t !== null && qty <= t ? 'закінчується' : 'в наявності') : 'немає';
-          txt.textContent = el.dataset.label + ': ' + stockTxt +
-            (el.dataset.price ? ' · ціна тут: ' + el.dataset.price : '');
+          // ціна цього магазину для обраного варіанта
+          var sp = (v.store_price || {})[el.dataset.store] || '';
+          txt.textContent = el.dataset.label + ': ' + stockTxt + (sp ? ' · ціна тут: ' + sp : '');
         }
         el.classList.toggle('yes', qty > 0);
         el.classList.toggle('no', qty <= 0);

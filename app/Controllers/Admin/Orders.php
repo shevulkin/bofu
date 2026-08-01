@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 namespace Controllers\Admin;
 
-use DB, View, Auth, Notify;
+use DB, View, Auth, Notify, Catalog;
 
 class Orders
 {
@@ -53,9 +53,19 @@ class Orders
             redirect('/admin/orders/' . $id);
         }
 
+        $items = DB::all('SELECT * FROM order_items WHERE order_id = ?', [$id]);
+        // поточні залишки по магазинах для кожної позиції (саме того варіанта)
+        $itemStock = [];
+        foreach ($items as $it) {
+            if (!$it['product_id']) continue;
+            $itemStock[(int)$it['id']] = Catalog::stockByStore((int)$it['product_id'], $it['variant_id'] ? (int)$it['variant_id'] : null);
+        }
+
         View::show('admin/orders/view', [
             'order' => $order,
-            'order_items' => DB::all('SELECT * FROM order_items WHERE order_id = ?', [$id]),
+            'order_items' => $items,
+            'item_stock' => $itemStock,
+            'stores' => Catalog::stores(),
             'statuses' => self::STATUSES,
             'store' => $order['store_id'] ? DB::row('SELECT * FROM stores WHERE id = ?', [$order['store_id']]) : null,
             'page_title' => 'Замовлення ' . $order['number'] . ' — адмінка',

@@ -3,15 +3,50 @@ declare(strict_types=1);
 
 class Cart
 {
-    public static function items(): array { return $_SESSION['cart'] ?? []; }
+    private static bool $normalized = false;
+
+    public static function items(): array { self::normalize(); return $_SESSION['cart'] ?? []; }
 
     private static function key(int $productId, ?int $variantId): string
     { return $productId . ':' . ($variantId ?? 0); }
 
+    /**
+     * Варіант у рядку кошика обовʼязковий, коли він є в товару:
+     * саме від нього залежать ціна й наявність по магазинах.
+     */
+    private static function resolveVariant(int $productId, ?int $variantId): ?int
+    {
+        if ($variantId !== null && DB::row('SELECT 1 FROM product_variants WHERE id = ? AND product_id = ? AND active = 1',
+                [$variantId, $productId])) return $variantId;
+        $first = DB::val('SELECT id FROM product_variants WHERE product_id = ? AND active = 1 ORDER BY sort, id LIMIT 1', [$productId]);
+        return $first !== null ? (int)$first : null;
+    }
+
+    /** Старі рядки без варіанта (або з вимкненим) переводимо на актуальний варіант */
+    private static function normalize(): void
+    {
+        if (self::$normalized) return;
+        self::$normalized = true;
+        $cart = $_SESSION['cart'] ?? [];
+        if (!$cart) return;
+        $out = []; $changed = false;
+        foreach ($cart as $key => $item) {
+            $pid = (int)$item['product_id'];
+            $vid = self::resolveVariant($pid, isset($item['variant_id']) ? (int)$item['variant_id'] : null);
+            if ($vid !== ($item['variant_id'] ?? null)) { $item['variant_id'] = $vid; $changed = true; }
+            $k = self::key($pid, $vid);
+            if ($k !== $key) $changed = true;
+            if (isset($out[$k])) $out[$k]['qty'] += $item['qty'];
+            else $out[$k] = $item;
+        }
+        if ($changed) $_SESSION['cart'] = $out;
+    }
+
     public static function add(int $productId, ?int $variantId = null, int $qty = 1): void
     {
+        $variantId = self::resolveVariant($productId, $variantId);
         $key = self::key($productId, $variantId);
-        $cart = $_SESSION['cart'] ?? [];
+        $cart = self::items();
         if (isset($cart[$key])) $cart[$key]['qty'] += $qty;
         else $cart[$key] = ['product_id' => $productId, 'variant_id' => $variantId, 'qty' => max(1, $qty)];
         $_SESSION['cart'] = $cart;
@@ -46,6 +81,8 @@ class Cart
                 'price' => $price, 'old' => $old,
                 'sum' => $price !== null ? $price * $item['qty'] : null,
                 'photo' => Catalog::photo($p),
+                // наявність саме цього варіанта по магазинах: [store_id => qty]
+                'stock' => Catalog::stockByStore((int)$p['id'], $v ? (int)$v['id'] : null),
             ];
         }
         return $rows;

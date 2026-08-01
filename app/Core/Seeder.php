@@ -63,14 +63,30 @@ class Seeder
             foreach ($specs as $i => [$aname, $avalue]) {
                 DB::insert('product_attrs', ['product_id' => $pid, 'name' => $aname, 'value' => $avalue, 'filterable' => in_array($aname, ['Вага', 'Походження', 'Матеріал', 'Форма'], true) ? 1 : 0, 'sort' => $i]);
             }
-            $variantIds = [null];
+            $variantIds = [];
             foreach ($variants as $i => [$vname, $vprice]) {
                 $variantIds[] = DB::insert('product_variants', ['product_id' => $pid, 'name' => $vname, 'price' => $vprice, 'sort' => $i, 'active' => 1]);
             }
-            // залишки: розділити між магазинами
+            // залишки: розділити між магазинами, а в товарів з варіантами — ще й між варіантами
+            // (навмисно нерівно: у другому магазині останнього варіанта немає — видно роботу наявності)
             $half = intdiv($stock, 2);
-            DB::insert('store_stock', ['product_id' => $pid, 'variant_id' => null, 'store_id' => $store1, 'qty' => $stock - $half]);
-            DB::insert('store_stock', ['product_id' => $pid, 'variant_id' => null, 'store_id' => $store2, 'qty' => $half]);
+            $byStore = [$store1 => $stock - $half, $store2 => $half];
+            foreach ($byStore as $sid => $qty) {
+                if (!$variantIds) {
+                    DB::insert('store_stock', ['product_id' => $pid, 'variant_id' => null, 'store_id' => $sid, 'qty' => $qty]);
+                    continue;
+                }
+                $n = count($variantIds);
+                $parts = array_fill(0, $n, intdiv($qty, $n));
+                $parts[0] += $qty - array_sum($parts);   // залишок від ділення — першому
+                if ($sid === $store2 && $n > 1) {        // у другому магазині останнього варіанта немає
+                    $parts[0] += $parts[$n - 1];
+                    $parts[$n - 1] = 0;
+                }
+                foreach ($variantIds as $vi => $vid) {
+                    DB::insert('store_stock', ['product_id' => $pid, 'variant_id' => $vid, 'store_id' => $sid, 'qty' => $parts[$vi]]);
+                }
+            }
         }
 
         // --- словник характеристик зі щойно засіяних товарів ---

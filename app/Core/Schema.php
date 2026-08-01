@@ -7,7 +7,7 @@ declare(strict_types=1);
  */
 class Schema
 {
-    public const VERSION = 4;
+    public const VERSION = 5;
 
     /** Оновлення існуючої бази до поточної версії без втрати даних */
     public static function upgrade(): void
@@ -42,7 +42,33 @@ class Schema
         if ($ver < 4) {
             self::addColumn('products', 'low_stock_threshold', 'int null');
         }
+        if ($ver < 5) {
+            // наявність товарів з варіантами тепер рахується по варіантах у кожному магазині
+            self::moveStockToVariants();
+        }
         Settings::set('schema_version', (string)self::VERSION);
+    }
+
+    /**
+     * Залишки товарів, що мають варіанти, переносимо з рядка «без варіанта»
+     * на перший активний варіант того самого магазину — щоб не втратити кількість.
+     */
+    private static function moveStockToVariants(): void
+    {
+        $rows = DB::all(
+            'SELECT ss.* FROM store_stock ss
+             WHERE ss.variant_id IS NULL
+               AND EXISTS (SELECT 1 FROM product_variants v WHERE v.product_id = ss.product_id AND v.active = 1)');
+        foreach ($rows as $r) {
+            $pid = (int)$r['product_id']; $sid = (int)$r['store_id']; $qty = (int)$r['qty'];
+            $vid = (int)(DB::val('SELECT id FROM product_variants WHERE product_id = ? AND active = 1 ORDER BY sort, id LIMIT 1', [$pid]) ?? 0);
+            if ($vid && $qty > 0) {
+                $exists = DB::row('SELECT id, qty FROM store_stock WHERE product_id = ? AND store_id = ? AND variant_id = ?', [$pid, $sid, $vid]);
+                if ($exists) DB::update('store_stock', ['qty' => (int)$exists['qty'] + $qty], 'id = ?', [$exists['id']]);
+                else DB::insert('store_stock', ['product_id' => $pid, 'store_id' => $sid, 'variant_id' => $vid, 'qty' => $qty]);
+            }
+            DB::delete('store_stock', 'id = ?', [(int)$r['id']]);
+        }
     }
 
     private static function addColumn(string $table, string $col, string $spec): void
@@ -193,8 +219,8 @@ class Schema
             'attribute_values' => ['attribute_id'],
             'attribute_categories' => ['attribute_id', 'category_id'],
             'variant_options' => ['variant_id', 'attribute_id'],
-            'store_prices' => ['product_id', 'store_id'],
-            'store_stock' => ['product_id', 'store_id'],
+            'store_prices' => ['product_id', 'store_id', 'variant_id'],
+            'store_stock' => ['product_id', 'store_id', 'variant_id'],
             'orders' => ['status', 'store_id', 'user_id'],
             'order_items' => ['order_id'],
             'seller_stores' => ['user_id', 'store_id'],

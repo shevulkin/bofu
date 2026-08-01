@@ -13,6 +13,21 @@
             <td>
               <b><?= e($r['product']['name']) ?></b>
               <?php if ($r['variant']): ?><div class="dim"><?= e($r['variant']['name']) ?></div><?php endif; ?>
+              <?php
+                // наявність саме цієї позиції (варіанта) по магазинах
+                $where = [];
+                foreach ($stores as $s) {
+                    $q = (int)($r['stock'][(int)$s['id']] ?? 0);
+                    if ($q >= $r['qty']) $where[] = $s['city'] ?: $s['name'];
+                }
+              ?>
+              <?php if ($where): ?>
+                <div class="dim">Є в наявності: <?= e(implode(', ', $where)) ?></div>
+              <?php elseif ($r['product']['made_to_order']): ?>
+                <div class="dim">Немає в магазинах — виготовимо під замовлення</div>
+              <?php else: ?>
+                <div class="dim" style="color:var(--danger2)">Немає в наявності</div>
+              <?php endif; ?>
             </td>
             <td><?= e(price_fmt($r['price'])) ?></td>
             <td>

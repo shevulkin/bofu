@@ -61,25 +61,93 @@ class Catalog
         return [$raw, $old];
     }
 
-    /** Сумарний залишок по всіх магазинах чи конкретному */
-    public static function stock(int $productId, ?int $variantId = null, ?int $storeId = null): int
+    /** Чи має товар активні варіанти (кешовано на запит) */
+    public static function hasVariants(int $productId): bool
     {
-        $sql = 'SELECT COALESCE(SUM(qty),0) FROM store_stock WHERE product_id = ?';
-        $params = [$productId];
-        if ($variantId !== null) { $sql .= ' AND variant_id = ?'; $params[] = $variantId; }
-        if ($storeId !== null) { $sql .= ' AND store_id = ?'; $params[] = $storeId; }
-        return (int)DB::val($sql, $params);
+        static $cache = [];
+        return $cache[$productId] ??= (bool)DB::val(
+            'SELECT 1 FROM product_variants WHERE product_id = ? AND active = 1 LIMIT 1', [$productId]);
     }
 
-    /** Залишки товару одним запитом: [store_id][variant_id|0] = qty */
+    /**
+     * Залишок по всіх магазинах чи конкретному.
+     * Якщо в товару є варіанти — залишок беремо з них (сума по активних),
+     * рядки без варіанта для такого товару ігноруємо.
+     */
+    public static function stock(int $productId, ?int $variantId = null, ?int $storeId = null): int
+    {
+        $byStore = self::stockByStore($productId, $variantId);
+        return $storeId !== null ? ($byStore[$storeId] ?? 0) : array_sum($byStore);
+    }
+
+    /** Залишки товару одним запитом: [store_id][variant_id|0] = qty (лише активні варіанти) */
     public static function stockMap(int $productId): array
     {
+        $rows = DB::all(
+            'SELECT ss.store_id, ss.variant_id, SUM(ss.qty) AS qty
+             FROM store_stock ss
+             LEFT JOIN product_variants pv ON pv.id = ss.variant_id
+             WHERE ss.product_id = ? AND (ss.variant_id IS NULL OR pv.active = 1)
+             GROUP BY ss.store_id, ss.variant_id', [$productId]);
         $out = [];
-        foreach (DB::all('SELECT store_id, variant_id, SUM(qty) AS qty FROM store_stock WHERE product_id = ? GROUP BY store_id, variant_id', [$productId]) as $r) {
+        foreach ($rows as $r) {
             $out[(int)$r['store_id']][(int)($r['variant_id'] ?? 0)] = (int)$r['qty'];
         }
         return $out;
     }
+
+    /**
+     * Залишки по магазинах для конкретної позиції: [store_id => qty].
+     * Варіант обовʼязковий для товарів з варіантами — інакше беремо рядки без варіанта.
+     */
+    public static function stockByStore(int $productId, ?int $variantId = null): array
+    {
+        $params = [$productId];
+        if ($variantId !== null) {
+            $sql = 'SELECT store_id, SUM(qty) AS qty FROM store_stock WHERE product_id = ? AND variant_id = ?';
+            $params[] = $variantId;
+        } elseif (self::hasVariants($productId)) {
+            $sql = 'SELECT ss.store_id, SUM(ss.qty) AS qty FROM store_stock ss
+                    JOIN product_variants pv ON pv.id = ss.variant_id AND pv.active = 1
+                    WHERE ss.product_id = ?';
+        } else {
+            $sql = 'SELECT store_id, SUM(qty) AS qty FROM store_stock WHERE product_id = ? AND variant_id IS NULL';
+        }
+        $sql .= ' GROUP BY store_id';
+        $out = [];
+        foreach (DB::all($sql, $params) as $r) $out[(int)$r['store_id']] = (int)$r['qty'];
+        return $out;
+    }
+
+    /**
+     * Залишки всіх товарів по магазинах одним запитом: [product_id][store_id] = qty.
+     * Для товарів з варіантами беруться рядки варіантів, для решти — рядки без варіанта.
+     */
+    public static function stockTotals(): array
+    {
+        $rows = DB::all(
+            'SELECT ss.product_id, ss.store_id, SUM(ss.qty) AS qty
+             FROM store_stock ss
+             LEFT JOIN product_variants pv ON pv.id = ss.variant_id
+             WHERE (ss.variant_id IS NULL OR pv.active = 1)
+               AND (ss.variant_id IS NOT NULL
+                    OR NOT EXISTS (SELECT 1 FROM product_variants v
+                                   WHERE v.product_id = ss.product_id AND v.active = 1))
+             GROUP BY ss.product_id, ss.store_id');
+        $out = [];
+        foreach ($rows as $r) $out[(int)$r['product_id']][(int)$r['store_id']] = (int)$r['qty'];
+        return $out;
+    }
+
+    /** SQL-умова «є в наявності в магазині» з урахуванням варіантів (для p.id у зовнішньому запиті) */
+    private const IN_STOCK_EXISTS =
+        'EXISTS (SELECT 1 FROM store_stock ss
+                 LEFT JOIN product_variants pv ON pv.id = ss.variant_id
+                 WHERE ss.product_id = p.id AND ss.store_id = ? AND ss.qty > 0
+                   AND (ss.variant_id IS NULL OR pv.active = 1)
+                   AND (ss.variant_id IS NOT NULL
+                        OR NOT EXISTS (SELECT 1 FROM product_variants v
+                                       WHERE v.product_id = p.id AND v.active = 1)))';
 
     public static function categories(): array
     {
@@ -105,7 +173,7 @@ class Catalog
         if (isset($f['min']) && $f['min'] !== '') { $where[] = 'p.base_price >= ?'; $params[] = (float)$f['min']; }
         if (isset($f['max']) && $f['max'] !== '') { $where[] = 'p.base_price <= ?'; $params[] = (float)$f['max']; }
         if (!empty($f['store_id'])) {
-            $where[] = 'EXISTS (SELECT 1 FROM store_stock ss WHERE ss.product_id = p.id AND ss.store_id = ? AND ss.qty > 0)';
+            $where[] = self::IN_STOCK_EXISTS;
             $params[] = (int)$f['store_id'];
         }
         if (!empty($f['attr']) && is_array($f['attr'])) {
