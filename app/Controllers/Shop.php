@@ -48,7 +48,7 @@ class Shop
         $cat = DB::row('SELECT * FROM categories WHERE id = ?', [$p['category_id']]);
         $variants = Catalog::variants((int)$p['id']);
         $attrs = Catalog::attrs((int)$p['id']);
-        $images = Catalog::images((int)$p['id']);
+        $images = Catalog::gallery($p); // головне фото першим, далі додаткові
         $stores = Catalog::stores();
 
         // варіанти як комбінації характеристик (розмір, колір…)

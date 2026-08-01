@@ -10,7 +10,7 @@
 <meta property="og:title" content="<?= e($page_title ?? cfg('app_name')) ?>">
 <meta property="og:description" content="<?= e($meta_description ?? Settings::get('seo_description', '')) ?>">
 <meta property="og:type" content="website">
-<meta property="og:image" content="<?= e(asset('img/avatar.png')) ?>">
+<meta property="og:image" content="<?= e(asset($og_image ?? (!empty($p) && !empty($jsonld_product) ? Catalog::photo($p) : 'img/avatar.png'))) ?>">
 <meta name="theme-color" content="#141110">
 <link rel="icon" href="<?= e(asset('img/avatar.png')) ?>">
 <link rel="stylesheet" href="<?= e(asset('css/fonts.css')) ?>">
@@ -20,7 +20,8 @@
 <script type="application/ld+json"><?= json_encode([
     '@context' => 'https://schema.org', '@type' => 'Product',
     'name' => $p['name'], 'description' => $p['short_desc'] ?? '',
-    'image' => asset(Catalog::photo($p)),
+    // усі фото товару: головне першим — Google показує їх у картці товару
+    'image' => array_map(fn($i) => asset($i['path']), $images ?? [['path' => Catalog::photo($p)]]),
     'offers' => ['@type' => 'Offer', 'priceCurrency' => 'UAH', 'price' => $price ?? 0,
         'availability' => (Catalog::stock((int)$p['id']) > 0 || !empty($p['made_to_order']))
             ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock'],

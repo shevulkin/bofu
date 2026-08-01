@@ -256,6 +256,31 @@ class Catalog
     }
 
     /**
+     * Галерея товару: головне фото першим, далі додаткові в заданому порядку.
+     * Без дублів; якщо фото немає взагалі — одна заглушка.
+     */
+    public static function gallery(array $product): array
+    {
+        $rows = self::images((int)$product['id']);
+        $main = (string)($product['image'] ?? '');
+        $out = []; $seen = [];
+
+        if ($main !== '') {
+            foreach ($rows as $r) if ($r['path'] === $main) { $out[] = $r; break; }
+            // головне фото могли призначити поза списком (банер, галерея сайту)
+            if (!$out) $out[] = ['id' => 0, 'path' => $main, 'width' => 0, 'height' => 0, 'bytes' => 0];
+            $seen[$main] = true;
+        }
+        foreach ($rows as $r) {
+            if (isset($seen[$r['path']])) continue;
+            $seen[$r['path']] = true;
+            $out[] = $r;
+        }
+        if (!$out) $out[] = ['id' => 0, 'path' => 'img/honey-jar.webp', 'width' => 0, 'height' => 0, 'bytes' => 0];
+        return $out;
+    }
+
+    /**
      * Характеристики для фільтрів: лише ті, що позначені у словнику й реально
      * зустрічаються серед активних товарів категорії. Значення — з кількістю товарів.
      * [['id','name','slug','unit','type','values'=>[['value','color','count'], …]], …]
