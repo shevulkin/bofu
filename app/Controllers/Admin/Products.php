@@ -127,9 +127,11 @@ class Products
         $action = $_POST['_action'] ?? 'save';
 
         if ($action === 'delete' && Auth::isAdmin()) {
-            foreach (DB::all('SELECT path FROM product_images WHERE product_id = ?', [$id]) as $img) Images::delete($img['path']);
+            $paths = array_column(DB::all('SELECT path FROM product_images WHERE product_id = ?', [$id]), 'path');
             foreach (['product_images','product_variants','product_attrs','store_prices','store_stock'] as $t) DB::delete($t, 'product_id = ?', [$id]);
             DB::delete('products', 'id = ?', [$id]);
+            // видаляти файл лише якщо фото не прикріплене ще до якогось іншого товару/банера/галереї
+            foreach (array_unique($paths) as $path) if (!Media::usage($path)) Images::delete($path);
             flash('success', 'Товар видалено');
             redirect('/admin/products');
         }
@@ -165,12 +167,13 @@ class Products
             $imgId = (int)($_POST['image_id'] ?? 0);
             $img = DB::row('SELECT * FROM product_images WHERE id = ? AND product_id = ?', [$imgId, $id]);
             if ($img) {
-                Images::delete($img['path']);
                 DB::delete('product_images', 'id = ?', [$imgId]);
                 if ($p['image'] === $img['path']) {
                     $next = DB::row('SELECT path FROM product_images WHERE product_id = ? ORDER BY sort, id LIMIT 1', [$id]);
                     DB::update('products', ['image' => $next['path'] ?? null], 'id = ?', [$id]);
                 }
+                // видаляти файл лише якщо це фото не прикріплене ще десь (інший товар, банер, галерея)
+                if (!Media::usage($img['path'])) Images::delete($img['path']);
                 flash('success', 'Фото видалено');
             }
             redirect('/admin/products/' . $id);
