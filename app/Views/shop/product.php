@@ -3,12 +3,15 @@
     <p style="margin-bottom:26px"><a href="<?= e(url('/shop' . ($cat ? '?cat=' . $cat['slug'] : ''))) ?>">← <?= e($cat['name'] ?? 'Магазин') ?></a></p>
     <div class="product-page">
       <div class="product-gallery">
-        <?php $mainPhoto = Catalog::photo($p); ?>
+        <?php $mainPhoto = $images[0]['path']; ?>
         <img id="mainPhoto" src="<?= e(asset($mainPhoto)) ?>" alt="<?= e($p['name']) ?>">
         <?php if (count($images) > 1): ?>
-          <div class="thumbs">
-            <?php foreach ($images as $img): ?>
-              <img src="<?= e(asset(Images::thumbPath($img['path']))) ?>" data-full="<?= e(asset($img['path'])) ?>" alt="" onclick="document.getElementById('mainPhoto').src=this.dataset.full">
+          <div class="thumbs" id="productThumbs">
+            <?php foreach ($images as $i => $img): ?>
+              <button type="button" class="thumb <?= $i === 0 ? 'active' : '' ?>" data-full="<?= e(asset($img['path'])) ?>"
+                      aria-label="Фото <?= $i + 1 ?> з <?= count($images) ?>">
+                <img src="<?= e(asset(Images::displayThumb($img['path']))) ?>" alt="<?= e($p['name']) ?> — фото <?= $i + 1 ?>" loading="lazy">
+              </button>
             <?php endforeach; ?>
           </div>
         <?php endif; ?>
@@ -109,6 +112,20 @@
         <?php endif; ?>
       </div>
     </div>
+
+    <?php if (count($images) > 1): ?>
+      <script>
+        (function () {
+          var box = document.getElementById('productThumbs'), main = document.getElementById('mainPhoto');
+          box.addEventListener('click', function (e) {
+            var t = e.target.closest('.thumb');
+            if (!t) return;
+            main.src = t.dataset.full;
+            box.querySelectorAll('.thumb').forEach(function (b) { b.classList.toggle('active', b === t); });
+          });
+        })();
+      </script>
+    <?php endif; ?>
 
     <?php if ($variants): ?>
       <script>

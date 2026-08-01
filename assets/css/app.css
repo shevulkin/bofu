@@ -118,8 +118,11 @@ button.chip{font-family:inherit;display:inline-flex;align-items:center;gap:8px}
 /* ---------- сторінка товару ---------- */
 .product-page{display:grid;grid-template-columns:1fr 1fr;gap:56px;align-items:start}
 .product-gallery img{border-radius:4px;border:1px solid var(--line);width:100%;object-fit:cover;aspect-ratio:1/1;background:var(--bg3)}
-.thumbs{display:flex;gap:10px;margin-top:12px}
-.thumbs img{width:76px;height:76px;border-radius:3px;border:1px solid var(--line);object-fit:cover;cursor:pointer}
+.thumbs{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap}
+.thumbs .thumb{padding:0;background:none;border:1px solid var(--line);border-radius:3px;cursor:pointer;line-height:0;transition:border-color .15s}
+.thumbs .thumb img{width:76px;height:76px;border-radius:2px;border:none;object-fit:cover;aspect-ratio:auto}
+.thumbs .thumb:hover{border-color:var(--line2)}
+.thumbs .thumb.active{border-color:var(--gold)}
 .specs{width:100%;border-collapse:collapse;margin-top:8px}
 .specs td{padding:9px 0;border-bottom:1px solid var(--bg3);font-size:14px}
 .specs td:first-child{color:var(--dim);width:45%}
@@ -318,6 +321,13 @@ footer{border-top:1px solid var(--line);padding:44px 0 60px;margin-top:40px}
 .img-cell{position:relative;text-align:center}
 .img-cell img{width:120px;height:120px;object-fit:cover;border-radius:4px;border:1px solid var(--line)}
 .img-cell .dim{display:block;margin-top:5px}
+.img-cell.is-main img{border-color:var(--gold)}
+.img-badge{position:absolute;top:6px;left:6px;background:var(--gold);color:#1a1508;font-size:10.5px;
+  font-weight:600;border-radius:3px;padding:2px 7px;letter-spacing:.02em}
+.img-del{position:absolute;top:4px;right:4px}
+.img-actions{display:flex;gap:6px;justify-content:center;margin-top:6px}
+.img-actions form{display:flex;gap:4px}
+.img-actions button[disabled]{opacity:.3;cursor:default}
 .admin-mobilebar{display:none}
 /* --- характеристики та варіанти --- */
 .row-list{display:flex;flex-direction:column;gap:10px}

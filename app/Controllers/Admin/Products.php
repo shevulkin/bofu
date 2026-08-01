@@ -168,7 +168,7 @@ class Products
                     'width' => $size[0] ?? 0, 'height' => $size[1] ?? 0, 'bytes' => filesize($abs) ?: 0,
                     'sort' => (int)DB::val('SELECT COALESCE(MAX(sort),0)+1 FROM product_images WHERE product_id = ?', [$id]),
                 ]);
-                if (empty($p['image'])) DB::update('products', ['image' => $path], 'id = ?', [$id]);
+                self::syncImages($id);
                 flash('success', 'Фото додано до товару');
             } else flash('error', 'Фото не знайдено');
             redirect('/admin/products/' . $id);
@@ -179,7 +179,7 @@ class Products
             if ($res) {
                 [$path, $w, $h, $bytes] = $res;
                 DB::insert('product_images', ['product_id' => $id, 'path' => $path, 'width' => $w, 'height' => $h, 'bytes' => $bytes, 'sort' => (int)DB::val('SELECT COALESCE(MAX(sort),0)+1 FROM product_images WHERE product_id = ?', [$id])]);
-                if (empty($p['image'])) DB::update('products', ['image' => $path], 'id = ?', [$id]);
+                self::syncImages($id);
                 flash('success', 'Фото додано (' . $w . '×' . $h . ', ' . round($bytes/1024) . ' КБ)');
             } else flash('error', 'Не вдалося завантажити фото');
             redirect('/admin/products/' . $id);
@@ -190,13 +190,38 @@ class Products
             $img = DB::row('SELECT * FROM product_images WHERE id = ? AND product_id = ?', [$imgId, $id]);
             if ($img) {
                 DB::delete('product_images', 'id = ?', [$imgId]);
-                if ($p['image'] === $img['path']) {
-                    $next = DB::row('SELECT path FROM product_images WHERE product_id = ? ORDER BY sort, id LIMIT 1', [$id]);
-                    DB::update('products', ['image' => $next['path'] ?? null], 'id = ?', [$id]);
-                }
+                self::syncImages($id);
                 // видаляти файл лише якщо це фото не прикріплене ще десь (інший товар, банер, галерея)
                 if (!Media::usage($img['path'])) Images::delete($img['path']);
                 flash('success', 'Фото видалено');
+            }
+            redirect('/admin/products/' . $id);
+        }
+
+        // Головне фото — це перше в списку: робимо його головним, посунувши на початок
+        if ($action === 'main_image') {
+            $imgId = (int)($_POST['image_id'] ?? 0);
+            if (DB::row('SELECT 1 FROM product_images WHERE id = ? AND product_id = ?', [$imgId, $id])) {
+                DB::update('product_images', ['sort' => -1], 'id = ?', [$imgId]);
+                self::syncImages($id);
+                flash('success', 'Головне фото змінено');
+            }
+            redirect('/admin/products/' . $id);
+        }
+
+        // Порядок додаткових фото: міняємо місцями із сусідом
+        if ($action === 'move_image') {
+            $imgId = (int)($_POST['image_id'] ?? 0);
+            $up = ($_POST['dir'] ?? 'up') === 'up';
+            $ids = array_map('intval', array_column(
+                DB::all('SELECT id FROM product_images WHERE product_id = ? ORDER BY sort, id', [$id]), 'id'));
+            $i = array_search($imgId, $ids, true);
+            $j = $i === false ? false : $i + ($up ? -1 : 1);
+            if ($i !== false && $j !== false && isset($ids[$j])) {
+                [$ids[$i], $ids[$j]] = [$ids[$j], $ids[$i]];
+                foreach ($ids as $sort => $iid) DB::update('product_images', ['sort' => $sort], 'id = ?', [$iid]);
+                self::syncImages($id);
+                flash('success', $i === 0 || $j === 0 ? 'Порядок змінено — головним стало інше фото' : 'Порядок фото змінено');
             }
             redirect('/admin/products/' . $id);
         }
@@ -282,6 +307,19 @@ class Products
             flash('success', 'Збережено');
         }
         redirect('/admin/products/' . $id);
+    }
+
+    /**
+     * Наводить порядок у фото товару: sort = 0,1,2… без дірок,
+     * а `products.image` (головне фото) завжди дорівнює першому в списку.
+     */
+    private static function syncImages(int $productId): void
+    {
+        $rows = DB::all('SELECT id, path, sort FROM product_images WHERE product_id = ? ORDER BY sort, id', [$productId]);
+        foreach ($rows as $i => $r) {
+            if ((int)$r['sort'] !== $i) DB::update('product_images', ['sort' => $i], 'id = ?', [(int)$r['id']]);
+        }
+        DB::update('products', ['image' => $rows[0]['path'] ?? null, 'updated_at' => now()], 'id = ?', [$productId]);
     }
 
     /** Видалення варіанта разом з його цінами, залишками та характеристиками */

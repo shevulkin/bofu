@@ -33,7 +33,7 @@ class Seeder
 
         // --- товари (з дизайну) ---
         $products = [
-            ['honey', 'Мед різнотрав\'я, 350г', 'Класичний мед з різнотрав\'я власної пасіки.', 180, 34, 'img/honey-jar.webp', 1, [['Вага','350 г'],['Походження','Власна пасіка, Україна'],['Термін зберігання','24 місяці'],['Умови зберігання','Сухе, темне місце, до +20°C']], []],
+            ['honey', 'Мед різнотрав\'я, 350г', 'Класичний мед з різнотрав\'я власної пасіки.', 180, 34, ['img/honey-jar.webp', 'img/gallery-1.webp', 'img/gallery-2.webp'], 1, [['Вага','350 г'],['Походження','Власна пасіка, Україна'],['Термін зберігання','24 місяці'],['Умови зберігання','Сухе, темне місце, до +20°C']], []],
             ['honey', 'Мед соняшниковий, 350г', 'Ніжний, швидко кристалізується.', 160, 28, 'img/honey-jar.webp', 0, [['Вага','350 г'],['Походження','Власна пасіка, Україна'],['Термін зберігання','24 місяці'],['Особливість','Швидка природна кристалізація']], []],
             ['honey', 'Набір "Пасічник", 3х350г', 'Три види меду в подарунковій коробці.', 480, 12, 'img/honey-jar.webp', 0, [['Вміст','3 банки по 350 г'],['Походження','Власна пасіка, Україна'],['Упаковка','Подарункова коробка'],['Термін зберігання','24 місяці']], []],
             ['health', 'Прополіс, 30мл', 'Настоянка прополісу на спирту.', 120, 40, null, 0, [['Об\'єм','30 мл'],['Концентрація','20%'],['Форма','Спиртова настоянка'],['Термін зберігання','36 місяців']], []],
@@ -53,13 +53,23 @@ class Seeder
         ];
         foreach ($products as [$cat, $name, $desc, $price, $stock, $img, $featured, $specs, $variants]) {
             $type = $cat === 'films' ? 'video' : ($cat === 'services' ? 'service' : 'product');
+            $photos = $img === null ? [] : (array)$img; // перше — головне, решта — додаткові
             $pid = DB::insert('products', [
                 'category_id' => $catIds[$cat], 'name' => $name, 'slug' => slugify($name),
                 'short_desc' => $desc, 'description' => $desc,
                 'base_price' => $price, 'type' => $type, 'active' => 1, 'featured' => $featured,
-                'made_to_order' => 1, 'image' => $img,
+                'made_to_order' => 1, 'image' => $photos[0] ?? null,
                 'created_at' => now(), 'updated_at' => now(),
             ]);
+            foreach ($photos as $i => $path) {
+                $abs = BOFU_ROOT . '/assets/' . $path;
+                $size = @getimagesize($abs);
+                DB::insert('product_images', [
+                    'product_id' => $pid, 'path' => $path,
+                    'width' => $size[0] ?? 0, 'height' => $size[1] ?? 0,
+                    'bytes' => @filesize($abs) ?: 0, 'sort' => $i,
+                ]);
+            }
             foreach ($specs as $i => [$aname, $avalue]) {
                 DB::insert('product_attrs', ['product_id' => $pid, 'name' => $aname, 'value' => $avalue, 'filterable' => in_array($aname, ['Вага', 'Походження', 'Матеріал', 'Форма'], true) ? 1 : 0, 'sort' => $i]);
             }

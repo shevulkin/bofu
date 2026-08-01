@@ -11,9 +11,12 @@ class Media
     public static function usage(string $path): array
     {
         $uses = [];
+        // фото товару: будь-яке з галереї або призначене головним
         foreach (DB::all(
-            'SELECT DISTINCT p.id, p.name FROM product_images pi JOIN products p ON p.id = pi.product_id WHERE pi.path = ?',
-            [$path]
+            'SELECT DISTINCT p.id, p.name FROM products p
+             LEFT JOIN product_images pi ON pi.product_id = p.id AND pi.path = ?
+             WHERE pi.id IS NOT NULL OR p.image = ?',
+            [$path, $path]
         ) as $p) {
             $uses[] = ['label' => 'Товар: ' . $p['name'], 'url' => url('/admin/products/' . $p['id'])];
         }

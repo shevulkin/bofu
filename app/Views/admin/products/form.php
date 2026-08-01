@@ -153,15 +153,33 @@ $canStore = fn(int $sid): bool => Auth::isAdmin() || in_array($sid, Auth::storeI
 <?php if (!$isNew): ?>
 <div class="admin-card" style="margin-top:22px">
   <h2 class="h-serif">Фотографії</h2>
+  <p class="dim" style="margin:0 0 14px">Перше фото — головне: воно у каталозі, кошику та при поширенні в соцмережах.
+    Решта показуються мініатюрами на сторінці товару в цьому ж порядку.</p>
   <div class="img-grid">
-    <?php foreach ($images as $img): ?>
-      <div class="img-cell" style="position:relative">
-        <img src="<?= e(asset(Images::thumbPath($img['path']))) ?>" alt="">
-        <form method="post" action="<?= e(url('/admin/products/' . $p['id'])) ?>" style="position:absolute;top:4px;right:4px"><?= Csrf::field() ?>
+    <?php $last = count($images) - 1; foreach ($images as $i => $img): $isMain = $i === 0; ?>
+      <div class="img-cell<?= $isMain ? ' is-main' : '' ?>">
+        <img src="<?= e(asset(Images::displayThumb($img['path']))) ?>" alt="">
+        <?php if ($isMain): ?><span class="img-badge">Головне</span><?php endif; ?>
+        <form method="post" action="<?= e(url('/admin/products/' . $p['id'])) ?>" class="img-del"><?= Csrf::field() ?>
           <input type="hidden" name="_action" value="delete_image">
           <input type="hidden" name="image_id" value="<?= (int)$img['id'] ?>">
           <button class="btn btn-danger btn-xs" style="padding:3px 8px" title="Прибрати з товару" onclick="return confirm('Прибрати фото з товару?')">✕</button>
         </form>
+        <div class="img-actions">
+          <form method="post" action="<?= e(url('/admin/products/' . $p['id'])) ?>"><?= Csrf::field() ?>
+            <input type="hidden" name="_action" value="move_image">
+            <input type="hidden" name="image_id" value="<?= (int)$img['id'] ?>">
+            <button class="btn btn-line btn-xs" name="dir" value="up" title="Раніше" <?= $i === 0 ? 'disabled' : '' ?>>←</button>
+            <button class="btn btn-line btn-xs" name="dir" value="down" title="Пізніше" <?= $i === $last ? 'disabled' : '' ?>>→</button>
+          </form>
+          <?php if (!$isMain): ?>
+            <form method="post" action="<?= e(url('/admin/products/' . $p['id'])) ?>"><?= Csrf::field() ?>
+              <input type="hidden" name="_action" value="main_image">
+              <input type="hidden" name="image_id" value="<?= (int)$img['id'] ?>">
+              <button class="btn btn-line btn-xs" title="Зробити головним">★ Головне</button>
+            </form>
+          <?php endif; ?>
+        </div>
         <span class="dim"><?= (int)$img['width'] ?>×<?= (int)$img['height'] ?> · <?= round($img['bytes'] / 1024) ?> КБ</span>
       </div>
     <?php endforeach; ?>
