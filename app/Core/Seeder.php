@@ -158,6 +158,9 @@ class Seeder
             'notify_all_enabled' => '1', 'notify_telegram_enabled' => '1',
             'notify_email_enabled' => '1', 'notify_push_enabled' => '1',
             'sale_banner_active' => '0', 'sale_banner_text' => 'Сезонна знижка на мед!', 'sale_banner_percent' => '15',
+            // новий сайт стартує закритим від пошуковиків — щоб недороблена вітрина
+            // не потрапила у видачу. В адмінці про це висить помітне нагадування.
+            'seo_noindex' => '1',
             'telegram_bot_token' => '', 'np_api_key' => '', 'mail_from' => '',
             'google_client_id' => '', 'google_client_secret' => '',
             'seo_title' => 'Beekeeper of Ukraine — мед, продукти бджільництва, курси',

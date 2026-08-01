@@ -14,6 +14,18 @@
     </div>
   </div>
   <div class="admin-card">
+    <h2 class="h-serif">Видимість для пошукових систем</h2>
+    <label class="toggle">
+      <input type="checkbox" name="seo_noindex" <?= Settings::bool('seo_noindex') ? 'checked' : '' ?>>
+      <span class="tr"></span> Закрити сайт від пошукових систем
+    </label>
+    <p class="dim" style="margin:14px 0 0">Поки увімкнено: у <code>robots.txt</code> стоїть <code>Disallow: /</code>,
+      на кожній сторінці — <code>noindex, nofollow</code>, карта сайту порожня. Зручно на час налаштування й тестів.
+      <b style="color:var(--gold)">Не забудьте вимкнути перед запуском</b> — інакше сайт не потрапить у Google.</p>
+    <p class="dim" style="margin:8px 0 0">Це не захист: сторінки лишаються доступними всім, хто знає адресу.
+      Пошуковики просто не додають їх у видачу, а вже проіндексовані зникають протягом кількох днів.</p>
+  </div>
+  <div class="admin-card">
     <h2 class="h-serif">Інтеграції та SEO</h2>
     <div class="form-grid">
       <?php foreach ($text_keys as $key => $label): ?>

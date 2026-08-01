@@ -7,7 +7,7 @@ declare(strict_types=1);
  */
 class Schema
 {
-    public const VERSION = 8;
+    public const VERSION = 9;
 
     /** Оновлення існуючої бази до поточної версії без втрати даних */
     public static function upgrade(): void
@@ -64,6 +64,13 @@ class Schema
             self::createAll(); // rate_hits
             foreach (DB::all("SELECT id FROM orders WHERE token IS NULL OR token = ''") as $o) {
                 DB::update('orders', ['token' => bin2hex(random_bytes(16))], 'id = ?', [$o['id']]);
+            }
+        }
+        if ($ver < 9) {
+            // після чистки в ver<7 демо-акаунти лишились без телефону й упирались у гейт —
+            // повертаємо те, що мала зробити зламана міграція ver<2
+            foreach (DB::all("SELECT id FROM users WHERE email LIKE '%@bofu.local' AND (phone IS NULL OR phone = '')") as $u) {
+                DB::update('users', ['phone' => '+3806700000' . str_pad((string)$u['id'], 2, '0', STR_PAD_LEFT)], 'id = ?', [$u['id']]);
             }
         }
         Settings::set('schema_version', (string)self::VERSION);

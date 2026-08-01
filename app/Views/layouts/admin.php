@@ -54,6 +54,12 @@
     </div>
   </aside>
   <main class="admin-main">
+    <?php if (Settings::bool('seo_noindex')): ?>
+      <div class="flash" style="padding:0;margin:0 0 16px"><div class="flash-error">
+        🔒 Сайт закрито від пошукових систем. Перед запуском вимкніть це в
+        <a href="<?= e(url('/admin/settings')) ?>" style="color:inherit;text-decoration:underline">Налаштуваннях</a>.
+      </div></div>
+    <?php endif; ?>
     <?php if ($msg = flash('success')): ?><div class="flash" style="padding:0;margin:0 0 16px"><div class="flash-success"><?= e($msg) ?></div></div><?php endif; ?>
     <?php if ($msg = flash('error')): ?><div class="flash" style="padding:0;margin:0 0 16px"><div class="flash-error"><?= e($msg) ?></div></div><?php endif; ?>
     <?= $content ?>

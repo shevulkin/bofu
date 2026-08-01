@@ -34,6 +34,8 @@ class SettingsAdmin
             foreach (self::TOGGLES as $key => $label) {
                 Settings::set($key, isset($_POST['toggle'][$key]) ? '1' : '0');
             }
+            // окремо від TOGGLES: там усе типово увімкнене, а індексація має бути дозволена за замовчуванням
+            Settings::set('seo_noindex', isset($_POST['seo_noindex']) ? '1' : '0');
             $oldViber = Settings::get('viber_bot_token', '');
             foreach (self::TEXT_KEYS as $key => $label) {
                 if (isset($_POST['text'][$key])) Settings::set($key, trim($_POST['text'][$key]));
