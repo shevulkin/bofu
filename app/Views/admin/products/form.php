@@ -41,6 +41,10 @@ $canStore = fn(int $sid): bool => Auth::isAdmin() || in_array($sid, Auth::storeI
       <label class="checkbox"><input type="checkbox" name="featured" <?= ($p['featured'] ?? 0) ? 'checked' : '' ?>> Рекомендований (на головній)</label>
       <label class="checkbox"><input type="checkbox" name="made_to_order" <?= ($p['made_to_order'] ?? 1) ? 'checked' : '' ?>> Виготовляємо під замовлення</label>
     </div>
+    <div class="field" style="max-width:360px">
+      <label>Поріг «закінчується», шт.</label>
+      <input type="number" min="0" step="1" name="low_stock_threshold" value="<?= e($p['low_stock_threshold'] ?? '') ?>" placeholder="порожньо — показувати просто «в наявності»">
+    </div>
   </div>
 
   <?php if (!$isNew): ?>

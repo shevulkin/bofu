@@ -7,7 +7,7 @@ declare(strict_types=1);
  */
 class Schema
 {
-    public const VERSION = 3;
+    public const VERSION = 4;
 
     /** Оновлення існуючої бази до поточної версії без втрати даних */
     public static function upgrade(): void
@@ -38,6 +38,9 @@ class Schema
             self::addColumn('product_attrs', 'attribute_id', 'int null');
             self::addColumn('product_attrs', 'value_id', 'int null');
             Attrs::backfill();
+        }
+        if ($ver < 4) {
+            self::addColumn('products', 'low_stock_threshold', 'int null');
         }
         Settings::set('schema_version', (string)self::VERSION);
     }
@@ -79,6 +82,7 @@ class Schema
                 'unit' => 'str null',
                 'active' => 'bool default 1', 'featured' => 'bool default 0',
                 'made_to_order' => 'bool default 1', // виробник: можна замовити без наявності
+                'low_stock_threshold' => 'int null', // ≤ цього — показуємо "закінчується" замість числа
                 'image' => 'str null',
                 'created_at' => 'ts', 'updated_at' => 'ts',
             ],

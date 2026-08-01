@@ -1,4 +1,7 @@
-<?php /** @var array $prod */ [$pr, $old] = Catalog::price($prod); ?>
+<?php /** @var array $prod */
+$cardVariant = Catalog::variants((int)$prod['id'])[0] ?? null;
+[$pr, $old] = Catalog::price($prod, $cardVariant);
+?>
 <div class="card">
   <a class="card-img" href="<?= e(url('/product/' . $prod['slug'])) ?>">
     <?php $photo = Catalog::photo($prod); if ($photo): ?>
@@ -11,9 +14,10 @@
     <div class="card-title"><a href="<?= e(url('/product/' . $prod['slug'])) ?>"><?= e($prod['name']) ?></a></div>
     <div class="card-desc"><?= e($prod['short_desc'] ?? '') ?></div>
     <div class="card-foot">
-      <span class="price"><?php if ($old !== null): ?><s><?= e(price_fmt($old)) ?></s><?php endif; ?><?= e(price_fmt($pr)) ?></span>
+      <span class="price"><?php if ($old !== null): ?><s><?= e(price_fmt($old)) ?></s><?php endif; ?><?= e(price_label($pr, (bool)$prod['made_to_order'])) ?></span>
       <form method="post" action="<?= e(url('/cart/add')) ?>" class="add-cart-form" data-product-name="<?= e($prod['name']) ?>"><?= Csrf::field() ?>
         <input type="hidden" name="product_id" value="<?= (int)$prod['id'] ?>">
+        <?php if ($cardVariant): ?><input type="hidden" name="variant_id" value="<?= (int)$cardVariant['id'] ?>"><?php endif; ?>
         <input type="hidden" name="back" value="<?= e(request_path()) ?>">
         <button class="btn btn-gold btn-sm" type="submit">До кошика</button>
       </form>

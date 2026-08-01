@@ -89,6 +89,7 @@ class Products
                 'active' => isset($_POST['active']) ? 1 : 0,
                 'featured' => isset($_POST['featured']) ? 1 : 0,
                 'made_to_order' => isset($_POST['made_to_order']) ? 1 : 0,
+                'low_stock_threshold' => ($_POST['low_stock_threshold'] ?? '') === '' ? null : (int)$_POST['low_stock_threshold'],
                 'created_at' => now(), 'updated_at' => now(),
             ]);
             flash('success', 'Товар створено — додайте фото, атрибути та ціни');
@@ -218,6 +219,7 @@ class Products
             'active' => isset($_POST['active']) ? 1 : 0,
             'featured' => isset($_POST['featured']) ? 1 : 0,
             'made_to_order' => isset($_POST['made_to_order']) ? 1 : 0,
+            'low_stock_threshold' => ($_POST['low_stock_threshold'] ?? '') === '' ? null : (int)$_POST['low_stock_threshold'],
             'updated_at' => now(),
         ], 'id = ?', [$id]);
 

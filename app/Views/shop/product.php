@@ -55,7 +55,7 @@
           <div style="display:flex;align-items:center;gap:18px;margin:22px 0">
             <span class="price" style="font-size:30px">
               <s id="priceOld" <?= $old_price === null ? 'hidden' : '' ?>><?= $old_price !== null ? e(price_fmt($old_price)) : '' ?></s>
-              <span id="priceNow"><?= e(price_fmt($price)) ?></span>
+              <span id="priceNow"><?= e(price_label($price, (bool)$p['made_to_order'])) ?></span>
             </span>
             <div class="qty-box">
               <button type="button" onclick="var i=this.parentNode.querySelector('input');i.value=Math.max(1,+i.value-1)">−</button>
@@ -66,6 +66,7 @@
           </div>
         </form>
 
+        <?php $lowStock = ($p['low_stock_threshold'] ?? null) !== null && $p['low_stock_threshold'] !== '' ? (int)$p['low_stock_threshold'] : null; ?>
         <div class="availability" id="availability">
           <?php $anyStock = false; foreach ($availability as $av): $sid = (int)$av['store']['id']; $anyStock = $anyStock || $av['qty'] > 0; ?>
             <span class="<?= $av['qty'] > 0 ? 'yes' : 'no' ?>" data-store="<?= $sid ?>"
@@ -73,7 +74,7 @@
                   data-label="<?= e($av['store']['name'] . ($av['store']['city'] ? ' (' . $av['store']['city'] . ')' : '')) ?>"
                   data-price="<?= $av['price'] !== null && $av['price'] != $price ? e(price_fmt($av['price'])) : '' ?>">
               <span class="av-text"><?= e($av['store']['name'] . ($av['store']['city'] ? ' (' . $av['store']['city'] . ')' : '')) ?>:
-              <?= $av['qty'] > 0 ? 'в наявності — ' . (int)$av['qty'] . ' шт.' : 'немає' ?>
+              <?= $av['qty'] > 0 ? ($lowStock !== null && $av['qty'] <= $lowStock ? 'закінчується' : 'в наявності') : 'немає' ?>
               <?php if ($av['price'] !== null && $av['price'] != $price): ?> · ціна тут: <?= e(price_fmt($av['price'])) ?><?php endif; ?></span>
             </span>
           <?php endforeach; ?>
@@ -113,6 +114,7 @@
       <script>
         window.BOFU_VARIANTS = <?= json_encode($variant_data, JSON_UNESCAPED_UNICODE) ?>;
         window.BOFU_MADE_TO_ORDER = <?= $p['made_to_order'] ? 'true' : 'false' ?>;
+        window.BOFU_LOW_STOCK_THRESHOLD = <?= $lowStock !== null ? $lowStock : 'null' ?>;
       </script>
     <?php endif; ?>
 
