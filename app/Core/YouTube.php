@@ -39,22 +39,18 @@ class YouTube
             $yt = $e->children('http://www.youtube.com/xml/schemas/2015');
             $vid = (string)$yt->videoId;
             if (!$vid) continue;
+            // Пропускаємо шортси: /shorts/<id> віддає 200, звичайне відео — редірект
+            if (self::headStatus('https://www.youtube.com/shorts/' . $vid) === 200) continue;
             $out[] = [
                 'id' => $vid,
                 'title' => (string)$e->title,
                 'url' => 'https://www.youtube.com/watch?v=' . $vid,
                 'thumb' => 'https://i.ytimg.com/vi/' . $vid . '/hqdefault.jpg',
                 'published' => substr((string)$e->published, 0, 10),
+                'is_short' => false,
             ];
             if (count($out) >= 8) break;
         }
-        // Позначаємо шортси: /shorts/<id> віддає 200, звичайне відео — редірект
-        foreach ($out as &$v) {
-            $st = self::headStatus('https://www.youtube.com/shorts/' . $v['id']);
-            $v['is_short'] = ($st === 200);
-            if ($v['is_short']) $v['url'] = 'https://www.youtube.com/shorts/' . $v['id'];
-        }
-        unset($v);
         return $out;
     }
 
