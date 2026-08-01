@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 namespace Controllers;
 
-use DB, View, Cart, Csrf, Auth, Catalog, Notify, Settings, AuthTokens, Newsletter, RateLimit;
+use DB, View, Cart, Csrf, Auth, Catalog, OrderFlow, Settings, AuthTokens, Newsletter, RateLimit;
 
 class Checkout
 {
@@ -93,62 +93,29 @@ class Checkout
         // посилання йде за окремим випадковим токеном
         $token = bin2hex(random_bytes(16));
 
-        $orderId = DB::tx(function () use ($number, $token, $name, $phone, $email, $delivery, $storeId, $totals, $promo) {
-            $orderId = DB::insert('orders', [
-                'number' => $number, 'token' => $token, 'user_id' => Auth::id(),
-                'name' => $name, 'phone' => $phone, 'email' => $email,
-                'delivery' => $delivery,
-                'city' => trim($_POST['city'] ?? '') ?: null,
-                'np_office' => trim($_POST['np_office'] ?? '') ?: null,
-                'address' => trim($_POST['address'] ?? '') ?: null,
-                'comment' => trim($_POST['comment'] ?? '') ?: null,
-                'store_id' => $storeId,
-                'status' => 'new', 'promo_code' => $promo['code'] ?? null,
-                'subtotal' => $totals['subtotal'], 'discount' => $totals['discount'], 'total' => $totals['total'],
-                'created_at' => now(),
-            ]);
-            foreach (Cart::detailed($storeId) as $r) {
-                DB::insert('order_items', [
-                    'order_id' => $orderId,
-                    'product_id' => $r['product']['id'], 'variant_id' => $r['variant']['id'] ?? null,
-                    'title' => $r['product']['name'], 'variant_name' => $r['variant']['name'] ?? null,
-                    'price' => $r['price'] ?? 0, 'qty' => $r['qty'], 'sum' => $r['sum'] ?? 0,
-                ]);
-                // списання залишків саме того варіанта, що замовили:
-                // з обраного магазину або з того, де його найбільше
-                $pid = (int)$r['product']['id'];
-                $vid = isset($r['variant']['id']) ? (int)$r['variant']['id'] : null;
-                // товар з варіантами без вибраного варіанта (старий кошик) — списувати нема з чого
-                if ($vid === null && Catalog::hasVariants($pid)) continue;
-                $byStore = Catalog::stockByStore($pid, $vid);
-                $sid = $storeId;
-                if (!$sid) {
-                    arsort($byStore);
-                    foreach ($byStore as $candidate => $qty) { if ($qty > 0) { $sid = $candidate; break; } }
-                }
-                if ($sid) {
-                    $fn = DB::driver() === 'sqlite' ? 'MAX' : 'GREATEST';
-                    $cond = $vid === null ? 'variant_id IS NULL' : 'variant_id = ?';
-                    $params = [$r['qty'], $pid, $sid];
-                    if ($vid !== null) $params[] = $vid;
-                    DB::query("UPDATE store_stock SET qty = $fn(0, qty - ?) WHERE product_id = ? AND store_id = ? AND $cond", $params);
-                }
-            }
-            return $orderId;
-        });
+        // Замовлення завжди розкладається на підзамовлення по магазинах-виконавцях:
+        // покупець бачить одне замовлення, кожен продавець — свою частину (див. OrderFlow).
+        $placed = OrderFlow::place([
+            'number' => $number, 'token' => $token, 'user_id' => Auth::id(),
+            'name' => $name, 'phone' => $phone, 'email' => $email,
+            'delivery' => $delivery,
+            'city' => trim($_POST['city'] ?? '') ?: null,
+            'np_office' => trim($_POST['np_office'] ?? '') ?: null,
+            'address' => trim($_POST['address'] ?? '') ?: null,
+            'comment' => trim($_POST['comment'] ?? '') ?: null,
+            'store_id' => $storeId,
+            'status' => 'new', 'promo_code' => $promo['code'] ?? null,
+            'subtotal' => $totals['subtotal'], 'discount' => $totals['discount'], 'total' => $totals['total'],
+            'created_at' => now(),
+        ], Cart::detailed($storeId), $storeId);
 
         // Розсилка — лише за явною галкою і лише коли вказано email
         if ($email) {
             Newsletter::apply(!empty($_POST['newsletter']), $email, $name, Auth::id(), 'checkout');
         }
 
-        $storeName = $storeId ? (DB::val('SELECT name FROM stores WHERE id = ?', [$storeId]) ?? '—') : 'Онлайн';
-        Notify::fire('order_new', [
-            'number' => $number, 'name' => $name, 'phone' => $phone,
-            'delivery' => ['np' => 'Нова Пошта', 'pickup' => 'Самовивіз', 'other' => 'Інше'][$delivery],
-            'total' => number_format($totals['total'], 2, '.', ' '),
-            'store' => $storeName,
-        ], $storeId);
+        // Сповіщення йде окремо на кожен магазин — це його завдання, а не все замовлення
+        foreach ($placed['children'] as $child) OrderFlow::notifyNew($child);
 
         Cart::clear();
         unset($_SESSION['promo_code']);
@@ -158,17 +125,39 @@ class Checkout
     /** Підтвердження замовлення — лише за токеном із редіректу, номер для цього не годиться */
     public static function success(string $token): never
     {
-        $order = DB::row('SELECT * FROM orders WHERE token = ?', [$token]);
+        $order = DB::row('SELECT * FROM orders WHERE token = ? AND parent_id IS NULL', [$token]);
         if (!$order) { flash('error', 'Замовлення не знайдено.'); redirect('/'); }
-        View::show('cart/success', ['order' => $order, 'page_title' => 'Замовлення прийнято — ' . cfg('app_name')]);
+        $children = OrderFlow::children((int)$order['id']);
+        View::show('cart/success', [
+            'order' => $order,
+            'children' => $children,
+            'items' => self::itemsByOrder($children),
+            'page_title' => 'Замовлення прийнято — ' . cfg('app_name'),
+        ]);
     }
 
+    /** Кабінет покупця: одне замовлення = одна картка, всередині — частини магазинів */
     public static function myOrders(): never
     {
         if (!Auth::check()) { flash('error', 'Увійдіть, щоб бачити свої замовлення.'); redirect('/'); }
-        $orders = DB::all('SELECT * FROM orders WHERE user_id = ? ORDER BY id DESC', [Auth::id()]);
-        $items = [];
-        foreach ($orders as $o) $items[$o['id']] = DB::all('SELECT * FROM order_items WHERE order_id = ?', [$o['id']]);
-        View::show('account/orders', ['orders' => $orders, 'items' => $items, 'page_title' => 'Мої замовлення — ' . cfg('app_name')]);
+        $orders = DB::all('SELECT * FROM orders WHERE user_id = ? AND parent_id IS NULL ORDER BY id DESC', [Auth::id()]);
+        $children = []; $items = [];
+        foreach ($orders as $o) {
+            $kids = OrderFlow::children((int)$o['id']);
+            $children[$o['id']] = $kids;
+            $items += self::itemsByOrder($kids);
+        }
+        View::show('account/orders', [
+            'orders' => $orders, 'children' => $children, 'items' => $items,
+            'page_title' => 'Мої замовлення — ' . cfg('app_name'),
+        ]);
+    }
+
+    /** @return array<int,array> позиції, згруповані за id підзамовлення */
+    private static function itemsByOrder(array $orders): array
+    {
+        $out = [];
+        foreach ($orders as $o) $out[(int)$o['id']] = OrderFlow::items((int)$o['id']);
+        return $out;
     }
 }

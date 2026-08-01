@@ -7,7 +7,7 @@ declare(strict_types=1);
  */
 class Schema
 {
-    public const VERSION = 9;
+    public const VERSION = 10;
 
     /** Оновлення існуючої бази до поточної версії без втрати даних */
     public static function upgrade(): void
@@ -73,7 +73,45 @@ class Schema
                 DB::update('users', ['phone' => '+3806700000' . str_pad((string)$u['id'], 2, '0', STR_PAD_LEFT)], 'id = ?', [$u['id']]);
             }
         }
+        if ($ver < 10) {
+            // замовлення розділяється на підзамовлення по магазинах
+            self::addColumn('orders', 'parent_id', 'int null');
+            self::addColumn('orders', 'seq', 'int default 0');
+            self::createAll(); // order_events
+            self::splitLegacyOrders();
+        }
         Settings::set('schema_version', (string)self::VERSION);
+    }
+
+    /**
+     * Старі замовлення переводимо в нову модель: кожне дістає одне підзамовлення,
+     * куди переїжджають його позиції. Магазин — той, що вже вказаний у замовленні
+     * (самовивіз), інакше магазин за замовчуванням. Так у коді лишається один шлях:
+     * позиції завжди лежать у підзамовленні.
+     */
+    private static function splitLegacyOrders(): void
+    {
+        // позиції, що лежать просто в замовленні, — ознака старої моделі (і захист від повторного запуску)
+        $rows = DB::all(
+            'SELECT * FROM orders o WHERE o.parent_id IS NULL
+             AND EXISTS (SELECT 1 FROM order_items i WHERE i.order_id = o.id)');
+        foreach ($rows as $o) {
+            $parentId = (int)$o['id'];
+            $storeId = $o['store_id'] ? (int)$o['store_id'] : OrderFlow::defaultStoreId();
+            DB::tx(function () use ($o, $parentId, $storeId) {
+                $data = ['parent_id' => $parentId, 'seq' => 1,
+                    'number' => $o['number'] . '/1', 'token' => null,
+                    'store_id' => $storeId ?: null, 'status' => $o['status'],
+                    'subtotal' => $o['subtotal'], 'discount' => $o['discount'], 'total' => $o['total'],
+                    'created_at' => $o['created_at'] ?: now()];
+                foreach (['user_id', 'name', 'phone', 'email', 'delivery', 'city', 'np_office',
+                          'address', 'comment', 'promo_code'] as $f) $data[$f] = $o[$f] ?? null;
+                $childId = DB::insert('orders', $data);
+                DB::update('order_items', ['order_id' => $childId], 'order_id = ?', [$parentId]);
+                OrderFlow::log($parentId, $childId, 'created',
+                    'Замовлення переведено в модель підзамовлень при оновленні бази.');
+            });
+        }
     }
 
     /**
@@ -192,8 +230,12 @@ class Schema
             'promo_codes' => [
                 'id' => 'id', 'code' => 'str unique', 'percent' => 'num', 'active' => 'bool default 1', 'expires_at' => 'str null',
             ],
+            // Головне замовлення: parent_id IS NULL. Підзамовлення магазину: parent_id = головне,
+            // store_id = магазин-виконавець, seq = його порядковий номер у замовленні.
+            // Позиції (order_items) лежать лише в підзамовленнях — див. OrderFlow.
             'orders' => [
                 'id' => 'id', 'number' => 'str unique', 'token' => 'str null', 'user_id' => 'int null',
+                'parent_id' => 'int null', 'seq' => 'int default 0',
                 'name' => 'str', 'phone' => 'str', 'email' => 'str null',
                 'delivery' => 'str', 'city' => 'str null', 'np_office' => 'str null',
                 'address' => 'str null', 'comment' => 'text null',
@@ -206,6 +248,13 @@ class Schema
             'order_items' => [
                 'id' => 'id', 'order_id' => 'int', 'product_id' => 'int null', 'variant_id' => 'int null',
                 'title' => 'str', 'variant_name' => 'str null', 'price' => 'num', 'qty' => 'int', 'sum' => 'num',
+            ],
+            // Історія замовлення: розділення, зміни статусів, передачі позицій між магазинами.
+            // parent_id — завжди головне замовлення, щоб уся стрічка читалась одним запитом.
+            'order_events' => [
+                'id' => 'id', 'parent_id' => 'int', 'order_id' => 'int null', 'user_id' => 'int null',
+                'type' => 'str', // created|status|transfer|note
+                'message' => 'text null', 'created_at' => 'ts',
             ],
             'diplomas' => [
                 'id' => 'id', 'number' => 'str unique', 'student' => 'str', 'course' => 'str null',
@@ -270,7 +319,8 @@ class Schema
             'variant_options' => ['variant_id', 'attribute_id'],
             'store_prices' => ['product_id', 'store_id', 'variant_id'],
             'store_stock' => ['product_id', 'store_id', 'variant_id'],
-            'orders' => ['status', 'store_id', 'user_id', 'token'],
+            'orders' => ['status', 'store_id', 'user_id', 'token', 'parent_id'],
+            'order_events' => ['parent_id'],
             'rate_hits' => ['action', 'ident', 'created_at'],
             'subscribers' => ['token'],
             'order_items' => ['order_id'],
