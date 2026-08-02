@@ -88,7 +88,11 @@ class AuthController
     public static function phoneStart(): never
     {
         Csrf::verify();
-        $phone = AuthTokens::normPhone($_POST['phone'] ?? '');
+        // normPhoneAny, а не normPhone: у базі номер уже лежить у E.164, і код
+        // летить у Telegram чи Viber — країна тут ні на що не впливає. З вузьким
+        // правилом закордонний покупець, який замовляв із номером +49, не міг
+        // увійти власним номером: сайт його приймав, а вхід — ні.
+        $phone = AuthTokens::normPhoneAny($_POST['phone'] ?? '');
         if (!$phone) json_response(['ok' => false, 'error' => 'Некоректний номер']);
         $user = DB::row('SELECT * FROM users WHERE phone = ? AND active = 1', [$phone]);
         if (!$user || (empty($user['tg_chat_id']) && empty($user['viber_id']))) {

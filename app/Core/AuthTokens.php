@@ -20,7 +20,13 @@ class AuthTokens
         return DB::row('SELECT * FROM auth_tokens WHERE token = ? AND purpose = ? AND expires_at > ?', [$token, $purpose, now()]);
     }
 
-    /** Нормалізація телефону до +380XXXXXXXXX */
+    /**
+     * Український номер → +380XXXXXXXXX.
+     *
+     * Це половина правила, а не окремий режим: за межами normPhoneAny() і тестів
+     * її ніхто не викликає, і не варто. Форми, вхід і гейт мають судити однаково,
+     * інакше номер, з яким людина замовляла, раптом не годиться для входу.
+     */
     public static function normPhone(string $phone): ?string
     {
         $d = preg_replace('/\D/', '', $phone);

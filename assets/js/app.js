@@ -232,30 +232,28 @@
    * Чому саме не підходить. «Неправильний номер» не каже, що робити далі, —
    * а людина здебільшого помилилась в одній цифрі або не поставила плюс.
    */
-  function phoneProblem(raw, intl) {
+  function phoneProblem(raw) {
     var d = phoneDigits(raw);
     var plus = /^\s*\+/.test(raw);
     var foreign = plus && d.indexOf('380') !== 0;
-    var ua10 = '. В українському номері їх 10: 067 123 45 67';
 
     if (d.length === 0) return 'Введіть номер цифрами';
     if (foreign) {
-      if (!intl) return 'Вхід за номером працює лише з українськими. Увійдіть через Google або Telegram';
       if (d.length < 10) return 'Замало цифр для міжнародного номера: ' + d.length + ' — треба щонайменше 10';
       return 'Забагато цифр: ' + d.length + ' — у міжнародному щонайбільше 15';
     }
     // Багато цифр без плюса — майже завжди закордонний номер, набраний як удома
-    if (!plus && d.length > 12 && intl) return 'Схоже на іноземний номер — поставте + і код країни: +' + d;
+    if (!plus && d.length > 12) return 'Схоже на іноземний номер — поставте + і код країни: +' + d;
     if (d.length === 10 && d.charAt(0) !== '0') return 'Український номер починається з нуля: 0' + d.slice(0, 2) + ' …';
     if (d.length < 10) return 'Замало цифр: ' + d.length + ' з 10. Приклад: 067 123 45 67';
-    return 'Забагато цифр: ' + d.length + ua10;
+    return 'Забагато цифр: ' + d.length + '. В українському номері їх 10: 067 123 45 67';
   }
 
   Array.prototype.forEach.call(document.querySelectorAll('input[type=tel]'), function (inp) {
-    // вхід за номером працює лише з українськими (AuthController::phoneStart),
-    // решта форм пускає й закордонних покупців
-    var intl = inp.getAttribute('data-phone') !== 'ua';
-    var norm = intl ? normPhoneAny : normPhoneUA;
+    // Правило одне на всі форми — checkout, профіль, картка користувача, вхід
+    // за номером. Різні правила в різних місцях означали б, що номер, з яким
+    // людина замовляла, раптом не годиться для входу.
+    var norm = normPhoneAny;
     if (!inp.getAttribute('inputmode')) inp.setAttribute('inputmode', 'tel');
     if (!inp.getAttribute('autocomplete')) inp.setAttribute('autocomplete', 'tel');
 
@@ -272,13 +270,12 @@
     function check(strict) {
       var raw = inp.value.trim();
       if (raw === '') {
-        say('', intl ? 'Напр. 067 123 45 67. Іноземний — з кодом країни, через +'
-                     : 'Напр. 067 123 45 67');
+        say('', 'Напр. 067 123 45 67. Іноземний — з кодом країни, через +');
         return !inp.required;
       }
       var ok = norm(raw);
       if (ok) { say('ok', 'Приймемо як ' + ok); return true; }
-      say(strict ? 'bad' : '', strict ? phoneProblem(raw, intl) : 'Дописуйте — поки що номер неповний');
+      say(strict ? 'bad' : '', strict ? phoneProblem(raw) : 'Дописуйте — поки що номер неповний');
       return false;
     }
 
