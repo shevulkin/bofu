@@ -29,7 +29,7 @@ class SettingsAdmin
 
     public static function index(): never
     {
-        Auth::requireAdmin();
+        Auth::requireCap('settings.manage');
         if (is_post()) {
             foreach (self::TOGGLES as $key => $label) {
                 Settings::set($key, isset($_POST['toggle'][$key]) ? '1' : '0');

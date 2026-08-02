@@ -32,6 +32,7 @@ final class RolesTest
             $this->testInvariantExhaustively();
             $this->testStores();
             $this->testWorkStore();
+            $this->testDefaultDeny();
         } finally {
             $this->tearDown();
         }
@@ -219,6 +220,39 @@ final class RolesTest
         $this->ok('продавцю дозволено власну точку', Auth::simulate(Roles::SELLER, $mine) === true);
         $this->as(Roles::SELLER);
         $this->ok('продавцю відмовлено вдавати адміна', Auth::simulate(Roles::ADMIN) === false);
+    }
+
+    /**
+     * Маршрут чи дія без оголошеного права доступні лише тим, хто має всі права.
+     * Саме на цьому тримається те, що забутий гейт закриває доступ, а не відкриває.
+     */
+    private function testDefaultDeny(): void
+    {
+        $this->group('замовчувана відмова');
+        $this->as(Roles::ADMIN);
+        $this->ok('адмін проходить гейт без оголошеного права', Auth::can('*'));
+        $this->as(Roles::SELLER);
+        $this->ok('продавець НЕ проходить такий гейт', !Auth::can('*'));
+        $this->as(Roles::ADMIN, Roles::SELLER);
+        $this->ok('адмін у ролі продавця теж не проходить', !Auth::can('*'));
+        $this->as(Roles::SELLER);
+        $this->ok('невідоме право нікому не дається', !Auth::can('щось.вигадане'));
+
+        // межа продавця, закріплена поіменно: якщо колись розширять — тест впаде й спитає чому
+        $forbidden = ['products.manage', 'catalog.manage', 'stores.manage', 'stores.all',
+            'users.manage', 'settings.manage', 'content.manage', 'media.manage', 'promos.manage',
+            'diplomas.manage', 'subscribers.manage', 'notifications.manage', 'orders.manage'];
+        $leaks = [];
+        $this->as(Roles::SELLER);
+        foreach ($forbidden as $cap) if (Auth::can($cap)) $leaks[] = $cap;
+        $this->ok('продавцю не належить жодне адмінське право', $leaks === []);
+        foreach ($leaks as $l) echo "       протікає: $l\n";
+
+        $this->as(Roles::ADMIN);
+        $missing = [];
+        foreach (array_keys(Roles::CAPS) as $cap) if (!Auth::can($cap)) $missing[] = $cap;
+        $this->ok('адміну належать усі права з реєстру', $missing === []);
+        foreach ($missing as $m) echo "       бракує: $m\n";
     }
 
     /** Робоча точка звужує кабінет, але не роздає доступу */

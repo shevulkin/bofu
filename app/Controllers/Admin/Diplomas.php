@@ -9,7 +9,7 @@ class Diplomas
 {
     public static function index(): never
     {
-        Auth::requireAdmin();
+        Auth::requireCap('diplomas.manage');
         if (is_post()) {
             $action = $_POST['_action'] ?? '';
             if ($action === 'add' && trim($_POST['number'] ?? '') !== '') {

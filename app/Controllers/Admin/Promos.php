@@ -9,7 +9,7 @@ class Promos
 {
     public static function index(): never
     {
-        Auth::requireAdmin();
+        Auth::requireCap('promos.manage');
         if (is_post()) {
             $action = $_POST['_action'] ?? '';
             if ($action === 'add_code' && trim($_POST['code'] ?? '') !== '') {

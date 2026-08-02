@@ -9,7 +9,7 @@ class Notifications
 {
     public static function index(): never
     {
-        Auth::requireAdmin();
+        Auth::requireCap('notifications.manage');
         if (is_post()) {
             foreach ((array)($_POST['rule'] ?? []) as $id => $r) {
                 DB::update('notification_rules', [

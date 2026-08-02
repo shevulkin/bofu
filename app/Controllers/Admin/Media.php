@@ -65,7 +65,7 @@ class Media
     {
         // Медіа-бібліотека спільна для всього сайту (банери, галерея, фото товарів),
         // тому нею керує адмін — інакше продавець одного магазину міняє картинки всім.
-        Auth::requireAdmin();
+        Auth::requireCap('media.manage');
         if (($_GET['format'] ?? '') === 'json') {
             json_response(['items' => self::listAll()]);
         }

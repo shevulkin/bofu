@@ -10,7 +10,7 @@ class Attributes
 {
     public static function index(): never
     {
-        Auth::requireAdmin();
+        Auth::requireCap('catalog.manage');
         if (is_post()) self::handle();
 
         $attrs = Attrs::all(false);
