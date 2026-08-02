@@ -89,13 +89,21 @@
   if (master) {
     var group = document.querySelector('[data-group]');
     var note = group && group.querySelector('.toggle-group-note');
-    master.addEventListener('change', function () {
+    var noChan = document.querySelector('[data-nochan]');
+    var kids = document.querySelectorAll('[data-child]');
+    function sync() {
       if (group) group.classList.toggle('is-off', !master.checked);
       if (note) note.hidden = master.checked;
-      Array.prototype.forEach.call(document.querySelectorAll('[data-child]'), function (c) {
+      var any = false;
+      Array.prototype.forEach.call(kids, function (c) {
         c.disabled = !master.checked;
+        if (c.checked) any = true;
       });
-    });
+      // головний увімкнено, а каналів жодного — виглядає налаштованим і мовчить
+      if (noChan) noChan.hidden = !(master.checked && !any);
+    }
+    master.addEventListener('change', sync);
+    Array.prototype.forEach.call(kids, function (c) { c.addEventListener('change', sync); });
   }
 
   // Користувачі: магазини існують лише разом із роллю продавця (Users::saveStores).
