@@ -1,14 +1,57 @@
 <?php
-/** @var array $users @var array $stores @var array $seller_stores @var array $user_roles @var array $assignable */
+/** @var array $users @var array $stores @var array $seller_stores @var array $user_roles
+ *  @var array $assignable @var array $counts @var string $tab @var string $q
+ *  @var int $page @var int $pages @var int $total */
 $tgOn = Telegram::configured();
 $viberOn = Viber::configured();
+// Адреса поточного списку: її кладемо в кожну форму, щоб після збереження
+// повернутись у той самий фільтр і пошук, а не на початок.
+$listUrl = function (array $over = []) use ($tab, $q, $page): string {
+    $p = array_filter(array_merge(['tab' => $tab, 'q' => $q, 'p' => $page], $over),
+        fn($v) => $v !== '' && $v !== null && $v !== 1 && $v !== '1');
+    return '/admin/users' . ($p ? '?' . http_build_query($p) : '');
+};
+$back = $listUrl();
+$tabs = ['staff' => 'Персонал', 'customers' => 'Покупці', 'all' => 'Усі'];
 ?>
 <div class="admin-head"><h1 class="h-serif">Користувачі та ролі</h1></div>
+
+<form class="admin-card users-bar" method="get" action="<?= e(url('/admin/users')) ?>">
+  <input type="hidden" name="tab" value="<?= e($tab) ?>">
+  <div class="users-tabs">
+    <?php foreach ($tabs as $key => $label): ?>
+      <a class="chip <?= $tab === $key ? '' : 'off' ?>" href="<?= e(url($listUrl(['tab' => $key, 'p' => 1]))) ?>">
+        <?= e($label) ?> <span class="dim"><?= (int)($counts[$key] ?? 0) ?></span>
+      </a>
+    <?php endforeach; ?>
+  </div>
+  <div class="users-search">
+    <input type="search" name="q" value="<?= e($q) ?>" placeholder="Пошук: ПІБ, email або телефон">
+    <button class="btn btn-gold btn-sm" type="submit">Знайти</button>
+    <?php if ($q !== ''): ?>
+      <a class="btn btn-line btn-sm" href="<?= e(url($listUrl(['q' => '', 'p' => 1]))) ?>">Скинути</a>
+    <?php endif; ?>
+  </div>
+</form>
+
 <p class="dim" style="margin-bottom:18px">
-  Нові користувачі зʼявляються після входу через Google, Telegram або Viber. Ролей може бути кілька —
-  права підсумовуються. Магазини призначаються людині, а не ролі, і лише поки в неї є роль продавця:
-  знімете роль — вона зникне з усіх точок, і при поверненні ролі їх треба буде обрати наново.
+  <?php if ($q !== ''): ?>
+    Знайдено: <b><?= (int)$total ?></b> за запитом «<?= e($q) ?>».
+  <?php elseif ($tab === 'staff'): ?>
+    Персонал — усі, у кого є хоч одна роль. Магазини призначаються людині, а не ролі,
+    і лише поки в неї є роль продавця: знімете роль — вона зникне з усіх точок.
+  <?php elseif ($tab === 'customers'): ?>
+    Покупці — ті, хто входив на сайт, але не має жодної ролі. Гості, які замовляли без входу,
+    сюди не потрапляють: їхні контакти лежать у самому замовленні.
+  <?php else: ?>
+    Усі, хто хоч раз увійшов — через Google, Telegram або Viber.
+  <?php endif; ?>
 </p>
+
+<?php if (!$users): ?>
+  <div class="admin-card dim">Нікого не знайдено. Спробуйте інший запит або вкладку «Усі».</div>
+<?php endif; ?>
+
 <div style="display:flex;flex-direction:column;gap:14px">
   <?php foreach ($users as $u): $uid = (int)$u['id'];
       $has = $user_roles[$uid] ?? [];
@@ -21,6 +64,7 @@ $viberOn = Viber::configured();
       <form class="user-grid" method="post" action="<?= e(url('/admin/users')) ?>">
         <?= Csrf::field() ?>
         <input type="hidden" name="user_id" value="<?= $uid ?>">
+        <input type="hidden" name="back" value="<?= e($back) ?>">
 
         <div>
           <b><?= e($u['name']) ?></b>
@@ -105,6 +149,7 @@ $viberOn = Viber::configured();
           <form method="post" action="<?= e(url('/admin/users/message')) ?>" class="msg-form">
             <?= Csrf::field() ?>
             <input type="hidden" name="user_id" value="<?= $uid ?>">
+            <input type="hidden" name="back" value="<?= e($back) ?>">
             <?php if ($canTg && $canViber): ?>
               <select name="channel">
                 <option value="telegram">Telegram</option>
@@ -122,3 +167,15 @@ $viberOn = Viber::configured();
     </div>
   <?php endforeach; ?>
 </div>
+
+<?php if ($pages > 1): ?>
+  <div class="pager">
+    <?php if ($page > 1): ?>
+      <a class="btn btn-line btn-sm" href="<?= e(url($listUrl(['p' => $page - 1]))) ?>">← Назад</a>
+    <?php endif; ?>
+    <span class="dim">Сторінка <?= (int)$page ?> з <?= (int)$pages ?> · усього <?= (int)$total ?></span>
+    <?php if ($page < $pages): ?>
+      <a class="btn btn-line btn-sm" href="<?= e(url($listUrl(['p' => $page + 1]))) ?>">Далі →</a>
+    <?php endif; ?>
+  </div>
+<?php endif; ?>
