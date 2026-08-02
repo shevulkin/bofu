@@ -7,7 +7,7 @@ declare(strict_types=1);
  */
 class Schema
 {
-    public const VERSION = 13;
+    public const VERSION = 14;
 
     /** Оновлення існуючої бази до поточної версії без втрати даних */
     public static function upgrade(): void
@@ -95,6 +95,10 @@ class Schema
             // що воно не лежить без нагляду і що двоє не роблять те саме
             self::addColumn('orders', 'assigned_user_id', 'int null');
             self::addColumn('orders', 'assigned_at', 'str null');
+        }
+        if ($ver < 14) {
+            // особисті налаштування сповіщень; порожньо = усе, що дозволив адмін
+            self::createAll(); // user_notify_prefs
         }
         Settings::set('schema_version', (string)self::VERSION);
     }
@@ -308,6 +312,13 @@ class Schema
             'content_blocks' => [
                 'key' => 'str primary', 'title' => 'str null', 'body' => 'text null', 'image' => 'str null',
             ],
+            // Особистий вибір користувача: які події й якими каналами він хоче отримувати.
+            // Рядок зʼявляється лише коли людина щось ВИМКНУЛА — відсутність рядка означає
+            // згоду. Так налаштування адміна лишається стелею, а це — фільтром під нею.
+            'user_notify_prefs' => [
+                'id' => 'id', 'user_id' => 'int', 'event' => 'str', 'channel' => 'str',
+                'enabled' => 'bool default 1',
+            ],
             'notification_rules' => [
                 'id' => 'id', 'event' => 'str', 'channel' => 'str', // telegram|push|email
                 'enabled' => 'bool default 1',
@@ -365,6 +376,7 @@ class Schema
             'order_items' => ['order_id'],
             'seller_stores' => ['user_id', 'store_id'],
             'user_roles' => ['user_id', 'role'],
+            'user_notify_prefs' => ['user_id'],
         ];
         foreach ($idx as $table => $columns) {
             foreach ($columns as $col) {
