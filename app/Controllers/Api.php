@@ -16,19 +16,31 @@ class Api
         $resp = self::np($key, 'Address', 'searchSettlements', ['CityName' => $q, 'Limit' => '10']);
         $items = [];
         foreach (($resp['data'][0]['Addresses'] ?? []) as $a) {
-            $items[] = ['ref' => $a['DeliveryCity'] ?? '', 'label' => $a['Present'] ?? ''];
+            // Ref населеного пункту, а не DeliveryCity: за DeliveryCity getWarehouses
+            // для частини міст (напр. Кривого Рогу) віддає порожній список
+            if (empty($a['Ref'])) continue;
+            $items[] = ['ref' => $a['Ref'], 'label' => $a['Present'] ?? ''];
         }
         json_response(['items' => $items]);
     }
 
+    /** Відділення й поштомати обраного міста; ?q — фільтр за номером чи адресою */
     public static function npWarehouses(): never
     {
-        $cityRef = trim($_GET['city'] ?? '');
+        $ref = trim($_GET['city'] ?? '');
+        $q = trim($_GET['q'] ?? '');
         $key = Settings::get('np_api_key');
-        if (!$key || !$cityRef) json_response(['items' => []]);
-        $resp = self::np($key, 'Address', 'getWarehouses', ['CityRef' => $cityRef, 'Limit' => '80']);
+        if (!$key || !$ref) json_response(['items' => []]);
+        // Без FindByString довелося б викачувати місто цілком: у Києві це 7700+ точок,
+        // і будь-який ліміт обрізав список на перших відділеннях — поштоматів у ньому
+        // не було взагалі. Тепер шукає сама Нова Пошта — і по номеру, і по вулиці.
+        $props = ['SettlementRef' => $ref, 'Limit' => '50', 'Page' => '1'];
+        if ($q !== '') $props['FindByString'] = $q;
+        $resp = self::np($key, 'Address', 'getWarehouses', $props);
         $items = [];
-        foreach (($resp['data'] ?? []) as $w) $items[] = $w['Description'] ?? '';
+        foreach (($resp['data'] ?? []) as $w) {
+            if (!empty($w['Description'])) $items[] = $w['Description'];
+        }
         json_response(['items' => $items]);
     }
 
