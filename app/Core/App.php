@@ -173,6 +173,7 @@ class App
             '/admin/content'            => [$A.'ContentAdmin', 'index', 'content.manage'],
             '/admin/media'              => [$A.'Media', 'index', 'media.manage'],
             '/admin/settings'           => [$A.'SettingsAdmin', 'index', 'settings.manage'],
+            '/admin/settings/check'     => [$A.'SettingsAdmin', 'check', 'settings.manage'],
             '/admin/notifications'      => [$A.'Notifications', 'index', 'notifications.manage'],
         ];
         if (isset($routes[$path])) {

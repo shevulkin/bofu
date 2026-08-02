@@ -12,7 +12,7 @@ class WebPush
         $pub = Settings::get('vapid_public');
         $priv = Settings::get('vapid_private');
         if (!$pub || !$priv) {
-            $res = openssl_pkey_new(['curve_name' => 'prime256v1', 'private_key_type' => OPENSSL_KEYTYPE_EC]);
+            $res = self::newKey();
             if ($res === false) return ['', ''];
             $det = openssl_pkey_get_details($res);
             $x = $det['ec']['x']; $y = $det['ec']['y']; $d = $det['ec']['d'];
@@ -22,6 +22,35 @@ class WebPush
             Settings::set('vapid_private', $priv);
         }
         return [$pub, $priv];
+    }
+
+    /**
+     * Ключ P-256 для VAPID.
+     *
+     * На Linux (де стоїть бойовий сайт) працює перший же виклик. На Windows із
+     * XAMPP openssl не знаходить свій openssl.cnf і падає з «configuration file
+     * routines::no such file» — а назовні це виглядало просто як «пуші не
+     * працюють», без жодної підказки. Тому за невдачі пробуємо явно вказати
+     * конфіг із типових місць XAMPP.
+     */
+    private static function newKey()
+    {
+        $args = ['curve_name' => 'prime256v1', 'private_key_type' => OPENSSL_KEYTYPE_EC];
+        $res = @openssl_pkey_new($args);
+        if ($res !== false) return $res;
+
+        while (openssl_error_string()) {}   // черга помилок не має текти в наступні виклики
+        foreach ([
+            getenv('OPENSSL_CONF') ?: null,
+            'C:/xampp/apache/conf/openssl.cnf',
+            'C:/xampp/php/extras/ssl/openssl.cnf',
+        ] as $cnf) {
+            if (!$cnf || !is_file($cnf)) continue;
+            $res = @openssl_pkey_new($args + ['config' => $cnf]);
+            if ($res !== false) return $res;
+            while (openssl_error_string()) {}
+        }
+        return false;
     }
 
     public static function sendToAll(array $subs, array $payload): void

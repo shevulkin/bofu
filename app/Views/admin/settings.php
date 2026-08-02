@@ -53,6 +53,15 @@
         </div>
       <?php endforeach; ?>
     </div>
+    <?php /* Перевірка бере значення просто з полів і нічого не зберігає — інакше
+             помилковий токен осідав би в базі ще до того, як стало ясно, що він
+             помилковий. Виклики лише читальні: webhook не переставляємо, листів
+             і повідомлень не шлемо, бо вони пішли б живим людям. */ ?>
+    <div class="check-bar">
+      <button class="btn btn-line btn-sm" type="button" id="checkBtn">🔍 Перевірити з&#39;єднання</button>
+      <span class="dim" id="checkNote">Питає Telegram, Viber і Нову Пошту тим, що зараз у полях. Нічого не зберігає.</span>
+    </div>
+    <div id="checkResult" class="check-list" hidden></div>
     <p class="dim">Google OAuth: створіть ключі в Google Cloud Console → OAuth 2.0 Client ID, redirect URI: <code><?= e(GoogleAuth::redirectUri()) ?></code></p>
     <p class="dim">Telegram: створіть бота через @BotFather, вставте токен. Продавці/адміни отримують Chat ID, написавши боту /start (ID показує, напр., @userinfobot).</p>
     <p class="dim">Нова Пошта: безкоштовний API-ключ у особистому кабінеті novaposhta.ua → Налаштування → Безпека.</p>

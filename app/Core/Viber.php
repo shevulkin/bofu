@@ -4,8 +4,12 @@ declare(strict_types=1);
 /** Viber Bot API: сповіщення + підключення/вхід через webhook (працює на публічному HTTPS) */
 class Viber
 {
+    /** Підміна токена для перевірки налаштувань — див. Telegram::useToken() */
+    private static ?string $override = null;
+    public static function useToken(?string $token): void { self::$override = $token; }
+
     public static function token(): string
-    { return (string)Settings::get('viber_bot_token', ''); }
+    { return self::$override ?? (string)Settings::get('viber_bot_token', ''); }
 
     public static function configured(): bool
     { return self::token() !== ''; }
