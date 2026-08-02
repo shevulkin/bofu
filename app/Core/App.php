@@ -168,6 +168,7 @@ class App
             '/admin/promos'             => [$A.'Promos', 'index', 'promos.manage'],
             '/admin/diplomas'           => [$A.'Diplomas', 'index', 'diplomas.manage'],
             '/admin/users'              => [$A.'Users', 'index', 'users.manage'],
+            '/admin/users/message'      => [$A.'Users', 'message', 'users.manage'],
             '/admin/subscribers'        => [$A.'Subscribers', 'index', 'subscribers.manage'],
             '/admin/content'            => [$A.'ContentAdmin', 'index', 'content.manage'],
             '/admin/media'              => [$A.'Media', 'index', 'media.manage'],
