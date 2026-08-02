@@ -48,6 +48,7 @@
     <?php endforeach; ?>
     <div class="sep"></div>
     <a href="<?= e(url('/')) ?>">← На сайт</a>
+    <div style="padding:8px 22px"><?= View::partial('partials/work_store') ?></div>
     <div style="padding:8px 22px"><?= View::partial('partials/role_switch') ?></div>
     <form method="post" action="<?= e(url('/logout')) ?>" style="padding:8px 22px"><?= Csrf::field() ?>
       <button class="btn btn-line btn-xs" type="submit" style="width:100%">Вийти (<?= e($auth_user['name'] ?? '') ?>)</button>

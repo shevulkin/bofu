@@ -102,6 +102,7 @@ class App
         // і під гейтом адмінки з нього не було б виходу
         if ($path === '/role/switch' && $method === 'POST') { Controllers\RoleController::change(); }
         if ($path === '/role/reset' && $method === 'POST') { Controllers\RoleController::reset(); }
+        if ($path === '/role/store' && $method === 'POST') { Controllers\RoleController::store(); }
 
         // --- вітрина ---
         if ($path === '/') { Controllers\Home::index(); }

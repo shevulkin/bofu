@@ -7,7 +7,7 @@ declare(strict_types=1);
  */
 class Schema
 {
-    public const VERSION = 12;
+    public const VERSION = 13;
 
     /** Оновлення існуючої бази до поточної версії без втрати даних */
     public static function upgrade(): void
@@ -89,6 +89,12 @@ class Schema
             // одна людина може працювати і як адмін, і як продавець точки —
             // без ролі запис «хто змінив статус» став неоднозначним
             self::addColumn('order_events', 'role', 'str null');
+        }
+        if ($ver < 13) {
+            // хто взяв підзамовлення в роботу — мітка без замка, лише щоб було видно,
+            // що воно не лежить без нагляду і що двоє не роблять те саме
+            self::addColumn('orders', 'assigned_user_id', 'int null');
+            self::addColumn('orders', 'assigned_at', 'str null');
         }
         Settings::set('schema_version', (string)self::VERSION);
     }
@@ -271,6 +277,8 @@ class Schema
                 'address' => 'str null', 'comment' => 'text null',
                 'store_id' => 'int null',
                 'status' => "str default 'new'", // new|processing|shipped|done|canceled
+                // хто взяв підзамовлення в роботу (мітка, не блокування)
+                'assigned_user_id' => 'int null', 'assigned_at' => 'str null',
                 'promo_code' => 'str null',
                 'subtotal' => 'num default 0', 'discount' => 'num default 0', 'total' => 'num default 0',
                 'created_at' => 'ts',

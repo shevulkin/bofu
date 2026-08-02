@@ -19,7 +19,10 @@ class Roles
     /** Усі права системи — джерело правди для карти маршрутів і перевірок у діях */
     public const CAPS = [
         'orders.view'         => 'Бачити замовлення',
+        'orders.view_all'     => 'Бачити замовлення всіх магазинів (без права правити чужі)',
         'orders.status'       => 'Змінювати статус замовлення',
+        'orders.assign'       => 'Брати замовлення в роботу',
+        'orders.note'         => 'Додавати нотатки до замовлення',
         'orders.manage'       => 'Керувати замовленням цілком (передача між магазинами)',
         'products.view'       => 'Бачити товари',
         'products.stock'      => 'Правити залишки',
@@ -51,7 +54,10 @@ class Roles
         ],
         self::SELLER => [
             'label' => 'Продавець',
-            'caps' => ['orders.view', 'orders.status', 'products.view', 'products.stock', 'products.price'],
+            // orders.view_all — лише читання чужих точок: правити можна те, що у своїх
+            // (це вирішує canManage по seller_stores, а не право)
+            'caps' => ['orders.view', 'orders.view_all', 'orders.status', 'orders.assign',
+                       'orders.note', 'products.view', 'products.stock', 'products.price'],
             'assignable' => true,
         ],
         self::EDITOR => [

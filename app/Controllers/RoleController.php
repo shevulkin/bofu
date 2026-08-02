@@ -37,6 +37,24 @@ class RoleController
         redirect($role === Roles::CUSTOMER ? '/' : $back);
     }
 
+    /** Вибір робочої точки: продавець із кількома магазинами звужує кабінет до однієї */
+    public static function store(): never
+    {
+        Csrf::verify();
+        $back = safe_back($_POST['back'] ?? null, '/admin');
+        if (!Auth::check()) redirect($back);
+        $raw = trim((string)($_POST['store_id'] ?? ''));
+        $storeId = $raw === '' ? null : (int)$raw;
+        if (!Auth::setWorkStore($storeId)) {
+            flash('error', 'Ця точка вам недоступна.');
+        } else {
+            flash('success', $storeId === null
+                ? 'Працюєте по всіх своїх точках.'
+                : 'Робоча точка змінена.');
+        }
+        redirect($back);
+    }
+
     public static function reset(): never
     {
         Csrf::verify();

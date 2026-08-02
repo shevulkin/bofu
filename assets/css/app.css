@@ -385,3 +385,12 @@ footer{border-top:1px solid var(--line);padding:44px 0 60px;margin-top:40px}
   .role-switch{width:100%}
   .role-switch form{width:100%;flex-wrap:wrap}
 }
+
+/* ---------- робоча точка й чужі рядки в списку замовлень ---------- */
+.work-store{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:13px}
+.work-store label{font-size:12px;white-space:nowrap}
+.work-store select{background:var(--bg3);color:var(--text);border:1px solid var(--line2);
+  border-radius:6px;padding:4px 8px;font-family:inherit;font-size:13px;max-width:100%}
+/* чужа точка — приглушено, щоб з першого погляду було видно, де можна діяти */
+.tbl tr.row-foreign td{opacity:.62}
+.tbl tr.row-foreign td:first-child{border-left:2px solid var(--line2)}
