@@ -21,13 +21,24 @@
         <span class="dim" style="font-size:12px">Без жодної — звичайний покупець</span>
       </div>
       <?php /* Точки прив'язані до ролі продавця (див. Users::saveStores). Селектор без
-               ролі не просто зайвий — він обіцяв би доступ, який не збережеться. */ ?>
+               ролі не просто зайвий — він обіцяв би доступ, який не збережеться.
+
+               Галки, а не <select multiple>: у нативному списку звичайний клік
+               скидає попередній вибір, а другу точку додають лише Ctrl+кліком.
+               Про це ніхто не здогадується — виглядало так, ніби кілька магазинів
+               призначити взагалі неможливо. */ ?>
       <div><label>Магазини</label>
-        <select name="stores[]" multiple size="2" data-seller-stores <?= $isSeller ? '' : 'disabled' ?>>
-          <?php foreach ($stores as $s): ?>
-            <option value="<?= (int)$s['id'] ?>" <?= $isSeller && in_array((int)$s['id'], $seller_stores[$u['id']] ?? [], true) ? 'selected' : '' ?>><?= e($s['name'] . ($s['city'] ? ' · ' . $s['city'] : '')) ?></option>
+        <div class="store-picker">
+          <?php foreach ($stores as $s): $sid = (int)$s['id']; ?>
+            <label class="checkbox">
+              <input type="checkbox" name="stores[]" value="<?= $sid ?>" data-seller-stores
+                     <?= $isSeller && in_array($sid, $seller_stores[$u['id']] ?? [], true) ? 'checked' : '' ?>
+                     <?= $isSeller ? '' : 'disabled' ?>>
+              <?= e($s['name'] . ($s['city'] ? ' · ' . $s['city'] : '')) ?>
+            </label>
           <?php endforeach; ?>
-        </select>
+          <?php if (!$stores): ?><span class="dim">Магазинів ще немає</span><?php endif; ?>
+        </div>
         <span class="dim" style="font-size:12px" data-seller-hint <?= $isSeller ? 'hidden' : '' ?>>Доступні лише продавцям</span>
       </div>
       <div><label>Telegram Chat ID</label><input type="text" name="tg_chat_id" value="<?= e($u['tg_chat_id']) ?>" placeholder="напр. 123456789"></div>
