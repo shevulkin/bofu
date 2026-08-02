@@ -313,7 +313,11 @@ footer{border-top:1px solid var(--line);padding:44px 0 60px;margin-top:40px}
 .admin-wrap{display:flex;min-height:100vh}
 .admin-side{width:230px;flex-shrink:0;background:var(--bg2);border-right:1px solid var(--line);padding:22px 0;display:flex;flex-direction:column;gap:2px;position:sticky;top:0;height:100vh;overflow-y:auto}
 .admin-side .brand{padding:0 20px 18px}
-.admin-side a{color:var(--muted);font-weight:600;font-size:13.5px;padding:11px 22px;border-left:3px solid transparent}
+/* Пункти всередині блоку тиснуться щільно: крок між рядками має бути помітно
+   меншим за відстань до наступного заголовка, інакше все читається як один
+   рівний стовпчик. На дотику відступ повертаємо (див. медіазапит нижче) —
+   35px пальцем не влучиш. */
+.admin-side a{color:var(--muted);font-weight:600;font-size:13.5px;padding:7px 22px;border-left:3px solid transparent}
 .admin-side a:hover{color:var(--text);background:var(--bg3)}
 .admin-side a.active{color:var(--gold);border-left-color:var(--gold);background:var(--bg3)}
 .admin-side .sep{border-top:1px solid var(--line);margin:10px 0}
@@ -413,6 +417,8 @@ footer{border-top:1px solid var(--line);padding:44px 0 60px;margin-top:40px}
 @media (max-width:900px){
   .admin-side{position:fixed;left:-240px;z-index:80;transition:left .2s;box-shadow:4px 0 24px rgba(0,0,0,.5)}
   .admin-side.open{left:0}
+  /* на телефоні в меню тикають пальцем, тож рядок має бути заввишки з палець */
+  .admin-side a{padding:12px 22px}
   .admin-main{padding:18px 14px}
   .stat-grid{grid-template-columns:1fr 1fr}
   .admin-mobilebar{display:flex;align-items:center;gap:14px;padding:12px 16px;background:var(--bg2);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:70}
