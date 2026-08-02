@@ -63,9 +63,9 @@
     });
   }
   var tg = document.getElementById('tgLoginBtn');
-  if (tg) tg.addEventListener('click', function(){ startLogin('/auth/tg/start', '/auth/tg/status', 'Натисніть Start у Telegram-боті — сайт увійде автоматично…'); });
+  if (tg) tg.addEventListener('click', function(){ startLogin('/auth/tg/start', '/auth/tg/status', 'У боті натисніть Start, а тоді «Поділитися номером» — сайт увійде автоматично…'); });
   var vb = document.getElementById('viberLoginBtn');
-  if (vb) vb.addEventListener('click', function(){ startLogin('/auth/viber/start', '/auth/viber/status', 'Підтвердіть у Viber — сайт увійде автоматично…'); });
+  if (vb) vb.addEventListener('click', function(){ startLogin('/auth/viber/start', '/auth/viber/status', 'У боті натисніть «Поділитися номером» — сайт увійде автоматично…'); });
 
   var pb = document.getElementById('phoneLoginBtn');
   if (pb) pb.addEventListener('click', function(){

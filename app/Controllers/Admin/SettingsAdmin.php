@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 namespace Controllers\Admin;
 
-use View, Auth, Settings, WebPush;
+use View, Auth, Settings, WebPush, BotAuth;
 
 class SettingsAdmin
 {
@@ -17,6 +17,7 @@ class SettingsAdmin
         'mail_from' => 'Email відправника',
         'google_client_id' => 'Google OAuth: Client ID',
         'google_client_secret' => 'Google OAuth: Client Secret',
+        'bot_site_url' => 'Адреса сайту для кнопки в боті (напр. https://bofu.ua)',
     ];
 
     private const TOGGLES = [
@@ -40,6 +41,12 @@ class SettingsAdmin
             foreach (self::TEXT_KEYS as $key => $label) {
                 if (isset($_POST['text'][$key])) Settings::set($key, trim($_POST['text'][$key]));
             }
+            // Тексти бота: порожнє поле = повернути типовий текст, а не показати
+            // людині порожнє повідомлення. Тому зберігаємо '' і підставляємо
+            // замовчування при читанні (BotAuth::text).
+            foreach (array_keys(BotAuth::TEXTS) as $key) {
+                if (isset($_POST['bot'][$key])) Settings::set($key, trim($_POST['bot'][$key]));
+            }
             Settings::set('yt_cache_time', '0'); // оновити кеш YouTube після зміни налаштувань
             // Viber: при зміні токена реєструємо webhook (працює лише на публічному HTTPS)
             $newViber = Settings::get('viber_bot_token', '');
@@ -54,6 +61,7 @@ class SettingsAdmin
         [$vapidPub] = WebPush::ensureKeys();
         View::show('admin/settings', [
             'toggles' => self::TOGGLES, 'text_keys' => self::TEXT_KEYS,
+            'bot_texts' => BotAuth::TEXTS, 'bot_site' => BotAuth::siteUrl(),
             'vapid_public' => $vapidPub,
             'page_title' => 'Налаштування — адмінка',
         ], 'layouts/admin');

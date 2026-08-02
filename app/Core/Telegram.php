@@ -24,8 +24,36 @@ class Telegram
         return is_array($json) ? $json : [];
     }
 
-    public static function send(string $chatId, string $text): void
-    { self::api('sendMessage', ['chat_id' => $chatId, 'text' => $text]); }
+    public static function send(string $chatId, string $text, ?array $markup = null): void
+    {
+        $p = ['chat_id' => $chatId, 'text' => $text];
+        if ($markup !== null) $p['reply_markup'] = json_encode($markup, JSON_UNESCAPED_UNICODE);
+        self::api('sendMessage', $p);
+    }
+
+    /** Клавіатура з єдиною кнопкою «поділитися номером» */
+    private static function askPhone(string $chatId): void
+    {
+        self::send($chatId, BotAuth::text('bot_ask_phone'), [
+            'keyboard' => [[['text' => BotAuth::text('bot_ask_phone_btn'), 'request_contact' => true]]],
+            'resize_keyboard' => true, 'one_time_keyboard' => true,
+        ]);
+    }
+
+    /** Підсумкове повідомлення: прибираємо клавіатуру й даємо кнопку-посилання на сайт */
+    private static function sayDone(string $chatId, string $name, string $phone): void
+    {
+        self::send($chatId, BotAuth::text('bot_done', ['name' => $name, 'phone' => $phone]),
+            ['remove_keyboard' => true]);
+        $url = BotAuth::siteUrl();
+        // Кнопка-посилання окремим повідомленням: inline-клавіатура й remove_keyboard
+        // в одному reply_markup не поєднуються — це різні типи розмітки.
+        if ($url !== '') {
+            self::send($chatId, '👇', ['inline_keyboard' => [[
+                ['text' => BotAuth::text('bot_done_btn'), 'url' => $url],
+            ]]]);
+        }
+    }
 
     /** Ім'я бота (кешується) — для посилань t.me/<bot>?start=... */
     public static function username(): string
@@ -51,33 +79,75 @@ class Telegram
             $offset = max($offset, (int)$upd['update_id']);
             $msg = $upd['message'] ?? null;
             if (!$msg) continue;
-            $text = trim($msg['text'] ?? '');
             $chatId = (string)($msg['chat']['id'] ?? '');
-            if (!$chatId || !preg_match('~^/start[ =_]?(.+)$~', $text, $m)) continue;
+            if (!$chatId) continue;
+            $name = trim(($msg['from']['first_name'] ?? '') . ' ' . ($msg['from']['last_name'] ?? ''));
+
+            // Контакт приходить окремим повідомленням — це відповідь на нашу кнопку
+            if (isset($msg['contact'])) { self::onContact($chatId, $msg, $name); continue; }
+
+            $text = trim($msg['text'] ?? '');
+            if (!preg_match('~^/start[ =_]?(.+)$~', $text, $m)) continue;
             $token = trim($m[1]);
             $row = DB::row("SELECT * FROM auth_tokens WHERE token = ? AND used = 0 AND expires_at > ?", [$token, now()]);
-            if (!$row) { self::send($chatId, 'Посилання застаріло. Спробуйте ще раз із сайту.'); continue; }
+            if (!$row) { self::send($chatId, BotAuth::text('bot_expired')); continue; }
 
             if ($row['purpose'] === 'tg_link' && $row['user_id']) {
+                // Підключення до наявного акаунта: номер там уже є (без нього на сайт
+                // не пускає гейт), тож питати його вдруге немає за що.
                 DB::update('users', ['tg_chat_id' => $chatId], 'id = ?', [$row['user_id']]);
                 DB::update('auth_tokens', ['used' => 1, 'chat_id' => $chatId], 'id = ?', [$row['id']]);
-                self::send($chatId, '✅ Telegram підключено до вашого акаунта Beekeeper of Ukraine. Сюди приходитимуть сповіщення та коди входу.');
+                self::send($chatId, BotAuth::text('bot_linked', ['messenger' => 'Telegram']));
             } elseif ($row['purpose'] === 'tg_login') {
-                $user = DB::row('SELECT * FROM users WHERE tg_chat_id = ? AND active = 1', [$chatId]);
-                if (!$user) {
-                    $name = trim(($msg['from']['first_name'] ?? '') . ' ' . ($msg['from']['last_name'] ?? '')) ?: ('Telegram ' . $chatId);
-                    $uid = DB::insert('users', [
-                        'email' => 'tg' . $chatId . '@telegram.local', 'name' => $name,
-                        'role' => 'customer', 'active' => 1, 'tg_chat_id' => $chatId, 'created_at' => now(),
-                    ]);
-                    Notify::fire('user_new', ['name' => $name, 'email' => 'Telegram']);
+                // Токен лишається невикористаним: вхід завершить контакт, а не /start.
+                DB::update('auth_tokens', ['chat_id' => $chatId], 'id = ?', [$row['id']]);
+                $known = DB::row('SELECT * FROM users WHERE tg_chat_id = ? AND active = 1', [$chatId]);
+                $phone = AuthTokens::normPhoneAny((string)($known['phone'] ?? ''));
+                if ($known && $phone) {
+                    // Номер уже підтверджено раніше — вдруге не турбуємо
+                    self::confirm((int)$row['id'], (int)$known['id'], $chatId, (string)$known['name'], $phone);
                 } else {
-                    $uid = (int)$user['id'];
+                    self::askPhone($chatId);
                 }
-                DB::update('auth_tokens', ['used' => 1, 'chat_id' => $chatId, 'confirmed_user_id' => $uid], 'id = ?', [$row['id']]);
-                self::send($chatId, '✅ Вхід підтверджено. Поверніться на сайт — ви вже увійшли.');
             }
         }
         Settings::set('tg_updates_offset', (string)$offset);
+    }
+
+    /**
+     * Людина натиснула «поділитися номером».
+     *
+     * Ключова перевірка — contact.user_id проти from.id: у Telegram можна
+     * переслати ЧУЖИЙ контакт із адресної книги, і без цієї перевірки нею
+     * можна було б увійти в чужий акаунт, знаючи лише номер.
+     */
+    private static function onContact(string $chatId, array $msg, string $name): void
+    {
+        $row = BotAuth::pendingLogin('tg_login', $chatId);
+        if (!$row) return;                       // контакт без початого входу — ігноруємо
+
+        $contact = $msg['contact'] ?? [];
+        $ownerId = (string)($contact['user_id'] ?? '');
+        $fromId = (string)($msg['from']['id'] ?? '');
+        if ($ownerId === '' || $fromId === '' || $ownerId !== $fromId) {
+            self::send($chatId, BotAuth::text('bot_foreign_contact'));
+            self::askPhone($chatId);
+            return;
+        }
+        $phone = AuthTokens::normPhoneAny((string)($contact['phone_number'] ?? ''));
+        if (!$phone) { self::send($chatId, BotAuth::text('bot_bad_phone')); self::askPhone($chatId); return; }
+
+        $uid = BotAuth::resolveUser('tg_chat_id', $chatId, $phone, $name);
+        if (!$uid) { self::send($chatId, BotAuth::text('bot_expired')); return; }  // акаунт вимкнено
+        self::confirm((int)$row['id'], $uid, $chatId, $name, $phone);
+    }
+
+    /** Позначити токен підтвердженим — сторінка входу побачить це своїм опитуванням */
+    private static function confirm(int $tokenId, int $uid, string $chatId, string $name, string $phone): void
+    {
+        DB::update('auth_tokens',
+            ['used' => 1, 'chat_id' => $chatId, 'confirmed_user_id' => $uid, 'phone' => $phone],
+            'id = ?', [$tokenId]);
+        self::sayDone($chatId, $name, $phone);
     }
 }
