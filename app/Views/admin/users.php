@@ -1,6 +1,5 @@
 <div class="admin-head"><h1 class="h-serif">Користувачі та ролі</h1></div>
-<p class="dim" style="margin-bottom:18px">Нові користувачі з'являються після входу через Google. Тут ви призначаєте ролі та магазини для продавців. Telegram Chat ID потрібен для сповіщень у Telegram (бот повідомить його командою /start).</p>
-<?php $roles = ['admin' => 'Адміністратор', 'seller' => 'Продавець', 'editor' => 'Автор постів', 'customer' => 'Покупець']; ?>
+<p class="dim" style="margin-bottom:18px">Нові користувачі з'являються після входу через Google. Ролей може бути кілька — права підсумовуються. Призначення магазинів не залежить від ролі. Telegram Chat ID потрібен для сповіщень у Telegram (бот повідомить його командою /start).</p>
 <div style="display:flex;flex-direction:column;gap:14px">
   <?php foreach ($users as $u): ?>
     <form class="admin-card" method="post" action="<?= e(url('/admin/users')) ?>" style="display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr auto;gap:14px;align-items:end;margin-bottom:0" data-rg="1">
@@ -10,14 +9,17 @@
         <b><?= e($u['name']) ?></b>
         <div class="dim"><?= e($u['email']) ?></div>
       </div>
-      <div><label>Роль</label>
-        <select name="role">
-          <?php foreach ($roles as $r => $lbl): ?>
-            <option value="<?= $r ?>" <?= $u['role'] === $r ? 'selected' : '' ?>><?= $lbl ?></option>
-          <?php endforeach; ?>
-        </select>
+      <?php $has = $user_roles[(int)$u['id']] ?? []; ?>
+      <div><label>Ролі</label>
+        <?php foreach ($assignable as $r): ?>
+          <label class="checkbox" style="display:block">
+            <input type="checkbox" name="roles[]" value="<?= e($r) ?>" <?= in_array($r, $has, true) ? 'checked' : '' ?>>
+            <?= e(Roles::label($r)) ?>
+          </label>
+        <?php endforeach; ?>
+        <span class="dim" style="font-size:12px">Без жодної — звичайний покупець</span>
       </div>
-      <div><label>Магазини (для продавця)</label>
+      <div><label>Магазини</label>
         <select name="stores[]" multiple size="2">
           <?php foreach ($stores as $s): ?>
             <option value="<?= (int)$s['id'] ?>" <?= in_array((int)$s['id'], $seller_stores[$u['id']] ?? [], true) ? 'selected' : '' ?>><?= e($s['name'] . ($s['city'] ? ' · ' . $s['city'] : '')) ?></option>
