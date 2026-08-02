@@ -308,10 +308,14 @@ footer{border-top:1px solid var(--line);padding:44px 0 60px;margin-top:40px}
 .admin-side a:hover{color:var(--text);background:var(--bg3)}
 .admin-side a.active{color:var(--gold);border-left-color:var(--gold);background:var(--bg3)}
 .admin-side .sep{border-top:1px solid var(--line);margin:10px 0}
-/* Заголовок блоку меню: розділяє список, але не змагається з пунктами за увагу —
-   дрібний, розріджений, приглушений. Перший іде без відступу зверху. */
-.admin-side .nav-group{color:var(--dim);font-size:10.5px;font-weight:700;letter-spacing:.14em;
-  text-transform:uppercase;padding:16px 22px 5px;user-select:none}
+/* Заголовок блоку меню. Самого лише дрібного шрифту мало: коли всі рядки йдуть
+   рівним стовпчиком через однакові проміжки, око бачить один потік, а не групи.
+   Тому блок відбиває лінія на всю ширину, а пункти під заголовком тиснуться
+   ближче один до одного, ніж відстань до наступної лінії, — саме цей контраст
+   проміжків і збирає їх у купку. */
+.admin-side .nav-group{color:var(--dim);font-size:10px;font-weight:700;letter-spacing:.16em;
+  text-transform:uppercase;padding:14px 22px 8px;margin-top:12px;
+  border-top:1px solid var(--line2);user-select:none}
 .admin-main{flex:1;padding:30px 34px;min-width:0}
 .admin-head{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:26px;flex-wrap:wrap}
 .admin-head h1{font-size:30px}
