@@ -32,8 +32,18 @@ class SettingsAdmin
     {
         Auth::requireCap('settings.manage');
         if (is_post()) {
-            foreach (self::TOGGLES as $key => $label) {
-                Settings::set($key, isset($_POST['toggle'][$key]) ? '1' : '0');
+            // Головний вимикач — гейт над канальними (Notify::fire), тож у формі
+            // вони неактивні, поки він вимкнений. Неактивне поле в POST не
+            // приходить, тому за вимкненого головного канальні НЕ чіпаємо:
+            // інакше одне вимкнення мовчки стирало б усі налаштування каналів,
+            // і після повернення головного все прийшлося б розставляти заново.
+            $master = isset($_POST['toggle']['notify_all_enabled']);
+            Settings::set('notify_all_enabled', $master ? '1' : '0');
+            if ($master) {
+                foreach (self::TOGGLES as $key => $label) {
+                    if ($key === 'notify_all_enabled') continue;
+                    Settings::set($key, isset($_POST['toggle'][$key]) ? '1' : '0');
+                }
             }
             // окремо від TOGGLES: там усе типово увімкнене, а індексація має бути дозволена за замовчуванням
             Settings::set('seo_noindex', isset($_POST['seo_noindex']) ? '1' : '0');

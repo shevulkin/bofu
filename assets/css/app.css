@@ -398,6 +398,14 @@ footer{border-top:1px solid var(--line);padding:44px 0 60px;margin-top:40px}
 .toggle .tr::after{content:'';position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:var(--dim);transition:.2s}
 .toggle input:checked + .tr{background:rgba(240,180,41,.25);border-color:var(--gold)}
 .toggle input:checked + .tr::after{left:22px;background:var(--gold)}
+/* Підлеглі перемикачі: відступ і лінія показують, що вони під головним,
+   а не поруч із ним. Вимкнений головний гасить усю групу — вони справді
+   ні на що не впливають, поки він вимкнений. */
+.toggle-group{display:flex;flex-direction:column;gap:14px;margin:14px 0 0 14px;
+  padding:14px 0 0 20px;border-left:1px solid var(--line2);transition:opacity .15s}
+.toggle-group.is-off{opacity:.45}
+.toggle-group.is-off .toggle{cursor:not-allowed}
+.toggle input:disabled + .tr{cursor:not-allowed}
 .img-thumb{width:56px;height:56px;object-fit:cover;border-radius:3px;border:1px solid var(--line)}
 .img-grid{display:flex;gap:14px;flex-wrap:wrap}
 .img-cell{position:relative;text-align:center}
