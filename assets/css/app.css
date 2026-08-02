@@ -178,6 +178,31 @@ input:disabled,select:disabled,textarea:disabled{opacity:.45;cursor:not-allowed}
   padding:8px 10px;background:var(--bg2);border:1px solid var(--line2);border-radius:2px}
 .store-picker .checkbox{font-size:13.5px}
 
+/* ---------- картка користувача ---------- */
+/* align-items:start, а не end: у колонок різна висота, і при вирівнюванні по низу
+   будь-яка зміна в одній (зʼявилась підказка, додався канал) зсувала решту. */
+.user-card{padding:18px 20px}
+.user-grid{display:grid;grid-template-columns:1.2fr .9fr 1.1fr 1.3fr auto;gap:16px;align-items:start}
+.user-actions{display:flex;flex-direction:column;gap:10px;align-items:flex-start;padding-top:22px}
+.chan-note{font-size:12px;display:block;margin-top:6px;line-height:1.35}
+.chan-list{margin-top:8px;display:flex;flex-direction:column;gap:6px}
+.chan{display:grid;grid-template-columns:64px 1fr auto;gap:8px;align-items:center;font-size:12.5px}
+.chan-name{color:var(--dim);text-transform:uppercase;letter-spacing:.04em;font-weight:600;font-size:10.5px}
+.chan input{padding:6px 8px;font-size:12.5px}
+.chan-state{color:var(--line2);font-size:11px}
+.chan-state.is-on{color:var(--ok)}
+.msg-box{margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
+.msg-box summary{cursor:pointer;color:var(--muted);font-size:12.5px}
+.msg-box summary:hover{color:var(--gold)}
+.msg-form{display:flex;gap:10px;align-items:flex-end;margin-top:10px;flex-wrap:wrap}
+.msg-form textarea{flex:1;min-width:220px;padding:8px 10px;font-size:13px}
+.msg-form select{width:auto}
+@media (max-width:1100px){
+  .user-grid{grid-template-columns:1fr 1fr}
+  .user-actions{padding-top:0;flex-direction:row;align-items:center}
+}
+@media (max-width:640px){ .user-grid{grid-template-columns:1fr} }
+
 /* ---------- перемикач вигляду каталогу ---------- */
 .view-switch{display:flex;gap:6px;align-items:center}
 .view-switch button{background:transparent;border:1px solid var(--line2);color:var(--dim);border-radius:2px;padding:8px 10px;cursor:pointer;display:flex;align-items:center;transition:all .15s}

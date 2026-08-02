@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 namespace Controllers\Admin;
 
-use DB, View, Auth, Catalog, Roles;
+use DB, View, Auth, Catalog, Roles, AuthTokens, Telegram, Viber, RateLimit;
 
 class Users
 {
@@ -17,13 +17,21 @@ class Users
                 $roles = array_values(array_intersect(
                     array_map('strval', (array)($_POST['roles'] ?? [])), Roles::assignable()));
                 // інакше можна лишити систему без жодного адміністратора
+                [$phone, $phoneErr] = self::readPhone($uid, $_POST['phone'] ?? null);
                 if ((int)$user['id'] === (int)Auth::id() && !in_array(Roles::ADMIN, $roles, true)) {
                     flash('error', 'Не можна зняти адмін-права із самого себе');
+                } elseif ($phoneErr !== null) {
+                    // ролі й точки теж не чіпаємо: половина збереження гірша за жодну —
+                    // людина бачить помилку і думає, що не збереглось нічого
+                    flash('error', $phoneErr);
                 } else {
-                    DB::update('users', [
+                    $upd = [
                         'active' => isset($_POST['active']) ? 1 : 0,
                         'tg_chat_id' => trim($_POST['tg_chat_id'] ?? '') ?: null,
-                    ], 'id = ?', [$uid]);
+                    ];
+                    // телефон пишемо, лише якщо поле було у формі
+                    if (array_key_exists('phone', $_POST)) $upd['phone'] = $phone;
+                    DB::update('users', $upd, 'id = ?', [$uid]);
                     $had = self::storeCount($uid);
                     self::saveRoles($uid, $roles);
                     self::saveStores($uid, (array)($_POST['stores'] ?? []), $roles);
@@ -66,6 +74,61 @@ class Users
         foreach (array_diff($roles, $current) as $r) {
             DB::insert('user_roles', ['user_id' => $uid, 'role' => $r, 'created_at' => now()]);
         }
+    }
+
+    /**
+     * Телефон із форми: [нормалізований або null, помилка або null].
+     *
+     * Правило те саме, що в checkout і профілі (normPhoneAny) — сюди номер вписує
+     * адмін за людину, і розбіжність означала б, що адмін може завести номер,
+     * який сама людина потім не збереже.
+     */
+    private static function readPhone(int $uid, $raw): array
+    {
+        if ($raw === null) return [null, null];              // поля не було у формі
+        $t = trim((string)$raw);
+        if ($t === '') return [null, null];                  // очистили — гейт попросить свій
+        $phone = AuthTokens::normPhoneAny($t);
+        if (!$phone) {
+            return [null, 'Номер «' . $t . '» некоректний. Український — 067 123 45 67, іноземний — з кодом країни через +'];
+        }
+        // телефон = логін для входу за номером, тож він має бути в одного власника
+        if (DB::row('SELECT id FROM users WHERE phone = ? AND id != ?', [$phone, $uid])) {
+            return [null, 'Номер ' . $phone . ' вже привʼязаний до іншого акаунта'];
+        }
+        return [$phone, null];
+    }
+
+    /**
+     * Написати людині від імені бота — туди, де вона вже привʼязана.
+     * Каналів «про запас» тут немає: пишемо лише в підключений бот і лише тому,
+     * хто його підключив, бо інакше повідомлення тихо зникне.
+     */
+    public static function message(): never
+    {
+        Auth::requireCap('users.manage');
+        $uid = (int)($_POST['user_id'] ?? 0);
+        $text = trim($_POST['text'] ?? '');
+        $channel = (string)($_POST['channel'] ?? '');
+        $user = DB::row('SELECT * FROM users WHERE id = ?', [$uid]);
+
+        if (!$user || $text === '') {
+            flash('error', 'Повідомлення порожнє — нічого не надіслано');
+            redirect('/admin/users');
+        }
+        RateLimit::guard('admin_msg', 60, 3600);
+        $text = mb_substr($text, 0, 2000);
+
+        if ($channel === 'telegram' && Telegram::configured() && !empty($user['tg_chat_id'])) {
+            Telegram::send((string)$user['tg_chat_id'], $text);
+            flash('success', 'Надіслано в Telegram: ' . $user['name']);
+        } elseif ($channel === 'viber' && Viber::configured() && !empty($user['viber_id'])) {
+            Viber::send((string)$user['viber_id'], $text);
+            flash('success', 'Надіслано у Viber: ' . $user['name']);
+        } else {
+            flash('error', 'Цей канал недоступний: бот не налаштований або людина його не підключила');
+        }
+        redirect('/admin/users');
     }
 
     /** Скільки точок закріплено за людиною зараз — щоб знати, чи було що відкликати */

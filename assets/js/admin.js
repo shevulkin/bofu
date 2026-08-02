@@ -54,7 +54,9 @@
     var hint = form.querySelector('[data-seller-hint]');
     if (!boxes.length) return;
     role.addEventListener('change', function () {
-      if (hint) hint.hidden = role.checked;
+      // міняємо ТЕКСТ, а не видимість: зникома підказка міняла висоту блоку,
+      // і від кліку по ролі вся картка стрибала
+      if (hint) hint.textContent = role.checked ? hint.dataset.on : hint.dataset.off;
       Array.prototype.forEach.call(boxes, function (b) {
         b.disabled = !role.checked;
         if (!role.checked) b.checked = false;
