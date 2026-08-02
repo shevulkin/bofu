@@ -322,6 +322,22 @@ footer{border-top:1px solid var(--line);padding:44px 0 60px;margin-top:40px}
 .img-cell img{width:120px;height:120px;object-fit:cover;border-radius:4px;border:1px solid var(--line)}
 .img-cell .dim{display:block;margin-top:5px}
 .img-cell.is-main img{border-color:var(--gold)}
+/* Кутовий значок у комірці. Базовий .badge притиснутий до лівого краю (left:12px),
+   тож без скидання left він розтягувався б від лівого краю до правого смугою. */
+.img-cell .cell-badge,.img-cell .cell-action{position:absolute;top:4px;right:4px;left:auto;margin:0}
+.img-cell .cell-badge{padding:3px 7px;letter-spacing:0}
+
+/* Медіа-бібліотека: підписи «де використовується» довгі, тож комірки фіксуємо
+   сіткою — інакше flex розтягує їх по найдовшому рядку й сітка розповзається. */
+.media-lib{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));
+  gap:18px;align-items:start}
+.media-lib .img-cell{width:auto;text-align:left}
+.media-lib .img-cell img{width:100%;height:150px}
+.media-lib .cell-uses{margin-top:4px;font-size:12px;line-height:1.5;color:var(--dim);overflow-wrap:anywhere}
+@media (max-width:600px){
+  .media-lib{grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px}
+  .media-lib .img-cell img{height:120px}
+}
 .img-badge{position:absolute;top:6px;left:6px;background:var(--gold);color:#1a1508;font-size:10.5px;
   font-weight:600;border-radius:3px;padding:2px 7px;letter-spacing:.02em}
 .img-del{position:absolute;top:4px;right:4px}
