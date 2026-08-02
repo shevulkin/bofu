@@ -27,11 +27,15 @@ switch ($cmd) {
         break;
     case 'test':
         Schema::upgrade();
-        $code = 0;
+        $code = 0; $files = 0;
         foreach (glob(BOFU_ROOT . '/tests/*.php') ?: [] as $file) {
             echo "\n### " . basename($file) . "\n";
             $code = max($code, (int)require $file);
+            $files++;
         }
+        // підсумок наприкінці: інакше видно лише результат останнього файлу
+        echo "\n" . str_repeat('─', 48) . "\n"
+            . ($code === 0 ? "ВСІ НАБОРИ ПРОЙДЕНО ($files)" : "Є ПРОВАЛЕНІ НАБОРИ — дивіться вище") . "\n";
         exit($code);
     default:
         echo "Використання: php bin/cli.php [migrate|seed|fresh|test]\n";

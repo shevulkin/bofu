@@ -9,7 +9,20 @@ $canEdit = Auth::can('products.manage');
 $roEdit = $canEdit ? '' : 'disabled';
 ?>
 <div class="admin-head">
-  <h1 class="h-serif"><?= $isNew ? 'Новий товар' : e($p['name']) ?></h1>
+  <?php /* Мініатюра біля назви: блок фото лежить у самому низу (він поза формою,
+           бо кожна дія з фото — окрема форма), тож без неї до кінця сторінки
+           незрозуміло, який саме товар редагуєш. */ ?>
+  <div class="prod-title">
+    <?php if (!$isNew && $images): ?>
+      <a class="prod-thumb" href="#photos" title="Перейти до фотографій">
+        <img src="<?= e(asset(Images::displayThumb($images[0]['path']))) ?>" alt="">
+        <?php if (count($images) > 1): ?><span class="prod-thumb-n"><?= count($images) ?></span><?php endif; ?>
+      </a>
+    <?php elseif (!$isNew): ?>
+      <a class="prod-thumb is-empty" href="#photos" title="Фото ще немає — додати">🍯</a>
+    <?php endif; ?>
+    <h1 class="h-serif"><?= $isNew ? 'Новий товар' : e($p['name']) ?></h1>
+  </div>
   <a class="btn btn-line btn-sm" href="<?= e(url('/admin/products')) ?>">← До списку</a>
 </div>
 
@@ -165,7 +178,7 @@ $roEdit = $canEdit ? '' : 'disabled';
 </form>
 
 <?php if (!$isNew && $canEdit): ?>
-<div class="admin-card" style="margin-top:22px">
+<div class="admin-card" id="photos" style="margin-top:22px;scroll-margin-top:16px">
   <h2 class="h-serif">Фотографії</h2>
   <p class="dim" style="margin:0 0 14px">Перше фото — головне: воно у каталозі, кошику та при поширенні в соцмережах.
     Решта показуються мініатюрами на сторінці товару в цьому ж порядку.</p>

@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 namespace Controllers;
 
-use DB, View, Auth, Csrf, AuthTokens, Telegram, Viber, Newsletter;
+use DB, View, Auth, Csrf, AuthTokens, Telegram, Viber, Newsletter, Notify;
 
 class Profile
 {
@@ -14,6 +14,12 @@ class Profile
 
         if (is_post()) {
             Csrf::verify();
+            // сповіщення зберігаються окремою формою — телефон тут не чіпаємо
+            if (($_POST['_action'] ?? '') === 'notify') {
+                Notify::savePrefs($u, (array)($_POST['n'] ?? []));
+                flash('success', 'Налаштування сповіщень збережено');
+                redirect('/profile');
+            }
             $phone = AuthTokens::normPhone($_POST['phone'] ?? '');
             if (!$phone) {
                 flash('error', 'Вкажіть коректний український номер телефону (напр. 067 123 45 67)');
@@ -40,6 +46,9 @@ class Profile
             'tg_bot' => Telegram::configured() ? Telegram::username() : '',
             'viber_ready' => Viber::configured(),
             'viber_uri' => Viber::configured() ? Viber::uri() : '',
+            'notify_options' => Notify::optionsFor($fresh),
+            'notify_events' => Notify::EVENTS,
+            'notify_channels' => Notify::CHANNELS,
             'page_title' => 'Мій профіль — ' . cfg('app_name'),
         ]);
     }

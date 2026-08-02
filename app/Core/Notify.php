@@ -40,8 +40,137 @@ class Notify
             $text = self::interpolate($tpl, $vars);
             $recipients = self::recipients($rule['recipients'], $storeId);
             foreach ($recipients as $user) {
+                // особистий вибір людини може лише прибрати зайве з того, що дозволив адмін
+                if (!self::wants((int)$user['id'], $event, (string)$rule['channel'])) continue;
                 try { self::send($rule['channel'], $user, $text, $vars); }
                 catch (Throwable $e) { self::log("send fail {$rule['channel']} u{$user['id']}: " . $e->getMessage()); }
+            }
+        }
+    }
+
+    // ── Особисті налаштування ───────────────────────────────────────────────
+
+    public const CHANNELS = [
+        'telegram' => 'Telegram',
+        'viber'    => 'Viber',
+        'email'    => 'Email',
+        'push'     => 'Сповіщення в браузері',
+    ];
+
+    /** Чи глобально увімкнений канал (перемикач адміна) */
+    public static function channelEnabled(string $channel): bool
+    {
+        return match ($channel) {
+            'telegram' => Settings::bool('notify_telegram_enabled', true),
+            'viber'    => Settings::bool('notify_viber_enabled', true),
+            'email'    => Settings::bool('notify_email_enabled', true),
+            'push'     => Settings::bool('notify_push_enabled', true),
+            default    => false,
+        };
+    }
+
+    /** Особисті налаштування користувача: ['подія|канал' => bool] */
+    private static array $prefsCache = [];
+
+    public static function prefs(int $userId): array
+    {
+        if (isset(self::$prefsCache[$userId])) return self::$prefsCache[$userId];
+        $out = [];
+        foreach (DB::all('SELECT event, channel, enabled FROM user_notify_prefs WHERE user_id = ?', [$userId]) as $r) {
+            $out[$r['event'] . '|' . $r['channel']] = (bool)(int)$r['enabled'];
+        }
+        return self::$prefsCache[$userId] = $out;
+    }
+
+    public static function forgetPrefs(?int $userId = null): void
+    {
+        if ($userId === null) self::$prefsCache = [];
+        else unset(self::$prefsCache[$userId]);
+    }
+
+    /**
+     * Чи хоче людина цю подію цим каналом. Відсутність рядка = хоче:
+     * інакше ввімкнення нового каналу адміном мовчки нікому б не дійшло.
+     */
+    public static function wants(int $userId, string $event, string $channel): bool
+    {
+        return self::prefs($userId)[$event . '|' . $channel] ?? true;
+    }
+
+    /** Чи входить користувач у групу отримувачів правила */
+    public static function inGroup(int $userId, string $mode): bool
+    {
+        $roles = Auth::roles($userId);
+        $isAdmin = in_array(Roles::ADMIN, $roles, true);
+        $isSeller = in_array(Roles::SELLER, $roles, true);
+        return match ($mode) {
+            'admins'         => $isAdmin,
+            'sellers'        => $isSeller,
+            'admins_sellers' => $isAdmin || $isSeller,
+            default          => false,
+        };
+    }
+
+    /**
+     * Що саме ця людина може отримувати — для сторінки профілю.
+     * Показуємо лише реально можливі пари: подія увімкнена адміном, канал
+     * увімкнений глобально і людина входить у групу отримувачів. Немає сенсу
+     * пропонувати вимкнути те, що й так ніколи не прийде.
+     * Повертає [подія => [канал => ['on' => bool, 'ready' => bool, 'hint' => string]]]
+     */
+    public static function optionsFor(array $user): array
+    {
+        if (!Settings::bool('notify_all_enabled', true)) return [];
+        $uid = (int)$user['id'];
+        $out = [];
+        foreach (DB::all('SELECT * FROM notification_rules WHERE enabled = 1') as $rule) {
+            $event = (string)$rule['event'];
+            $channel = (string)$rule['channel'];
+            if (!isset(self::EVENTS[$event], self::CHANNELS[$channel])) continue;
+            if (!self::channelEnabled($channel)) continue;
+            if (!self::inGroup($uid, (string)$rule['recipients'])) continue;
+            [$ready, $hint] = self::readiness($user, $channel);
+            $out[$event][$channel] = [
+                'on' => self::wants($uid, $event, $channel),
+                'ready' => $ready,
+                'hint' => $hint,
+            ];
+        }
+        return $out;
+    }
+
+    /** Чи налаштований канал у конкретної людини */
+    private static function readiness(array $user, string $channel): array
+    {
+        return match ($channel) {
+            'telegram' => [!empty($user['tg_chat_id']), 'Підключіть Telegram нижче'],
+            'viber'    => [!empty($user['viber_id']), 'Підключіть Viber нижче'],
+            'email'    => [!empty($user['email']), 'В акаунті немає пошти'],
+            'push'     => [
+                (bool)DB::val('SELECT 1 FROM push_subscriptions WHERE user_id = ? LIMIT 1', [(int)$user['id']]),
+                'Дозвольте сповіщення в браузері кнопкою в кабінеті',
+            ],
+            default    => [false, ''],
+        };
+    }
+
+    /**
+     * Зберігає вибір. Приймаємо лише пари, які людині справді доступні, —
+     * інакше формою можна було б записати собі згоду на те, що адмін вимкнув.
+     */
+    public static function savePrefs(array $user, array $checked): void
+    {
+        $uid = (int)$user['id'];
+        $allowed = self::optionsFor($user);   // рахуємо ДО видалення, поки кеш ще чинний
+        DB::delete('user_notify_prefs', 'user_id = ?', [$uid]);
+        self::forgetPrefs($uid);
+        foreach ($allowed as $event => $channels) {
+            foreach (array_keys($channels) as $channel) {
+                if (empty($checked[$event][$channel])) {
+                    DB::insert('user_notify_prefs', [
+                        'user_id' => $uid, 'event' => $event, 'channel' => $channel, 'enabled' => 0,
+                    ]);
+                }
             }
         }
     }
