@@ -7,7 +7,7 @@ declare(strict_types=1);
  */
 class Schema
 {
-    public const VERSION = 16;
+    public const VERSION = 17;
 
     /** Оновлення існуючої бази до поточної версії без втрати даних */
     public static function upgrade(): void
@@ -115,6 +115,14 @@ class Schema
             // попросить людину вказати номер ще раз.
             self::fixBrokenPhones();
         }
+        if ($ver < 17) {
+            // Телефон стає унікальним. Перед тим розводимо наявні збіги: у
+            // старших акаунтів номер лишається, у молодших — обнуляється, і
+            // гейт попросить людину вказати свій. Втратити тут нічого: акаунт
+            // із чужим номером усе одно не мав на нього права.
+            self::dedupePhones();
+            self::createAll();
+        }
         Settings::set('schema_version', (string)self::VERSION);
     }
 
@@ -183,6 +191,21 @@ class Schema
                 else DB::insert('store_stock', ['product_id' => $pid, 'store_id' => $sid, 'variant_id' => $vid, 'qty' => $qty]);
             }
             DB::delete('store_stock', 'id = ?', [(int)$r['id']]);
+        }
+    }
+
+    /**
+     * Один номер — один акаунт. Де номер повторюється, лишаємо його найстаршому
+     * запису (він майже завжди й є справжнім акаунтом людини), а решті обнуляємо.
+     */
+    private static function dedupePhones(): void
+    {
+        $dupes = DB::all("SELECT phone FROM users
+                          WHERE phone IS NOT NULL AND phone != ''
+                          GROUP BY phone HAVING COUNT(*) > 1");
+        foreach ($dupes as $d) {
+            $keep = (int)DB::val('SELECT MIN(id) FROM users WHERE phone = ?', [$d['phone']]);
+            DB::query('UPDATE users SET phone = NULL WHERE phone = ? AND id <> ?', [$d['phone'], $keep]);
         }
     }
 
@@ -400,6 +423,12 @@ class Schema
                 catch (Throwable $e) { /* вже існує */ }
             }
         }
+        // Телефон — це логін (вхід за номером, склеювання акаунтів у BotAuth),
+        // тож двох власників у нього бути не може. Перевірки в коді вже є, але
+        // код можна обійти новим шляхом, а індекс — ні. NULL тут не заважає:
+        // і MySQL, і SQLite дозволяють у UNIQUE скільки завгодно NULL.
+        try { DB::pdo()->exec('CREATE UNIQUE INDEX uniq_users_phone ON users (phone)'); }
+        catch (Throwable $e) { /* вже існує або є дублікати — розбирається міграція 17 */ }
     }
 
     private static function createSql(string $table, array $cols, string $driver): string

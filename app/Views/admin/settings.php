@@ -28,6 +28,17 @@
         Поки головний вимикач вимкнено, не надсилається нічого — налаштування каналів збережені й
         повернуться, щойно ви його ввімкнете.
       </p>
+      <?php
+      // Головний увімкнено, а канали всі вимкнені — стан, який виглядає
+      // налаштованим і при цьому мовчить. Найлегше не помітити саме його.
+      $anyChannel = false;
+      foreach ($channels as $k => $l) if (Settings::bool($k, true)) { $anyChannel = true; break; }
+      ?>
+      <p class="check-row is-warn" data-nochan style="margin:4px 0 0"<?= ($masterOn && !$anyChannel) ? '' : ' hidden' ?>>
+        <span class="check-icon">⚠️</span>
+        <span>Головний вимикач увімкнено, але <b>жоден канал не активний</b> — сповіщення нікуди не підуть.
+        Увімкніть хоча б один.</span>
+      </p>
     </div>
   </div>
   <div class="admin-card">
