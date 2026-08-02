@@ -41,5 +41,29 @@
     <p class="dim">Нова Пошта: безкоштовний API-ключ у особистому кабінеті novaposhta.ua → Налаштування → Безпека.</p>
     <p class="dim">Web Push: ключі згенеровано автоматично. Пуші на телефоні запрацюють після переносу на HTTPS-домен.</p>
   </div>
+  <div class="admin-card">
+    <h2 class="h-serif">Тексти бота при вході</h2>
+    <p class="dim" style="margin-bottom:16px">
+      Вхід через Telegram чи Viber завершується лише після того, як людина поділиться номером телефону —
+      без нього ми не змогли б підтвердити замовлення, а покупець із замовленнями на цей номер
+      отримав би другий акаунт. Це те, що бот пише на кожному кроці.
+      <br>Порожнє поле повертає типовий текст. У фігурних дужках — підстановки.
+    </p>
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <?php foreach ($bot_texts as $key => [$default, $hint]): ?>
+        <div class="field" style="margin:0">
+          <label><?= e($hint) ?></label>
+          <textarea name="bot[<?= e($key) ?>]" rows="2" placeholder="<?= e($default) ?>"><?= e(Settings::get($key, '')) ?></textarea>
+        </div>
+      <?php endforeach; ?>
+    </div>
+    <p class="dim" style="margin-top:14px">
+      Кнопка «назад на сайт» веде на
+      <?php if ($bot_site !== ''): ?><code><?= e($bot_site) ?></code><?php else: ?>
+        <b style="color:var(--gold)">нікуди — заповніть «Адреса сайту для кнопки в боті» вище</b><?php endif; ?>.
+      Локально адреса визначається сама, але Viber стукає у webhook власним запитом, тож на бойовому
+      сервері поле краще заповнити явно.
+    </p>
+  </div>
   <button class="btn btn-gold" type="submit">💾 Зберегти налаштування</button>
 </form>
