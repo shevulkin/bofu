@@ -50,15 +50,15 @@
   Array.prototype.forEach.call(document.querySelectorAll('[data-seller-role]'), function (role) {
     var form = role.form;
     if (!form) return;
-    var sel = form.querySelector('[data-seller-stores]');
+    var boxes = form.querySelectorAll('[data-seller-stores]');
     var hint = form.querySelector('[data-seller-hint]');
-    if (!sel) return;
+    if (!boxes.length) return;
     role.addEventListener('change', function () {
-      sel.disabled = !role.checked;
       if (hint) hint.hidden = role.checked;
-      if (!role.checked) {
-        Array.prototype.forEach.call(sel.options, function (o) { o.selected = false; });
-      }
+      Array.prototype.forEach.call(boxes, function (b) {
+        b.disabled = !role.checked;
+        if (!role.checked) b.checked = false;
+      });
     });
   });
 
