@@ -26,25 +26,51 @@
       <img src="<?= e(asset('img/avatar.png')) ?>" alt=""> <span class="brand-text" style="font-size:14px">BOFU · <?= Auth::isAdmin() ? 'Адмін' : 'Продавець' ?></span>
     </a>
     <?php
-    $items = [
-        ['/admin', 'Панель', true],
-        ['/admin/orders', 'Замовлення', true],
-        ['/admin/products', 'Товари', true],
-        ['/admin/products/bulk', 'Масове редагування', true],
-        ['/admin/categories', 'Категорії', Auth::can('catalog.manage')],
-        ['/admin/attributes', 'Характеристики', Auth::can('catalog.manage')],
-        ['/admin/stores', 'Магазини', Auth::can('stores.manage')],
-        ['/admin/promos', 'Акції та промокоди', Auth::can('promos.manage')],
-        ['/admin/diplomas', 'Дипломи', Auth::can('diplomas.manage')],
-        ['/admin/users', 'Користувачі', Auth::can('users.manage')],
-        ['/admin/subscribers', 'Розсилка', Auth::can('subscribers.manage')],
-        ['/admin/content', 'Контент сайту', Auth::can('content.manage')],
-        ['/admin/media', 'Медіа-бібліотека', Auth::can('media.manage')],
-        ['/admin/notifications', 'Сповіщення', Auth::can('notifications.manage')],
-        ['/admin/settings', 'Налаштування', Auth::can('settings.manage')],
+    /**
+     * Меню блоками: пункти згруповані за тим, чим людина зайнята, а не звалені
+     * в один список з п'ятнадцяти рядків, де очима шукаєш потрібне.
+     *
+     * Заголовок групи ніколи не показується сам по собі: продавець бачить лише
+     * частину пунктів, і порожня «Система» була б обіцянкою розділу, якого для
+     * нього не існує. Тому спершу фільтруємо права, і вже потім вирішуємо,
+     * чи є що озаглавлювати.
+     */
+    $groups = [
+        ['', [
+            ['/admin', 'Панель', true],
+        ]],
+        ['Продажі', [
+            ['/admin/orders', 'Замовлення', true],
+            ['/admin/promos', 'Акції та промокоди', Auth::can('promos.manage')],
+            ['/admin/subscribers', 'Розсилка', Auth::can('subscribers.manage')],
+        ]],
+        ['Каталог', [
+            ['/admin/products', 'Товари', true],
+            ['/admin/products/bulk', 'Масове редагування', true],
+            ['/admin/categories', 'Категорії', Auth::can('catalog.manage')],
+            ['/admin/attributes', 'Характеристики', Auth::can('catalog.manage')],
+        ]],
+        ['Мережа', [
+            ['/admin/stores', 'Магазини', Auth::can('stores.manage')],
+            ['/admin/users', 'Користувачі', Auth::can('users.manage')],
+        ]],
+        ['Сайт', [
+            ['/admin/content', 'Контент сайту', Auth::can('content.manage')],
+            ['/admin/media', 'Медіа-бібліотека', Auth::can('media.manage')],
+            ['/admin/diplomas', 'Дипломи', Auth::can('diplomas.manage')],
+        ]],
+        ['Система', [
+            ['/admin/notifications', 'Сповіщення', Auth::can('notifications.manage')],
+            ['/admin/settings', 'Налаштування', Auth::can('settings.manage')],
+        ]],
     ];
-    foreach ($items as [$href, $label, $show]): if (!$show) continue; ?>
-      <a href="<?= e(url($href)) ?>" class="<?= $cur === $href ? 'active' : '' ?>"><?= e($label) ?></a>
+    foreach ($groups as [$title, $items]):
+        $items = array_values(array_filter($items, fn($i) => $i[2]));
+        if (!$items) continue; ?>
+      <?php if ($title !== ''): ?><div class="nav-group"><?= e($title) ?></div><?php endif; ?>
+      <?php foreach ($items as [$href, $label, ]): ?>
+        <a href="<?= e(url($href)) ?>" class="<?= $cur === $href ? 'active' : '' ?>"><?= e($label) ?></a>
+      <?php endforeach; ?>
     <?php endforeach; ?>
     <div class="sep"></div>
     <a href="<?= e(url('/')) ?>">← На сайт</a>
