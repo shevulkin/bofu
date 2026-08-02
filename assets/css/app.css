@@ -158,6 +158,12 @@ input:autofill,textarea:autofill,select:autofill{
   -webkit-text-fill-color:var(--text);color:var(--text);
   box-shadow:inset 0 0 0 100px var(--bg2)}
 label{display:block;font-size:12.5px;color:var(--muted);font-weight:600;letter-spacing:.04em;margin:0 0 6px;text-transform:uppercase}
+/* Підказка під полем. min-height тримає місце заздалегідь: без нього поява
+   повідомлення смикала б усю форму вниз саме тоді, коли людина туди дивиться. */
+.field-hint{font-size:12.5px;color:var(--dim);margin:6px 0 0;min-height:17px;line-height:1.35}
+.field-hint.is-ok{color:var(--ok)}
+.field-hint.is-bad{color:var(--danger2)}
+input.is-bad,input.is-bad:focus{border-color:var(--danger)}
 .field{margin-bottom:18px}
 .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 22px}
 .checkbox{display:flex;align-items:center;gap:9px;color:var(--text);font-size:14px;cursor:pointer;text-transform:none;letter-spacing:0}

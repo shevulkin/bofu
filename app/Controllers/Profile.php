@@ -20,9 +20,13 @@ class Profile
                 flash('success', 'Налаштування сповіщень збережено');
                 redirect('/profile');
             }
-            $phone = AuthTokens::normPhone($_POST['phone'] ?? '');
+            // normPhoneAny, а не normPhone: закордонний покупець оформлює замовлення
+            // з номером +49… (Checkout), і гейт у App.php такий номер пропускає —
+            // а профіль його не приймав. Виходило, що людина не могла зберегти
+            // власний, уже записаний у неї номер.
+            $phone = AuthTokens::normPhoneAny($_POST['phone'] ?? '');
             if (!$phone) {
-                flash('error', 'Вкажіть коректний український номер телефону (напр. 067 123 45 67)');
+                flash('error', 'Вкажіть коректний номер телефону — український як 067 123 45 67 або міжнародний із кодом країни через +');
             } else {
                 $busy = DB::row('SELECT id FROM users WHERE phone = ? AND id != ?', [$phone, $u['id']]);
                 if ($busy) flash('error', 'Цей номер вже привʼязано до іншого акаунта');
