@@ -1,16 +1,33 @@
 <div class="admin-head"><h1 class="h-serif">Налаштування</h1></div>
 <form method="post" action="<?= e(url('/admin/settings')) ?>">
   <?= Csrf::field() ?>
+  <?php
+  // Головний вимикач стоїть над іншими не для краси: у Notify::fire() він —
+  // жорсткий гейт, і поки він вимкнений, канальні перемикачі ні на що не
+  // впливають. Тому вони й показуються неактивними, а не просто стоять поруч.
+  $master = 'notify_all_enabled';
+  $masterOn = Settings::bool($master, true);
+  $channels = array_diff_key($toggles, [$master => 1]);
+  ?>
   <div class="admin-card">
     <h2 class="h-serif">Канали сповіщень</h2>
-    <p class="dim" style="margin-bottom:16px">Головний вимикач вимикає все одразу. Тексти повідомлень і події — в розділі «Сповіщення».</p>
-    <div style="display:flex;flex-direction:column;gap:14px">
-      <?php foreach ($toggles as $key => $label): ?>
+    <p class="dim" style="margin-bottom:16px">Тексти повідомлень і події — в розділі «Сповіщення».</p>
+    <label class="toggle">
+      <input type="checkbox" name="toggle[<?= e($master) ?>]" data-master <?= $masterOn ? 'checked' : '' ?>>
+      <span class="tr"></span> <b><?= e($toggles[$master]) ?></b>
+    </label>
+    <div class="toggle-group <?= $masterOn ? '' : 'is-off' ?>" data-group>
+      <?php foreach ($channels as $key => $label): ?>
         <label class="toggle">
-          <input type="checkbox" name="toggle[<?= e($key) ?>]" <?= Settings::bool($key, true) ? 'checked' : '' ?>>
+          <input type="checkbox" name="toggle[<?= e($key) ?>]" data-child
+                 <?= Settings::bool($key, true) ? 'checked' : '' ?> <?= $masterOn ? '' : 'disabled' ?>>
           <span class="tr"></span> <?= e($label) ?>
         </label>
       <?php endforeach; ?>
+      <p class="dim toggle-group-note" style="margin:2px 0 0"<?= $masterOn ? ' hidden' : '' ?>>
+        Поки головний вимикач вимкнено, не надсилається нічого — налаштування каналів збережені й
+        повернуться, щойно ви його ввімкнете.
+      </p>
     </div>
   </div>
   <div class="admin-card">

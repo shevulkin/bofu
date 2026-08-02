@@ -44,6 +44,22 @@
       });
     });
   }
+  // Налаштування: головний вимикач сповіщень гасить канальні. Стан галок не
+  // чіпаємо — вимкнули головний, увімкнули назад, і все на місці (сервер їх
+  // теж не переписує, поки головний вимкнений).
+  var master = document.querySelector('[data-master]');
+  if (master) {
+    var group = document.querySelector('[data-group]');
+    var note = group && group.querySelector('.toggle-group-note');
+    master.addEventListener('change', function () {
+      if (group) group.classList.toggle('is-off', !master.checked);
+      if (note) note.hidden = master.checked;
+      Array.prototype.forEach.call(document.querySelectorAll('[data-child]'), function (c) {
+        c.disabled = !master.checked;
+      });
+    });
+  }
+
   // Користувачі: магазини існують лише разом із роллю продавця (Users::saveStores).
   // Знімають галку — селектор гасне й вибір скидається одразу, щоб було видно,
   // що доступ відкликається, а не «просто не збережеться».
