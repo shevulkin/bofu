@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 namespace Controllers\Admin;
 
-use View, Auth, Settings, WebPush, BotAuth;
+use View, Auth, Settings, WebPush, BotAuth, IntegrationCheck, RateLimit;
 
 class SettingsAdmin
 {
@@ -27,6 +27,17 @@ class SettingsAdmin
         'notify_email_enabled' => 'Канал Email',
         'notify_push_enabled' => 'Канал Push',
     ];
+
+    /**
+     * Перевірка інтеграцій без збереження: беремо те, що зараз у формі.
+     * Ліміт — бо кожен виклик ходить у три чужі API, і кнопку легко затиснути.
+     */
+    public static function check(): never
+    {
+        Auth::requireCap('settings.manage');
+        RateLimit::guard('settings_check', 30, 3600);
+        json_response(['ok' => true, 'rows' => IntegrationCheck::run((array)($_POST['text'] ?? []))]);
+    }
 
     public static function index(): never
     {

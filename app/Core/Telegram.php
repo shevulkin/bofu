@@ -4,8 +4,16 @@ declare(strict_types=1);
 /** Telegram Bot API: надсилання, авто-визначення chat_id через getUpdates (працює без webhook) */
 class Telegram
 {
+    /**
+     * Тимчасова підміна токена — лише для перевірки налаштувань
+     * (IntegrationCheck). Дає перевірити те, що адмін щойно вписав у форму,
+     * НЕ зберігаючи його: інакше «перевірити» тихо ставало б «зберегти».
+     */
+    private static ?string $override = null;
+    public static function useToken(?string $token): void { self::$override = $token; }
+
     public static function token(): string
-    { return (string)Settings::get('telegram_bot_token', ''); }
+    { return self::$override ?? (string)Settings::get('telegram_bot_token', ''); }
 
     public static function configured(): bool
     { return self::token() !== ''; }

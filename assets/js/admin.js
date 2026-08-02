@@ -44,6 +44,44 @@
       });
     });
   }
+  // Налаштування: перевірка інтеграцій тим, що зараз у полях (нічого не зберігає)
+  var checkBtn = document.getElementById('checkBtn');
+  if (checkBtn) {
+    var box = document.getElementById('checkResult');
+    var icons = { ok: '✅', warn: '⚠️', bad: '❌', off: '—' };
+    checkBtn.addEventListener('click', function () {
+      var form = checkBtn.closest('form');
+      var data = new FormData();
+      // лише поля інтеграцій: перевірка не має відношення до перемикачів і текстів
+      Array.prototype.forEach.call(form.querySelectorAll('[name^="text["]'), function (i) {
+        data.append(i.name, i.value);
+      });
+      checkBtn.disabled = true;
+      box.hidden = false;
+      box.innerHTML = '<div class="dim">Питаємо…</div>';
+      fetch(base.replace(/\/$/, '') + '/admin/settings/check', {
+        method: 'POST', body: data,
+        headers: { 'X-CSRF-Token': (window.BOFU && BOFU.csrf) || '' }
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (res) {
+          if (!res || !res.rows) throw new Error('bad response');
+          box.innerHTML = '';
+          res.rows.forEach(function (row) {
+            var el = document.createElement('div');
+            el.className = 'check-row is-' + row.state;
+            var note = row.note ? '<div class="check-note">' + esc(row.note) + '</div>' : '';
+            el.innerHTML = '<span class="check-icon">' + (icons[row.state] || '') + '</span>'
+              + '<div><b>' + esc(row.name) + '</b> — ' + esc(row.text) + note + '</div>';
+            box.appendChild(el);
+          });
+        })
+        .catch(function () { box.innerHTML = '<div class="check-row is-bad">Не вдалося виконати перевірку. Спробуйте ще раз.</div>'; })
+        .finally(function () { checkBtn.disabled = false; });
+    });
+  }
+  function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
   // Налаштування: головний вимикач сповіщень гасить канальні. Стан галок не
   // чіпаємо — вимкнули головний, увімкнули назад, і все на місці (сервер їх
   // теж не переписує, поки головний вимкнений).
