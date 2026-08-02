@@ -55,17 +55,26 @@ class Notify
     /** Одержувачі: адміни та/або продавці магазину */
     private static function recipients(string $mode, ?int $storeId): array
     {
+        // Ролі беремо з user_roles — тобто ті, що людина МАЄ. Режим перегляду тут
+        // ні до чого: адмін, який зараз дивиться очима покупця, має й далі
+        // отримувати сповіщення про замовлення.
         $users = [];
         if (in_array($mode, ['admins', 'admins_sellers'], true)) {
-            $users = DB::all("SELECT * FROM users WHERE role = 'admin' AND active = 1");
+            $users = DB::all(
+                "SELECT u.* FROM users u JOIN user_roles r ON r.user_id = u.id
+                 WHERE r.role = ? AND u.active = 1", [Roles::ADMIN]);
         }
         if (in_array($mode, ['sellers', 'admins_sellers'], true)) {
             if ($storeId !== null) {
                 $sellers = DB::all(
-                    "SELECT u.* FROM users u JOIN seller_stores ss ON ss.user_id = u.id
-                     WHERE ss.store_id = ? AND u.role = 'seller' AND u.active = 1", [$storeId]);
+                    "SELECT u.* FROM users u
+                     JOIN user_roles r ON r.user_id = u.id AND r.role = ?
+                     JOIN seller_stores ss ON ss.user_id = u.id
+                     WHERE ss.store_id = ? AND u.active = 1", [Roles::SELLER, $storeId]);
             } else {
-                $sellers = DB::all("SELECT * FROM users WHERE role = 'seller' AND active = 1");
+                $sellers = DB::all(
+                    "SELECT u.* FROM users u JOIN user_roles r ON r.user_id = u.id
+                     WHERE r.role = ? AND u.active = 1", [Roles::SELLER]);
             }
             foreach ($sellers as $s) $users[] = $s;
         }

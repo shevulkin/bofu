@@ -7,7 +7,7 @@ declare(strict_types=1);
  */
 class Schema
 {
-    public const VERSION = 10;
+    public const VERSION = 11;
 
     /** Оновлення існуючої бази до поточної версії без втрати даних */
     public static function upgrade(): void
@@ -80,7 +80,27 @@ class Schema
             self::createAll(); // order_events
             self::splitLegacyOrders();
         }
+        if ($ver < 11) {
+            // ролі переїжджають в окрему таблицю: одна людина може мати їх кілька
+            self::createAll(); // user_roles
+            self::moveRolesToUserRoles();
+        }
         Settings::set('schema_version', (string)self::VERSION);
+    }
+
+    /**
+     * Роль зі стовпця users.role стає рядком у user_roles. Стовпець лишаємо на місці,
+     * але більше не читаємо — приберемо окремо, коли переконаємось, що на нього
+     * ніхто не посилається. Покупця не переносимо: це базовий стан, а не право.
+     */
+    private static function moveRolesToUserRoles(): void
+    {
+        foreach (DB::all('SELECT id, role FROM users') as $u) {
+            $role = (string)($u['role'] ?? '');
+            if ($role === '' || $role === Roles::CUSTOMER || !Roles::exists($role)) continue;
+            $has = DB::row('SELECT id FROM user_roles WHERE user_id = ? AND role = ?', [$u['id'], $role]);
+            if (!$has) DB::insert('user_roles', ['user_id' => (int)$u['id'], 'role' => $role, 'created_at' => now()]);
+        }
     }
 
     /**
@@ -170,6 +190,11 @@ class Schema
                 'address' => 'str null', 'phone' => 'str null', 'active' => 'bool default 1', 'sort' => 'int default 0',
             ],
             'seller_stores' => [ 'user_id' => 'int', 'store_id' => 'int' ],
+            // Ролі окремо від users: одна людина може мати кілька. Призначення магазинів
+            // (seller_stores) з роллю не пов'язане — це різні речі.
+            'user_roles' => [
+                'id' => 'id', 'user_id' => 'int', 'role' => 'str', 'created_at' => 'ts',
+            ],
             'categories' => [
                 'id' => 'id', 'name' => 'str', 'slug' => 'str unique',
                 'type' => "str default 'product'", 'sort' => 'int default 0', 'active' => 'bool default 1',
@@ -325,6 +350,7 @@ class Schema
             'subscribers' => ['token'],
             'order_items' => ['order_id'],
             'seller_stores' => ['user_id', 'store_id'],
+            'user_roles' => ['user_id', 'role'],
         ];
         foreach ($idx as $table => $columns) {
             foreach ($columns as $col) {

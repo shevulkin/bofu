@@ -25,6 +25,14 @@ switch ($cmd) {
         Seeder::run();
         echo "Fresh: базу перестворено\n";
         break;
+    case 'test':
+        Schema::upgrade();
+        $code = 0;
+        foreach (glob(BOFU_ROOT . '/tests/*.php') ?: [] as $file) {
+            echo "\n### " . basename($file) . "\n";
+            $code = max($code, (int)require $file);
+        }
+        exit($code);
     default:
-        echo "Використання: php bin/cli.php [migrate|seed|fresh]\n";
+        echo "Використання: php bin/cli.php [migrate|seed|fresh|test]\n";
 }

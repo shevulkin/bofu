@@ -13,8 +13,10 @@
     </div>
     <div class="nav-side">
       <?php if ($auth_user): ?>
-        <?php if (in_array($auth_user['role'], ['admin', 'seller'], true)): ?>
-          <a href="<?= e(url('/admin')) ?>"><?= $auth_user['role'] === 'admin' ? 'Адмінпанель' : 'Кабінет продавця' ?></a>
+        <?= View::partial('partials/role_switch') ?>
+        <?php /* через Auth, а не $auth_user['role'] — інакше режим перегляду сюди не дійде */ ?>
+        <?php if (Auth::isStaff()): ?>
+          <a href="<?= e(url('/admin')) ?>"><?= Auth::isAdmin() ? 'Адмінпанель' : 'Кабінет продавця' ?></a>
         <?php else: ?>
           <a href="<?= e(url('/orders')) ?>">Мої замовлення</a>
         <?php endif; ?>
@@ -37,8 +39,8 @@
     <a href="<?= e(url('/shop')) ?>">Магазин</a>
     <a href="<?= e(url('/diploma')) ?>">Диплом</a>
     <a href="<?= e(url('/social')) ?>">Соцмережі</a>
-    <?php if ($auth_user && in_array($auth_user['role'], ['admin','seller'], true)): ?>
-      <a href="<?= e(url('/admin')) ?>"><?= $auth_user['role'] === 'admin' ? 'Адмінпанель' : 'Кабінет продавця' ?></a>
+    <?php if ($auth_user && Auth::isStaff()): ?>
+      <a href="<?= e(url('/admin')) ?>"><?= Auth::isAdmin() ? 'Адмінпанель' : 'Кабінет продавця' ?></a>
     <?php elseif ($auth_user): ?>
       <a href="<?= e(url('/orders')) ?>">Мої замовлення</a>
     <?php endif; ?>
