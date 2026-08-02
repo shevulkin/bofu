@@ -61,8 +61,15 @@ class SettingsAdmin
             // Viber: при зміні токена реєструємо webhook (працює лише на публічному HTTPS)
             $newViber = Settings::get('viber_bot_token', '');
             if ($newViber && $newViber !== $oldViber) {
+                // Токен змінився — бот може бути вже інший, тож кеш URI викидаємо
+                // й питаємо заново. Без URI кнопка входу через Viber не показується,
+                // і мовчазна невдача тут виглядала б як «вхід кудись подівся».
+                \Viber::forgetUri();
+                $uri = \Viber::uri();
+                if ($uri === '') flash('error', 'Viber: не вдалося отримати адресу бота — перевірте токен. Кнопка входу через Viber поки не показуватиметься.');
+
                 $res = \Viber::setWebhook();
-                if (($res['status'] ?? -1) === 0) flash('success', 'Viber webhook зареєстровано');
+                if (($res['status'] ?? -1) === 0) flash('success', 'Viber webhook зареєстровано' . ($uri ? ', бот: ' . $uri : ''));
                 else flash('error', 'Viber: webhook не зареєстровано (локально це нормально — запрацює на хостингу). ' . ($res['status_message'] ?? ''));
             }
             flash('success', 'Налаштування збережено');

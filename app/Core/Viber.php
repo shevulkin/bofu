@@ -13,9 +13,12 @@ class Viber
     public static function api(string $method, array $data): array
     {
         if (!self::configured()) return [];
+        // (object), а не сам масив: json_encode([]) дає "[]", і Viber відповідає
+        // на це «400 Bad Request». Саме через це get_account_info(<порожньо>)
+        // мовчки не працював, а разом із ним зникала кнопка входу через Viber.
         $ch = curl_init('https://chatapi.viber.com/pa/' . $method);
         curl_setopt_array($ch, [
-            CURLOPT_POST => true, CURLOPT_POSTFIELDS => json_encode($data, JSON_UNESCAPED_UNICODE),
+            CURLOPT_POST => true, CURLOPT_POSTFIELDS => json_encode((object)$data, JSON_UNESCAPED_UNICODE),
             CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'X-Viber-Auth-Token: ' . self::token()],
             CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 10,
         ]);
@@ -61,15 +64,31 @@ class Viber
         self::send($viberId, BotAuth::text('bot_done', ['name' => $name, 'phone' => $phone]), $kb);
     }
 
-    /** URI бота для deep-link viber://pa?chatURI=...&context=token */
+    /**
+     * URI бота для deep-link viber://pa?chatURI=...&context=token.
+     *
+     * Питається один раз і кешується. Невдалу спробу теж запамʼятовуємо на
+     * 10 хвилин: без цього кожен рендер сторінки з вікном входу йшов у мережу
+     * і чекав таймауту, тобто одна помилка в налаштуваннях гальмувала весь сайт.
+     */
     public static function uri(): string
     {
-        $u = Settings::get('viber_bot_uri', '');
-        if ($u) return (string)$u;
+        $u = (string)Settings::get('viber_bot_uri', '');
+        if ($u !== '') return $u;
+        if (time() - (int)Settings::get('viber_uri_tried', '0') < 600) return '';
+
+        Settings::set('viber_uri_tried', (string)time());
         $info = self::api('get_account_info', []);
-        $u = $info['uri'] ?? '';
-        if ($u) Settings::set('viber_bot_uri', $u);
-        return (string)$u;
+        $u = (string)($info['uri'] ?? '');
+        if ($u !== '') Settings::set('viber_bot_uri', $u);
+        return $u;
+    }
+
+    /** Забути кеш URI — після зміни токена бот може бути вже інший */
+    public static function forgetUri(): void
+    {
+        Settings::set('viber_bot_uri', '');
+        Settings::set('viber_uri_tried', '0');
     }
 
     /** Виклик після збереження токена: реєструє webhook */
