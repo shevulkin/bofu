@@ -108,15 +108,14 @@ class Telegram
                 self::send($chatId, BotAuth::text('bot_linked', ['messenger' => 'Telegram']));
             } elseif ($row['purpose'] === 'tg_login') {
                 // Токен лишається невикористаним: вхід завершить контакт, а не /start.
+                //
+                // Контакт просимо ЗАВЖДИ, навіть коли номер в акаунті вже є.
+                // Записаний номер нічого не доводить: його міг вписати хто завгодно
+                // з клавіатури — і саме так зʼявився акаунт із чужим +340…, у який
+                // вхід через Telegram потрапляв замість справжнього. Підтверджує
+                // володіння номером лише контакт, надісланий самим месенджером.
                 DB::update('auth_tokens', ['chat_id' => $chatId], 'id = ?', [$row['id']]);
-                $known = DB::row('SELECT * FROM users WHERE tg_chat_id = ? AND active = 1', [$chatId]);
-                $phone = AuthTokens::normPhoneAny((string)($known['phone'] ?? ''));
-                if ($known && $phone) {
-                    // Номер уже підтверджено раніше — вдруге не турбуємо
-                    self::confirm((int)$row['id'], (int)$known['id'], $chatId, (string)$known['name'], $phone);
-                } else {
-                    self::askPhone($chatId);
-                }
+                self::askPhone($chatId);
             }
         }
         Settings::set('tg_updates_offset', (string)$offset);

@@ -23,6 +23,7 @@ final class BotAuthTest
     {
         try {
             $this->testMergeByPhone();
+            $this->testMovesLinkFromDuplicate();
             $this->testFindByMessengerId();
             $this->testCreatesNew();
             $this->testInactiveGetsNothing();
@@ -75,6 +76,33 @@ final class BotAuthTest
         $this->ok('імʼя з профілю не затерте ніком з месенджера', $row['name'] === 'Ганна Коваль');
         $this->ok('другого акаунта не зʼявилось',
             (int)DB::val('SELECT COUNT(*) FROM users WHERE phone = ?', [$phone]) === 1);
+    }
+
+    /**
+     * Саме той випадок, що ламав вхід: у людини є справжній акаунт (з ролями)
+     * і покинутий дубль, створений ботом. Номер має привести в справжній,
+     * а дубль — лишитись без прив'язки, інакше наступний вхід кине монетку.
+     */
+    private function testMovesLinkFromDuplicate(): void
+    {
+        $this->group('дубль віддає прив\'язку справжньому акаунту');
+        $chat = 'tg-dup-1';
+        $dup = $this->mkUser(['tg_chat_id' => $chat, 'name' => 'Дубль з бота', 'phone' => null]);
+        $real = $this->mkUser(['phone' => '+380670000966', 'name' => 'Справжній акаунт']);
+        DB::insert('user_roles', ['user_id' => $real, 'role' => Roles::ADMIN, 'created_at' => now()]);
+
+        $got = BotAuth::resolveUser('tg_chat_id', $chat, '+380670000966', 'Нік у Telegram');
+        $this->ok('увійшли у справжній акаунт, а не в дубль', $got === $real);
+        $this->ok('прив\'язка переїхала до нього',
+            DB::val('SELECT tg_chat_id FROM users WHERE id = ?', [$real]) === $chat);
+        $this->ok('у дубля прив\'язки більше немає',
+            DB::val('SELECT tg_chat_id FROM users WHERE id = ?', [$dup]) === null);
+        $this->ok('chat_id лишився рівно в одного',
+            (int)DB::val('SELECT COUNT(*) FROM users WHERE tg_chat_id = ?', [$chat]) === 1);
+        $this->ok('ролі справжнього акаунта на місці — вхід дає адміна',
+            (int)DB::val('SELECT COUNT(*) FROM user_roles WHERE user_id = ? AND role = ?', [$real, Roles::ADMIN]) === 1);
+
+        DB::delete('user_roles', 'user_id = ?', [$real]);
     }
 
     /** Номер змінився (людина ввела інший), але месенджер той самий */

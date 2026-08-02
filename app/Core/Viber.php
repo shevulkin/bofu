@@ -135,11 +135,9 @@ class Viber
             DB::update('auth_tokens', ['used' => 1, 'chat_id' => $viberId], 'id = ?', [$row['id']]);
             self::send($viberId, BotAuth::text('bot_linked', ['messenger' => 'Viber']));
         } elseif ($row['purpose'] === 'viber_login') {
+            // контакт просимо завжди — пояснення в Telegram::processUpdates()
             DB::update('auth_tokens', ['chat_id' => $viberId], 'id = ?', [$row['id']]);
-            $known = DB::row('SELECT * FROM users WHERE viber_id = ? AND active = 1', [$viberId]);
-            $phone = AuthTokens::normPhoneAny((string)($known['phone'] ?? ''));
-            if ($known && $phone) self::confirm((int)$row['id'], (int)$known['id'], (string)$viberId, (string)$known['name'], $phone);
-            else self::askPhone((string)$viberId);
+            self::askPhone((string)$viberId);
         }
     }
 

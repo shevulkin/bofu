@@ -106,12 +106,13 @@ class BotAuth
              ?: DB::row("SELECT * FROM users WHERE $idField = ? ORDER BY id LIMIT 1", [$extId]);
 
         if ($user) {
+            if (!$user['active']) return 0;               // вимкнений акаунт входу не дає
             $upd = [$idField => $extId, 'phone' => $phone];
             // Імʼя з месенджера не затирає вже введене: людина могла назватись
             // у профілі як їй треба, а в Telegram у неї нік із емодзі.
             if (trim((string)$user['name']) === '' && $name !== '') $upd['name'] = $name;
-            if (!$user['active']) return 0;               // вимкнений акаунт входу не дає
             DB::update('users', $upd, 'id = ?', [(int)$user['id']]);
+            self::detachFrom($idField, $extId, (int)$user['id']);
             return (int)$user['id'];
         }
 
@@ -123,7 +124,21 @@ class BotAuth
             $idField => $extId, 'phone' => $phone, 'created_at' => now(),
         ]);
         Notify::fire('user_new', ['name' => $name, 'email' => $idField === 'tg_chat_id' ? 'Telegram' : 'Viber']);
+        self::detachFrom($idField, $extId, $uid);
         return $uid;
+    }
+
+    /**
+     * Один chat_id — один акаунт.
+     *
+     * Коли номер привів нас до іншого запису (а саме так і склеюються дублікати),
+     * стара прив'язка мусить зникнути. Інакше два рядки мають однаковий chat_id,
+     * і подальші пошуки «за месенджером» повертають який доведеться — вхід починає
+     * то пускати в правильний акаунт, то в покинутий дубль.
+     */
+    private static function detachFrom(string $idField, string $extId, int $keepUserId): void
+    {
+        DB::query("UPDATE users SET $idField = NULL WHERE $idField = ? AND id <> ?", [$extId, $keepUserId]);
     }
 
     /** Незавершений вхід цього чату: /start уже був, номера ще немає */
