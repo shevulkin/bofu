@@ -7,7 +7,7 @@ declare(strict_types=1);
  */
 class Schema
 {
-    public const VERSION = 15;
+    public const VERSION = 16;
 
     /** Оновлення існуючої бази до поточної версії без втрати даних */
     public static function upgrade(): void
@@ -107,6 +107,13 @@ class Schema
             // нових змін, а старі «вічні» доступи тихо пережили б його.
             DB::query('DELETE FROM seller_stores WHERE user_id NOT IN
                        (SELECT user_id FROM user_roles WHERE role = ?)', [Roles::SELLER]);
+        }
+        if ($ver < 16) {
+            // Дев'ять цифр із нулем попереду раніше давали '+380067…' — синтаксично
+            // схоже на номер, тому в базу воно потрапляло мовчки. Проганяємо телефони
+            // через виправлену нормалізацію: такі записи обнуляться, і гейт у App::run()
+            // попросить людину вказати номер ще раз.
+            self::fixBrokenPhones();
         }
         Settings::set('schema_version', (string)self::VERSION);
     }

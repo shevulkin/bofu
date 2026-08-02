@@ -199,6 +199,109 @@
       badge.remove();
     }
   }
+  /* ── Телефон ────────────────────────────────────────────────────────────────
+     Дзеркало AuthTokens::normPhone / normPhoneAny. Сервер лишається джерелом
+     істини — тут ми лише кажемо людині заздалегідь те, що він скаже потім.
+     Якщо правило на сервері зміниться, міняти треба й тут: розʼїзд цих двох
+     місць виглядає для людини як «кнопка не працює».                          */
+  function phoneDigits(v) { return String(v || '').replace(/\D/g, ''); }
+
+  function normPhoneUA(v) {
+    var d = phoneDigits(v);
+    if (d.length === 12 && d.indexOf('380') === 0) return '+' + d;
+    if (d.length === 10 && d.charAt(0) === '0') return '+38' + d;
+    // нуль попереду означає обрізаний десятизначний, а не номер без коду —
+    // див. пояснення в AuthTokens::normPhone()
+    if (d.length === 9 && d.charAt(0) !== '0') return '+380' + d;
+    return null;
+  }
+  function normPhoneAny(v) {
+    var ua = normPhoneUA(v);
+    if (ua) return ua;
+    var d = phoneDigits(v);
+    if (/^\s*\+/.test(String(v || '')) && d.length >= 10 && d.length <= 15) return '+' + d;
+    return null;
+  }
+  /** +380671234567 → +380 67 123 45 67. Чужі коди лишаємо як є: розбивка в них інша */
+  function prettyPhone(norm) {
+    var m = /^\+380(\d{2})(\d{3})(\d{2})(\d{2})$/.exec(norm || '');
+    return m ? '+380 ' + m[1] + ' ' + m[2] + ' ' + m[3] + ' ' + m[4] : norm;
+  }
+
+  /**
+   * Чому саме не підходить. «Неправильний номер» не каже, що робити далі, —
+   * а людина здебільшого помилилась в одній цифрі або не поставила плюс.
+   */
+  function phoneProblem(raw, intl) {
+    var d = phoneDigits(raw);
+    var plus = /^\s*\+/.test(raw);
+    var foreign = plus && d.indexOf('380') !== 0;
+    var ua10 = '. В українському номері їх 10: 067 123 45 67';
+
+    if (d.length === 0) return 'Введіть номер цифрами';
+    if (foreign) {
+      if (!intl) return 'Вхід за номером працює лише з українськими. Увійдіть через Google або Telegram';
+      if (d.length < 10) return 'Замало цифр для міжнародного номера: ' + d.length + ' — треба щонайменше 10';
+      return 'Забагато цифр: ' + d.length + ' — у міжнародному щонайбільше 15';
+    }
+    // Багато цифр без плюса — майже завжди закордонний номер, набраний як удома
+    if (!plus && d.length > 12 && intl) return 'Схоже на іноземний номер — поставте + і код країни: +' + d;
+    if (d.length === 10 && d.charAt(0) !== '0') return 'Український номер починається з нуля: 0' + d.slice(0, 2) + ' …';
+    if (d.length < 10) return 'Замало цифр: ' + d.length + ' з 10. Приклад: 067 123 45 67';
+    return 'Забагато цифр: ' + d.length + ua10;
+  }
+
+  Array.prototype.forEach.call(document.querySelectorAll('input[type=tel]'), function (inp) {
+    // вхід за номером працює лише з українськими (AuthController::phoneStart),
+    // решта форм пускає й закордонних покупців
+    var intl = inp.getAttribute('data-phone') !== 'ua';
+    var norm = intl ? normPhoneAny : normPhoneUA;
+    if (!inp.getAttribute('inputmode')) inp.setAttribute('inputmode', 'tel');
+    if (!inp.getAttribute('autocomplete')) inp.setAttribute('autocomplete', 'tel');
+
+    var hint = document.createElement('div');
+    hint.className = 'field-hint';
+    inp.insertAdjacentElement('afterend', hint);
+
+    function say(state, text) {
+      hint.className = 'field-hint' + (state ? ' is-' + state : '');
+      hint.textContent = text;
+      inp.classList.toggle('is-bad', state === 'bad');
+    }
+    /** @param strict показувати помилку (після blur і на сабміті), а не лише поки набирають */
+    function check(strict) {
+      var raw = inp.value.trim();
+      if (raw === '') {
+        say('', intl ? 'Напр. 067 123 45 67. Іноземний — з кодом країни, через +'
+                     : 'Напр. 067 123 45 67');
+        return !inp.required;
+      }
+      var ok = norm(raw);
+      if (ok) { say('ok', 'Приймемо як ' + ok); return true; }
+      say(strict ? 'bad' : '', strict ? phoneProblem(raw, intl) : 'Дописуйте — поки що номер неповний');
+      return false;
+    }
+
+    check(false);
+    inp.addEventListener('input', function () { check(false); });
+    inp.addEventListener('blur', function () {
+      var ok = norm(inp.value.trim());
+      if (ok) inp.value = prettyPhone(ok);   // показуємо формат, а не просто приймаємо
+      check(true);
+    });
+
+    // Сабміт зупиняємо самі: людина має побачити, ЩО не так, ще до перезавантаження
+    // сторінки — інакше вона повертається на форму з втраченими полями.
+    if (inp.form) {
+      inp.form.addEventListener('submit', function (e) {
+        if (check(true)) return;
+        e.preventDefault();
+        inp.focus();
+        inp.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      });
+    }
+  });
+
   document.addEventListener('submit', function (e) {
     var form = e.target;
     if (!form.matches || !form.matches('.add-cart-form')) return;
