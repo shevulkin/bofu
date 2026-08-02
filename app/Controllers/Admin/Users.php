@@ -41,8 +41,23 @@ class Users
                         : 'Користувача оновлено');
                 }
             }
-            redirect('/admin/users');
+            // повертаємось у той самий фільтр і пошук, а не на початок списку:
+            // інакше після кожного збереження доводиться шукати людину заново
+            redirect(safe_back($_POST['back'] ?? null, '/admin/users'));
         }
+
+        $q = trim($_GET['q'] ?? '');
+        $tab = in_array($_GET['tab'] ?? '', self::TABS, true) ? $_GET['tab'] : 'staff';
+        $page = max(1, (int)($_GET['p'] ?? 1));
+
+        [$where, $params] = self::filterSql($tab, $q);
+        $total = (int)DB::val("SELECT COUNT(*) FROM users u WHERE $where", $params);
+        $pages = max(1, (int)ceil($total / self::PER_PAGE));
+        $page = min($page, $pages);
+        $users = DB::all(
+            "SELECT u.* FROM users u WHERE $where ORDER BY u.id LIMIT " . self::PER_PAGE .
+            ' OFFSET ' . (($page - 1) * self::PER_PAGE), $params);
+
         $userRoles = [];
         foreach (DB::all('SELECT user_id, role FROM user_roles') as $r) {
             $userRoles[(int)$r['user_id']][] = (string)$r['role'];
@@ -50,13 +65,71 @@ class Users
         $sellerStores = [];
         foreach (DB::all('SELECT * FROM seller_stores') as $r) $sellerStores[$r['user_id']][] = (int)$r['store_id'];
         View::show('admin/users', [
-            'users' => DB::all('SELECT * FROM users ORDER BY id'),
+            'users' => $users,
             'stores' => Catalog::stores(),
             'seller_stores' => $sellerStores,
             'user_roles' => $userRoles,
             'assignable' => Roles::assignable(),
+            'counts' => self::tabCounts($q),
+            'tab' => $tab, 'q' => $q, 'page' => $page, 'pages' => $pages, 'total' => $total,
             'page_title' => 'Користувачі та ролі — адмінка',
         ], 'layouts/admin');
+    }
+
+    private const TABS = ['staff', 'customers', 'all'];
+    private const PER_PAGE = 25;
+
+    /**
+     * Умова вибірки для вкладки й пошуку.
+     *
+     * «Персонал» — це наявність будь-якої ролі, а не поле в users: ролі лежать
+     * окремо (user_roles), і саме вони визначають, чи людина щось адмініструє.
+     * Тому вкладка рахується підзапитом, а не збереженим прапорцем, який довелось
+     * би підтримувати в актуальному стані.
+     */
+    private static function filterSql(string $tab, string $q): array
+    {
+        $where = ['1=1'];
+        $params = [];
+        if ($tab === 'staff')     $where[] = 'u.id IN (SELECT user_id FROM user_roles)';
+        if ($tab === 'customers') $where[] = 'u.id NOT IN (SELECT user_id FROM user_roles)';
+
+        if ($q !== '') {
+            $or = ['u.name LIKE ?', 'u.email LIKE ?'];
+            $params[] = '%' . $q . '%';
+            $params[] = '%' . $q . '%';
+            // Телефон у базі лежить у E.164 (+380671234567), а шукають як звикли:
+            // «067 123», «(067)», «+38 067». Тому шукаємо по цифрах, а варіант без
+            // нуля додаємо окремо — інакше «0671234567» не знайде свій же номер.
+            $digits = preg_replace('/\D/', '', $q);
+            foreach (self::phoneNeedles((string)$digits) as $needle) {
+                $or[] = 'u.phone LIKE ?';
+                $params[] = '%' . $needle . '%';
+            }
+            $where[] = '(' . implode(' OR ', $or) . ')';
+        }
+        return [implode(' AND ', $where), $params];
+    }
+
+    /** Цифри запиту в тому вигляді, в якому вони можуть зустрітись у збереженому номері */
+    private static function phoneNeedles(string $digits): array
+    {
+        if ($digits === '') return [];
+        $out = [$digits];
+        if (str_starts_with($digits, '0')) $out[] = substr($digits, 1);   // 067… → 67…
+        if (str_starts_with($digits, '380')) $out[] = substr($digits, 3);
+        return array_values(array_unique(array_filter($out, fn($s) => $s !== '')));
+    }
+
+    /** Скільки знайдеться в кожній вкладці — щоб не тицяти в порожню */
+    private static function tabCounts(string $q): array
+    {
+        $out = [];
+        foreach (self::TABS as $t) {
+            [$where, $params] = self::filterSql($t, $q);
+            $out[$t] = (int)DB::val("SELECT COUNT(*) FROM users u WHERE $where", $params);
+        }
+        return $out;
     }
 
     /**
@@ -114,7 +187,7 @@ class Users
 
         if (!$user || $text === '') {
             flash('error', 'Повідомлення порожнє — нічого не надіслано');
-            redirect('/admin/users');
+            redirect(safe_back($_POST['back'] ?? null, '/admin/users'));
         }
         RateLimit::guard('admin_msg', 60, 3600);
         $text = mb_substr($text, 0, 2000);
@@ -128,7 +201,7 @@ class Users
         } else {
             flash('error', 'Цей канал недоступний: бот не налаштований або людина його не підключила');
         }
-        redirect('/admin/users');
+        redirect(safe_back($_POST['back'] ?? null, '/admin/users'));
     }
 
     /** Скільки точок закріплено за людиною зараз — щоб знати, чи було що відкликати */

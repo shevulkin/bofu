@@ -178,6 +178,17 @@ input:disabled,select:disabled,textarea:disabled{opacity:.45;cursor:not-allowed}
   padding:8px 10px;background:var(--bg2);border:1px solid var(--line2);border-radius:2px}
 .store-picker .checkbox{font-size:13.5px}
 
+/* ---------- список користувачів: вкладки, пошук, сторінки ---------- */
+.users-bar{display:flex;gap:16px;align-items:center;justify-content:space-between;flex-wrap:wrap;padding:14px 18px}
+.users-tabs{display:flex;gap:8px;flex-wrap:wrap}
+.users-search{display:flex;gap:8px;align-items:center}
+.users-search input{width:280px;padding:9px 12px;font-size:13.5px}
+.pager{display:flex;gap:14px;align-items:center;justify-content:center;margin-top:20px;flex-wrap:wrap}
+@media (max-width:640px){
+  .users-bar{flex-direction:column;align-items:stretch}
+  .users-search input{width:100%}
+}
+
 /* ---------- картка користувача ---------- */
 /* align-items:start, а не end: у колонок різна висота, і при вирівнюванні по низу
    будь-яка зміна в одній (зʼявилась підказка, додався канал) зсувала решту. */
