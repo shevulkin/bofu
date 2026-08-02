@@ -9,7 +9,7 @@ class Users
 {
     public static function index(): never
     {
-        Auth::requireAdmin();
+        Auth::requireCap('users.manage');
         if (is_post()) {
             $uid = (int)($_POST['user_id'] ?? 0);
             $user = DB::row('SELECT * FROM users WHERE id = ?', [$uid]);

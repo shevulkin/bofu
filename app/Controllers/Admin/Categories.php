@@ -9,7 +9,7 @@ class Categories
 {
     public static function index(): never
     {
-        Auth::requireAdmin();
+        Auth::requireCap('catalog.manage');
         if (is_post()) {
             $action = $_POST['_action'] ?? '';
             if ($action === 'add' && trim($_POST['name'] ?? '') !== '') {

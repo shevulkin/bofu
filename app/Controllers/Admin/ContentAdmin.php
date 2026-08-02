@@ -27,7 +27,7 @@ class ContentAdmin
 
     public static function index(): never
     {
-        Auth::requireAdmin();
+        Auth::requireCap('content.manage');
         if (is_post()) {
             $action = $_POST['_action'] ?? 'save';
             if ($action === 'save') {

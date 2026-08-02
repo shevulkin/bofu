@@ -17,21 +17,22 @@ class Orders
     /** Магазини поточного користувача; null = адмін (усі) */
     private static function myStores(): ?array
     {
-        return Auth::isAdmin() ? null : Auth::storeIds();
+        return Auth::can('orders.manage') ? null : Auth::storeIds();
     }
 
     /** Чи може користувач змінювати це підзамовлення */
     public static function canManage(array $order): bool
     {
-        if (Auth::isAdmin()) return true;
-        if (!$order['parent_id']) return false; // головне веде лише адмін
+        if (Auth::can('orders.manage')) return true;
+        if (!$order['parent_id']) return false; // головне веде лише той, хто керує замовленням цілком
+        if (!Auth::can('orders.status')) return false;
         return in_array((int)$order['store_id'], Auth::storeIds(), true);
     }
 
     /** Доступ до сторінки: своє підзамовлення або головне, у якому є своя частина */
     private static function canSee(array $order): bool
     {
-        if (Auth::isAdmin()) return true;
+        if (Auth::can('orders.manage')) return true;
         // продавець бачить картину по мережі, але правити зможе лише свої точки —
         // це вирішує canManage, а не видимість
         if (Auth::can('orders.view_all')) return true;
@@ -127,7 +128,7 @@ class Orders
             'can_note' => Auth::can('orders.note'),
             'can_assign' => Auth::can('orders.assign'),
             'statuses' => self::STATUSES,
-            'can_manage_parent' => Auth::isAdmin(),
+            'can_manage_parent' => Auth::can('orders.manage'),
             'page_title' => 'Замовлення ' . $order['number'] . ' — адмінка',
         ], 'layouts/admin');
     }

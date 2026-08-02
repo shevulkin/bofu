@@ -1,11 +1,11 @@
 <?php
 /** @var array|null $p @var array $variants @var array $variant_options @var array $attrs @var array $dict */
 $isNew = $p === null;
-$canStore = fn(int $sid): bool => Auth::isAdmin() || in_array($sid, Auth::storeIds(), true);
+$canStore = fn(int $sid): bool => in_array($sid, Auth::storeIds(), true);
 // Картку товару веде адмін, продавець — лише ціни й залишки своїх магазинів.
 // Форма повторює те, що перевіряє Products::save(): показувати поля, які все одно
 // не збережуться, — гірше, ніж не показувати їх зовсім.
-$canEdit = Auth::isAdmin();
+$canEdit = Auth::can('products.manage');
 $roEdit = $canEdit ? '' : 'disabled';
 ?>
 <div class="admin-head">
@@ -66,7 +66,7 @@ $roEdit = $canEdit ? '' : 'disabled';
     <p class="dim" style="margin:-8px 0 14px">
       Обирайте зі спільного словника — так значення однакові в усіх товарів і працюють фільтри.
       Список залежить від категорії товару.
-      <?php if (Auth::isAdmin()): ?><a href="<?= e(url('/admin/attributes')) ?>">Керувати словником →</a><?php endif; ?>
+      <?php if (Auth::can('catalog.manage')): ?><a href="<?= e(url('/admin/attributes')) ?>">Керувати словником →</a><?php endif; ?>
     </p>
     <div id="attrRows" class="row-list"></div>
     <button class="btn btn-line btn-sm" type="button" id="attrAdd" style="margin-top:12px">+ Додати характеристику</button>
@@ -157,7 +157,7 @@ $roEdit = $canEdit ? '' : 'disabled';
 
   <div style="display:flex;gap:12px;align-items:center">
     <button class="btn btn-gold" type="submit">💾 Зберегти</button>
-    <?php if (!$isNew && Auth::isAdmin()): ?>
+    <?php if (!$isNew && Auth::can('products.manage')): ?>
       <button class="btn btn-danger" type="submit" name="_action" value="delete"
         onclick="return confirm('Видалити товар разом із фото та цінами?')">Видалити товар</button>
     <?php endif; ?>

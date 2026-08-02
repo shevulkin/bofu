@@ -9,7 +9,7 @@ class Stores
 {
     public static function index(): never
     {
-        Auth::requireAdmin();
+        Auth::requireCap('stores.manage');
         if (is_post()) {
             $action = $_POST['_action'] ?? '';
             if ($action === 'add' && trim($_POST['name'] ?? '') !== '') {

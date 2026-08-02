@@ -151,33 +151,54 @@ class App
         $post = $method === 'POST';
         if ($post) Csrf::verify();
 
+        // Третій елемент — право, потрібне для маршруту. Правило навмисно суворе:
+        // маршрут без права доступний лише тим, хто має всі права. Так забутий
+        // запис закриває доступ, а не відкриває його тихо.
+        // 'staff' — виняток для панелі: вона нічого не показує понад те, на що
+        // права перевіряються всередині, і має бути доступна будь-якому персоналу.
         $routes = [
-            '/admin'                    => [$A.'Dashboard', 'index'],
-            '/admin/products'           => [$A.'Products', 'index'],
-            '/admin/products/new'       => [$A.'Products', 'create'],
-            '/admin/products/bulk'      => [$A.'Products', 'bulk'],
-            '/admin/categories'         => [$A.'Categories', 'index'],
-            '/admin/attributes'         => [$A.'Attributes', 'index'],
-            '/admin/stores'             => [$A.'Stores', 'index'],
-            '/admin/orders'             => [$A.'Orders', 'index'],
-            '/admin/promos'             => [$A.'Promos', 'index'],
-            '/admin/diplomas'           => [$A.'Diplomas', 'index'],
-            '/admin/users'              => [$A.'Users', 'index'],
-            '/admin/subscribers'        => [$A.'Subscribers', 'index'],
-            '/admin/content'            => [$A.'ContentAdmin', 'index'],
-            '/admin/media'              => [$A.'Media', 'index'],
-            '/admin/settings'           => [$A.'SettingsAdmin', 'index'],
-            '/admin/notifications'      => [$A.'Notifications', 'index'],
+            '/admin'                    => [$A.'Dashboard', 'index', 'staff'],
+            '/admin/products'           => [$A.'Products', 'index', 'products.view'],
+            '/admin/products/new'       => [$A.'Products', 'create', 'products.manage'],
+            '/admin/products/bulk'      => [$A.'Products', 'bulk', 'products.view'],
+            '/admin/categories'         => [$A.'Categories', 'index', 'catalog.manage'],
+            '/admin/attributes'         => [$A.'Attributes', 'index', 'catalog.manage'],
+            '/admin/stores'             => [$A.'Stores', 'index', 'stores.manage'],
+            '/admin/orders'             => [$A.'Orders', 'index', 'orders.view'],
+            '/admin/promos'             => [$A.'Promos', 'index', 'promos.manage'],
+            '/admin/diplomas'           => [$A.'Diplomas', 'index', 'diplomas.manage'],
+            '/admin/users'              => [$A.'Users', 'index', 'users.manage'],
+            '/admin/subscribers'        => [$A.'Subscribers', 'index', 'subscribers.manage'],
+            '/admin/content'            => [$A.'ContentAdmin', 'index', 'content.manage'],
+            '/admin/media'              => [$A.'Media', 'index', 'media.manage'],
+            '/admin/settings'           => [$A.'SettingsAdmin', 'index', 'settings.manage'],
+            '/admin/notifications'      => [$A.'Notifications', 'index', 'notifications.manage'],
         ];
         if (isset($routes[$path])) {
             [$cls, $fn] = $routes[$path];
+            self::gate($routes[$path][2] ?? null);
             $cls::$fn();
         }
-        if (preg_match('~^/admin/products/(\d+)$~', $path, $m)) { $cls = $A.'Products'; $cls::edit((int)$m[1]); }
-        if (preg_match('~^/admin/orders/(\d+)$~', $path, $m)) { $cls = $A.'Orders'; $cls::view((int)$m[1]); }
+        if (preg_match('~^/admin/products/(\d+)$~', $path, $m)) {
+            self::gate('products.view'); $cls = $A.'Products'; $cls::edit((int)$m[1]);
+        }
+        if (preg_match('~^/admin/orders/(\d+)$~', $path, $m)) {
+            self::gate('orders.view'); $cls = $A.'Orders'; $cls::view((int)$m[1]);
+        }
 
         http_response_code(404);
         echo View::render('errors/404');
         exit;
+    }
+
+    /**
+     * Гейт маршруту адмінки. Це перший із двох рубежів: другий стоїть усередині
+     * кожної дії, що змінює дані, бо один маршрут обслуговує і показ, і POST
+     * з різними діями, а приховати кнопку — не перевірка.
+     */
+    private static function gate(?string $cap): void
+    {
+        if ($cap === 'staff') return;          // достатньо requireStaff() вище
+        Auth::requireCap($cap ?? '*');         // право не оголошене — лише повні права
     }
 }

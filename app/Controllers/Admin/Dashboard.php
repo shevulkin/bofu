@@ -13,7 +13,7 @@ class Dashboard
         // рахувати обидва рівні разом означало б подвоїти і кількість, і оборот.
         $storeIds = Auth::storeIds();
         $in = $storeIds ? implode(',', array_map('intval', $storeIds)) : '0';
-        $where = Auth::isAdmin() ? 'parent_id IS NULL' : "parent_id IS NOT NULL AND store_id IN ($in)";
+        $where = Auth::can('orders.manage') ? 'parent_id IS NULL' : "parent_id IS NOT NULL AND store_id IN ($in)";
         $stats = [
             'orders_new' => (int)DB::val("SELECT COUNT(*) FROM orders WHERE status = 'new' AND $where"),
             'orders_total' => (int)DB::val("SELECT COUNT(*) FROM orders WHERE $where"),

@@ -9,7 +9,7 @@ class Subscribers
 {
     public static function index(): never
     {
-        Auth::requireAdmin();
+        Auth::requireCap('subscribers.manage');
 
         if (is_post()) {
             $action = $_POST['_action'] ?? '';

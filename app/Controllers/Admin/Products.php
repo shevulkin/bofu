@@ -36,13 +36,13 @@ class Products
         $stores = Catalog::stores();
         if (is_post()) {
             // Картка товару (назва, базова ціна, видимість) — спільна для всього сайту,
-            // тож належить адміну. Продавцю лишаються ціни й залишки його магазинів.
-            $isAdmin = Auth::isAdmin();
+            // тож потребує products.manage. Продавцю лишаються ціни й залишки його точок.
+            $canCard = Auth::can('products.manage');
             $rows = $_POST['p'] ?? [];
             foreach ($rows as $id => $data) {
                 $id = (int)$id;
                 $upd = [];
-                if ($isAdmin) {
+                if ($canCard) {
                     if (isset($data['name']) && trim($data['name']) !== '') $upd['name'] = trim($data['name']);
                     if (array_key_exists('base_price', $data)) $upd['base_price'] = $data['base_price'] === '' ? null : (float)$data['base_price'];
                     if (isset($data['active'])) $upd['active'] = (int)(bool)$data['active'];
@@ -84,7 +84,7 @@ class Products
 
     public static function create(): never
     {
-        Auth::requireAdmin();
+        Auth::requireCap('products.manage');
         if (is_post()) {
             $name = trim($_POST['name'] ?? '');
             if ($name === '') { flash('error', 'Вкажіть назву'); redirect('/admin/products/new'); }
@@ -157,17 +157,18 @@ class Products
     private static function save(int $id, array $p): void
     {
         $action = $_POST['_action'] ?? 'save';
-        $isAdmin = Auth::isAdmin();
+        $canCard = Auth::can('products.manage');
 
-        // дії з карткою товару — тільки адмін; продавцю мовчки нічого не робимо
-        if (!$isAdmin && in_array($action, [
-            'delete', 'attach_image', 'upload_image', 'delete_image', 'main_image', 'move_image', 'gen_variants',
-        ], true)) {
+        // Дозволений список, а не заборонений: без products.manage проходить лише
+        // звичайне збереження, і в ньому далі приймаються самі ціни та залишки.
+        // Нова дія, додана сюди пізніше, за замовчуванням буде закрита — саме так
+        // і треба: помилка має відмовляти, а не відкривати доступ.
+        if (!$canCard && $action !== 'save') {
             flash('error', 'Змінювати картку товару може лише адміністратор.');
             redirect('/admin/products/' . $id);
         }
 
-        if ($action === 'delete' && $isAdmin) {
+        if ($action === 'delete' && $canCard) {
             $paths = array_column(DB::all('SELECT path FROM product_images WHERE product_id = ?', [$id]), 'path');
             foreach (DB::all('SELECT id FROM product_variants WHERE product_id = ?', [$id]) as $v) {
                 DB::delete('variant_options', 'variant_id = ?', [(int)$v['id']]);
@@ -260,8 +261,8 @@ class Products
             if ($selection) $generated = Attrs::generateVariants($id, $selection);
         }
 
-        // Основне збереження (картка товару — лише адмін)
-        if ($isAdmin) {
+        // Основне збереження (картка товару — лише з products.manage)
+        if ($canCard) {
             DB::update('products', [
                 'name' => trim($_POST['name'] ?? $p['name']),
                 'category_id' => (int)($_POST['category_id'] ?? $p['category_id']),
@@ -360,19 +361,25 @@ class Products
     {
         $cond = $variantId === null ? 'variant_id IS NULL' : 'variant_id = ?';
         $extra = $variantId === null ? [] : [$variantId];
+        // Право на дію і межі, у яких вона дозволена, — різні речі, тому перевіряємо
+        // обидві: чи взагалі можна правити ціни/залишки і чи належить точка тобі.
+        // storeIds() для адміна повертає всі магазини, тож окремої гілки не треба.
+        $canPrice = Auth::can('products.price');
+        $canStock = Auth::can('products.stock');
+        $mine = Auth::storeIds();
 
-        foreach ($prices as $sid => $priceVal) {
+        foreach ($canPrice ? $prices : [] as $sid => $priceVal) {
             $sid = (int)$sid;
-            if (!Auth::isAdmin() && !in_array($sid, Auth::storeIds(), true)) continue;
+            if (!in_array($sid, $mine, true)) continue;
             $exists = DB::row("SELECT id FROM store_prices WHERE product_id = ? AND store_id = ? AND $cond",
                 array_merge([$productId, $sid], $extra));
             if ($priceVal === '') { if ($exists) DB::delete('store_prices', 'id = ?', [$exists['id']]); }
             elseif ($exists) DB::update('store_prices', ['price' => (float)$priceVal], 'id = ?', [$exists['id']]);
             else DB::insert('store_prices', ['product_id' => $productId, 'store_id' => $sid, 'variant_id' => $variantId, 'price' => (float)$priceVal]);
         }
-        foreach ($stock as $sid => $qty) {
+        foreach ($canStock ? $stock : [] as $sid => $qty) {
             $sid = (int)$sid;
-            if (!Auth::isAdmin() && !in_array($sid, Auth::storeIds(), true)) continue;
+            if (!in_array($sid, $mine, true)) continue;
             $exists = DB::row("SELECT id FROM store_stock WHERE product_id = ? AND store_id = ? AND $cond",
                 array_merge([$productId, $sid], $extra));
             if ($qty === '') { if ($exists) DB::delete('store_stock', 'id = ?', [$exists['id']]); continue; }
