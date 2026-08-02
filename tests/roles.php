@@ -12,6 +12,8 @@
  */
 declare(strict_types=1);
 
+use Controllers\Admin\Users;
+
 final class RolesTest
 {
     private int $pass = 0;
@@ -33,6 +35,7 @@ final class RolesTest
             $this->testStores();
             $this->testWorkStore();
             $this->testDefaultDeny();
+            $this->testStoreAccessFollowsRole();
         } finally {
             $this->tearDown();
         }
@@ -279,6 +282,42 @@ final class RolesTest
         $this->as(Roles::ADMIN);
         $_SESSION['act_store'] = $foreign;
         $this->ok('адміну робоча точка не звужує мережу', count(Auth::storeIds()) === count($this->storeIds));
+    }
+
+    /**
+     * Прив'язка до точки живе рівно стільки, скільки роль продавця.
+     * Головне тут — третя перевірка: повернення ролі саме по собі доступу не віддає.
+     */
+    private function testStoreAccessFollowsRole(): void
+    {
+        [$mine, $other] = $this->storeIds;
+        $seller = $this->userIds[Roles::SELLER];
+        $admin  = $this->userIds[Roles::ADMIN];
+        $assign = fn(int $uid, array $ids, array $roles) => Users::saveStores($uid, $ids, $roles);
+        // порядок рядків у БД без ORDER BY не гарантований — звіряємо множини
+        $got = function (int $uid): array { $s = Auth::assignedStoreIds($uid); sort($s); return $s; };
+        $want = [$mine, $other]; sort($want);
+
+        $this->group('доступ до точок іде за роллю');
+
+        $assign($seller, [$mine, $other], [Roles::SELLER]);
+        $this->ok('продавцю точки призначаються', $got($seller) === $want);
+
+        $assign($seller, [$mine, $other], []);   // роль зняли — точки прийшли ті самі
+        $this->ok('зняття ролі прибирає з усіх точок', $got($seller) === []);
+
+        $assign($seller, [], [Roles::SELLER]);   // роль повернули, точок не обрали
+        $this->ok('повернення ролі доступу не відновлює', $got($seller) === []);
+
+        $assign($seller, [$mine], [Roles::SELLER]);
+        $this->ok('після повернення точку призначають наново', $got($seller) === [$mine]);
+
+        $assign($admin, [$mine], [Roles::ADMIN]);
+        $this->ok('без ролі продавця точку не прив\'язати', $got($admin) === []);
+
+        // повертаємо стан, який заклав setUp — на випадок нових перевірок після цієї
+        $assign($seller, [$mine], [Roles::SELLER]);
+        Auth::forgetRoles();
     }
 }
 

@@ -1,5 +1,5 @@
 <div class="admin-head"><h1 class="h-serif">Користувачі та ролі</h1></div>
-<p class="dim" style="margin-bottom:18px">Нові користувачі з'являються після входу через Google. Ролей може бути кілька — права підсумовуються. Призначення магазинів не залежить від ролі. Telegram Chat ID потрібен для сповіщень у Telegram (бот повідомить його командою /start).</p>
+<p class="dim" style="margin-bottom:18px">Нові користувачі з'являються після входу через Google. Ролей може бути кілька — права підсумовуються. Магазини призначаються лише продавцям: знімете роль — людина зникне з усіх точок, і при поверненні ролі їх треба буде обрати наново. Telegram Chat ID потрібен для сповіщень у Telegram (бот повідомить його командою /start).</p>
 <div style="display:flex;flex-direction:column;gap:14px">
   <?php foreach ($users as $u): ?>
     <form class="admin-card" method="post" action="<?= e(url('/admin/users')) ?>" style="display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr auto;gap:14px;align-items:end;margin-bottom:0" data-rg="1">
@@ -9,22 +9,26 @@
         <b><?= e($u['name']) ?></b>
         <div class="dim"><?= e($u['email']) ?></div>
       </div>
-      <?php $has = $user_roles[(int)$u['id']] ?? []; ?>
+      <?php $has = $user_roles[(int)$u['id']] ?? []; $isSeller = in_array(Roles::SELLER, $has, true); ?>
       <div><label>Ролі</label>
         <?php foreach ($assignable as $r): ?>
           <label class="checkbox" style="display:block">
-            <input type="checkbox" name="roles[]" value="<?= e($r) ?>" <?= in_array($r, $has, true) ? 'checked' : '' ?>>
+            <input type="checkbox" name="roles[]" value="<?= e($r) ?>" <?= in_array($r, $has, true) ? 'checked' : '' ?>
+                   <?= $r === Roles::SELLER ? 'data-seller-role' : '' ?>>
             <?= e(Roles::label($r)) ?>
           </label>
         <?php endforeach; ?>
         <span class="dim" style="font-size:12px">Без жодної — звичайний покупець</span>
       </div>
+      <?php /* Точки прив'язані до ролі продавця (див. Users::saveStores). Селектор без
+               ролі не просто зайвий — він обіцяв би доступ, який не збережеться. */ ?>
       <div><label>Магазини</label>
-        <select name="stores[]" multiple size="2">
+        <select name="stores[]" multiple size="2" data-seller-stores <?= $isSeller ? '' : 'disabled' ?>>
           <?php foreach ($stores as $s): ?>
-            <option value="<?= (int)$s['id'] ?>" <?= in_array((int)$s['id'], $seller_stores[$u['id']] ?? [], true) ? 'selected' : '' ?>><?= e($s['name'] . ($s['city'] ? ' · ' . $s['city'] : '')) ?></option>
+            <option value="<?= (int)$s['id'] ?>" <?= $isSeller && in_array((int)$s['id'], $seller_stores[$u['id']] ?? [], true) ? 'selected' : '' ?>><?= e($s['name'] . ($s['city'] ? ' · ' . $s['city'] : '')) ?></option>
           <?php endforeach; ?>
         </select>
+        <span class="dim" style="font-size:12px" data-seller-hint <?= $isSeller ? 'hidden' : '' ?>>Доступні лише продавцям</span>
       </div>
       <div><label>Telegram Chat ID</label><input type="text" name="tg_chat_id" value="<?= e($u['tg_chat_id']) ?>" placeholder="напр. 123456789"></div>
       <div style="display:flex;gap:12px;align-items:center">
