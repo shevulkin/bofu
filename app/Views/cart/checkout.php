@@ -30,7 +30,7 @@
       <div id="npFields">
         <div class="form-grid">
           <div class="field"><label>Місто</label><input type="text" name="city" id="npCity" placeholder="Почніть вводити місто…" autocomplete="off" list="npCityList"><datalist id="npCityList"></datalist></div>
-          <div class="field"><label>Відділення / поштомат</label><input type="text" name="np_office" id="npOffice" placeholder="Номер або адреса відділення" list="npOfficeList" autocomplete="off"><datalist id="npOfficeList"></datalist></div>
+          <div class="field"><label>Відділення / поштомат</label><input type="text" name="np_office" id="npOffice" placeholder="Номер, вулиця або «поштомат»" list="npOfficeList" autocomplete="off"><datalist id="npOfficeList"></datalist></div>
         </div>
       </div>
 
@@ -107,29 +107,60 @@
   if (enabled) {
     var cityInput = document.getElementById('npCity'), cityList = document.getElementById('npCityList');
     var offInput = document.getElementById('npOffice'), offList = document.getElementById('npOfficeList');
-    var cityRef = '', t;
+    var cityUrl = '<?= e(url('/api/np/cities')) ?>', whUrl = '<?= e(url('/api/np/warehouses')) ?>';
+    // ref міст накопичуємо, а не перечитуємо зі списку підказок: після вибору
+    // міста НП на його ж повну назву відповідає іншим рядком («м. Кривий Ріг,
+    // Дніпропетровська обл.» → «…, Криворізький р-н, …»), збіг не знаходився,
+    // ref лишався порожнім — і відділення не завантажувались ніколи
+    var refByLabel = {}, cityRef = '', tCity, tOff;
+
+    function fillList(list, values) {
+      list.innerHTML = '';
+      values.forEach(function(v){ var o = document.createElement('option'); o.value = v; list.appendChild(o); });
+    }
+    function pickCity() {
+      var ref = refByLabel[cityInput.value.trim()] || '';
+      if (ref === cityRef) return;
+      cityRef = ref;
+      offInput.value = '';           // відділення старого міста в новому не існує
+      fillList(offList, []);
+      if (cityRef) loadOffices('');
+    }
+    function loadOffices(q) {
+      var ref = cityRef;
+      fetch(whUrl + '?city=' + encodeURIComponent(ref) + '&q=' + encodeURIComponent(q))
+        .then(function(r){return r.json()}).then(function(d){
+          if (ref !== cityRef) return; // місто вже змінили — відповідь застаріла
+          fillList(offList, d.items);
+        }).catch(function(){});
+    }
+
     cityInput.addEventListener('input', function(){
-      clearTimeout(t);
-      t = setTimeout(function(){
-        fetch('<?= e(url('/api/np/cities')) ?>?q=' + encodeURIComponent(cityInput.value))
+      clearTimeout(tCity);
+      var q = cityInput.value.trim();
+      if (refByLabel[q]) { pickCity(); return; }
+      tCity = setTimeout(function(){
+        fetch(cityUrl + '?q=' + encodeURIComponent(q))
           .then(function(r){return r.json()}).then(function(d){
-            cityList.innerHTML = '';
-            d.items.forEach(function(it){
-              var o = document.createElement('option'); o.value = it.label; o.dataset.ref = it.ref; cityList.appendChild(o);
-            });
-            var m = Array.prototype.find.call(cityList.children, function(o){return o.value === cityInput.value});
-            if (m) { cityRef = m.dataset.ref; loadOffices(); }
-          });
+            d.items.forEach(function(it){ refByLabel[it.label] = it.ref; });
+            fillList(cityList, d.items.map(function(it){ return it.label }));
+            pickCity();
+          }).catch(function(){});
       }, 300);
     });
-    function loadOffices(){
+    cityInput.addEventListener('change', pickCity);
+
+    // великі міста мають тисячі точок, тому список звужує сама НП за введеним
+    // текстом: «12», «Хрещатик» чи «поштомат» однаково працюють
+    offInput.addEventListener('input', function(){
       if (!cityRef) return;
-      fetch('<?= e(url('/api/np/warehouses')) ?>?city=' + encodeURIComponent(cityRef))
-        .then(function(r){return r.json()}).then(function(d){
-          offList.innerHTML = '';
-          d.items.forEach(function(name){ var o = document.createElement('option'); o.value = name; offList.appendChild(o); });
-        });
-    }
+      clearTimeout(tOff);
+      var q = offInput.value.trim();
+      tOff = setTimeout(function(){ loadOffices(q); }, 300);
+    });
+    offInput.addEventListener('focus', function(){
+      if (cityRef && !offList.children.length) loadOffices(offInput.value.trim());
+    });
   }
 })();
 </script>
