@@ -140,6 +140,16 @@ final class RolesTest
         $this->ok('продавець НЕ вдає адміна', !Auth::canSimulate(Roles::ADMIN));
         $this->as(Roles::CUSTOMER);
         $this->ok('покупцю нема кого вдавати', Auth::simulatableRoles() === []);
+
+        // у перемикачі показуємо лише ролі, що справді звужують права
+        $this->as(Roles::ADMIN);
+        $this->ok('адміну пропонують продавця й покупця',
+            Auth::simulatableRoles() === [Roles::SELLER, Roles::CUSTOMER]);
+        $this->ok('адміну не пропонують вдавати адміна',
+            !in_array(Roles::ADMIN, Auth::simulatableRoles(), true));
+        $this->as(Roles::SELLER);
+        $this->ok('продавцю пропонують лише покупця',
+            Auth::simulatableRoles() === [Roles::CUSTOMER]);
     }
 
     private function testSimulationNarrows(): void

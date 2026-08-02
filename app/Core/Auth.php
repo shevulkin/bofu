@@ -147,16 +147,23 @@ class Auth
     }
 
     /**
-     * Ролі для перемикача. Крім покупця показуємо лише робочі (assignable) ролі:
-     * роль без прав формально вдати можна — це звуження до порожнечі, — але в списку
-     * вона лише збиває з пантелику.
+     * Ролі для перемикача. Пропонуємо лише ті, що справді щось міняють:
+     * власна роль нічого не звужує, а роль без прав (поки такий editor) у списку
+     * лише збиває з пантелику. Тому — робочі ролі плюс покупець, і тільки ті,
+     * від яких набір прав дійсно зменшується.
      */
     public static function simulatableRoles(): array
     {
         if (self::staffRoles() === []) return [];
+        $own = self::ownCaps();
+        sort($own);
         $offer = array_merge(Roles::assignable(), [Roles::CUSTOMER]);
-        return array_values(array_filter(Roles::all(),
-            fn($r) => in_array($r, $offer, true) && self::canSimulate($r)));
+        return array_values(array_filter(Roles::all(), function ($r) use ($offer, $own) {
+            if (!in_array($r, $offer, true) || !self::canSimulate($r)) return false;
+            $narrowed = Roles::narrow($own, Roles::caps($r));
+            sort($narrowed);
+            return $narrowed !== $own;
+        }));
     }
 
     public static function simulate(string $role, ?int $storeId = null): bool

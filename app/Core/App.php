@@ -98,6 +98,10 @@ class App
         if ($path === '/profile/viber/link') { Controllers\Profile::viberLink(); }
         if ($path === '/profile/viber/check') { Controllers\Profile::viberCheck(); }
         if ($path === '/logout' && $method === 'POST') { Controllers\AuthController::logout(); }
+        // режим перегляду — поза адмінкою: у режимі покупця стафних прав немає,
+        // і під гейтом адмінки з нього не було б виходу
+        if ($path === '/role/switch' && $method === 'POST') { Controllers\RoleController::change(); }
+        if ($path === '/role/reset' && $method === 'POST') { Controllers\RoleController::reset(); }
 
         // --- вітрина ---
         if ($path === '/') { Controllers\Home::index(); }

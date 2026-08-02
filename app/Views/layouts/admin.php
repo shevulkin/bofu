@@ -16,6 +16,9 @@
 <div class="admin-mobilebar">
   <button class="mobile-menu-btn" style="display:flex" onclick="document.querySelector('.admin-side').classList.toggle('open')">☰</button>
   <b><?= Auth::isAdmin() ? 'Адмінпанель' : 'Кабінет продавця' ?></b>
+  <?php if (Auth::actingAs() !== null): ?>
+    <span class="role-tag"><?= e(Roles::label(Auth::actingAs())) ?></span>
+  <?php endif; ?>
 </div>
 <div class="admin-wrap">
   <aside class="admin-side">
@@ -45,6 +48,7 @@
     <?php endforeach; ?>
     <div class="sep"></div>
     <a href="<?= e(url('/')) ?>">← На сайт</a>
+    <div style="padding:8px 22px"><?= View::partial('partials/role_switch') ?></div>
     <form method="post" action="<?= e(url('/logout')) ?>" style="padding:8px 22px"><?= Csrf::field() ?>
       <button class="btn btn-line btn-xs" type="submit" style="width:100%">Вийти (<?= e($auth_user['name'] ?? '') ?>)</button>
     </form>
@@ -54,7 +58,8 @@
     </div>
   </aside>
   <main class="admin-main">
-    <?php if (Settings::bool('seo_noindex')): ?>
+    <?php /* банер веде в Налаштування — показуємо лише тим, хто може туди зайти */ ?>
+    <?php if (Settings::bool('seo_noindex') && Auth::can('settings.manage')): ?>
       <div class="flash" style="padding:0;margin:0 0 16px"><div class="flash-error">
         🔒 Сайт закрито від пошукових систем. Перед запуском вимкніть це в
         <a href="<?= e(url('/admin/settings')) ?>" style="color:inherit;text-decoration:underline">Налаштуваннях</a>.
