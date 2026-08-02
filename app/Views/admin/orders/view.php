@@ -139,7 +139,9 @@
         <?php foreach ($events as $ev): ?>
           <div style="padding:8px 0;border-bottom:1px solid var(--bg3);font-size:13.5px">
             <?= e($ev['message']) ?>
-            <div class="dim"><?= e(date('d.m.Y H:i', strtotime($ev['created_at']))) ?><?= $ev['user_name'] ? ' · ' . e($ev['user_name']) : '' ?></div>
+            <div class="dim"><?= e(date('d.m.Y H:i', strtotime($ev['created_at']))) ?><?= $ev['user_name'] ? ' · ' . e($ev['user_name']) : '' ?><?php
+              /* роль показуємо поруч з іменем: у старих записів її немає */
+              if (!empty($ev['role'])): ?> · <?= e(Roles::label($ev['role'])) ?><?php endif; ?></div>
           </div>
         <?php endforeach; ?>
       </div>

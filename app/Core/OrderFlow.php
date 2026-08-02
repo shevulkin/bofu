@@ -84,6 +84,10 @@ class OrderFlow
     {
         DB::insert('order_events', [
             'parent_id' => $parentId, 'order_id' => $orderId, 'user_id' => $userId,
+            // Роль, у якій діяли: одна людина може працювати і як адмін, і як продавець
+            // точки, тож саме імені для історії замало. Пишемо лише тоді, коли дію
+            // виконав власник поточної сесії, — інакше приписали б чужу роль.
+            'role' => ($userId !== null && $userId === Auth::id()) ? Auth::role() : null,
             'type' => $type, 'message' => $message, 'created_at' => now(),
         ]);
     }
