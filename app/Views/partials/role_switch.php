@@ -18,7 +18,7 @@ $rsStoreId = Auth::actingStoreId();
 <div class="role-switch<?= $rsActive !== null ? ' is-acting' : '' ?>">
   <?php if ($rsActive !== null): ?>
     <span class="role-switch-now">
-      Режим перегляду: <b><?= e(Roles::label($rsActive)) ?></b>
+      Працюю як: <b><?= e(Roles::label($rsActive)) ?></b>
       <?php if ($rsActive === Roles::SELLER && $rsStoreId):
         $rsName = '';
         foreach ($rsStores as $s) if ((int)$s['id'] === $rsStoreId) $rsName = $s['name'];
@@ -32,7 +32,7 @@ $rsStoreId = Auth::actingStoreId();
   <?php else: ?>
     <form method="post" action="<?= e(url('/role/switch')) ?>"><?= Csrf::field() ?>
       <input type="hidden" name="back" value="<?= e($rsBack) ?>">
-      <label class="dim" for="rsRole">Дивитись як</label>
+      <label class="dim" for="rsRole">Працювати як</label>
       <select name="role" id="rsRole">
         <?php foreach ($rsRoles as $r): ?>
           <option value="<?= e($r) ?>"><?= e(Roles::label($r)) ?></option>

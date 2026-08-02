@@ -7,7 +7,7 @@ declare(strict_types=1);
  */
 class Schema
 {
-    public const VERSION = 11;
+    public const VERSION = 12;
 
     /** Оновлення існуючої бази до поточної версії без втрати даних */
     public static function upgrade(): void
@@ -84,6 +84,11 @@ class Schema
             // ролі переїжджають в окрему таблицю: одна людина може мати їх кілька
             self::createAll(); // user_roles
             self::moveRolesToUserRoles();
+        }
+        if ($ver < 12) {
+            // одна людина може працювати і як адмін, і як продавець точки —
+            // без ролі запис «хто змінив статус» став неоднозначним
+            self::addColumn('order_events', 'role', 'str null');
         }
         Settings::set('schema_version', (string)self::VERSION);
     }
@@ -279,6 +284,7 @@ class Schema
             'order_events' => [
                 'id' => 'id', 'parent_id' => 'int', 'order_id' => 'int null', 'user_id' => 'int null',
                 'type' => 'str', // created|status|transfer|note
+                'role' => 'str null', // роль, у якій діяли
                 'message' => 'text null', 'created_at' => 'ts',
             ],
             'diplomas' => [
