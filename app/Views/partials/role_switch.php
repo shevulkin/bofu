@@ -30,22 +30,28 @@ $rsStoreId = Auth::actingStoreId();
       <button class="btn btn-line btn-xs" type="submit">Повернути свої права</button>
     </form>
   <?php else: ?>
-    <form method="post" action="<?= e(url('/role/switch')) ?>"><?= Csrf::field() ?>
-      <input type="hidden" name="back" value="<?= e($rsBack) ?>">
-      <label class="dim" for="rsRole">Працювати як</label>
-      <select name="role" id="rsRole">
-        <?php foreach ($rsRoles as $r): ?>
-          <option value="<?= e($r) ?>"><?= e(Roles::label($r)) ?></option>
-        <?php endforeach; ?>
-      </select>
-      <?php if (count($rsStores) > 1): ?>
-        <select name="store_id" title="Точка для режиму продавця">
-          <?php foreach ($rsStores as $s): ?>
-            <option value="<?= (int)$s['id'] ?>"><?= e($s['name']) ?></option>
+    <?php /* згорнуто в <details>: щодня цим не користуються, а місця в шапці займало багато.
+             Без JS — працює й тоді, коли скрипти не завантажились. */ ?>
+    <details class="role-switch-more">
+      <summary title="Подивитись на систему очима іншої ролі">Змінити роль</summary>
+      <form method="post" action="<?= e(url('/role/switch')) ?>"><?= Csrf::field() ?>
+        <input type="hidden" name="back" value="<?= e($rsBack) ?>">
+        <label class="dim" for="rsRole">Працювати як</label>
+        <select name="role" id="rsRole">
+          <?php foreach ($rsRoles as $r): ?>
+            <option value="<?= e($r) ?>"><?= e(Roles::label($r)) ?></option>
           <?php endforeach; ?>
         </select>
-      <?php endif; ?>
-      <button class="btn btn-line btn-xs" type="submit">Перемкнути</button>
-    </form>
+        <?php if (count($rsStores) > 1): ?>
+          <label class="dim" for="rsStore">Точка для ролі продавця</label>
+          <select name="store_id" id="rsStore">
+            <?php foreach ($rsStores as $s): ?>
+              <option value="<?= (int)$s['id'] ?>"><?= e($s['name']) ?></option>
+            <?php endforeach; ?>
+          </select>
+        <?php endif; ?>
+        <button class="btn btn-gold btn-xs" type="submit">Перемкнути</button>
+      </form>
+    </details>
   <?php endif; ?>
 </div>
