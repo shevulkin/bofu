@@ -32,6 +32,9 @@ class Orders
     private static function canSee(array $order): bool
     {
         if (Auth::isAdmin()) return true;
+        // продавець бачить картину по мережі, але правити зможе лише свої точки —
+        // це вирішує canManage, а не видимість
+        if (Auth::can('orders.view_all')) return true;
         $ids = Auth::storeIds();
         if (!$ids) return false;
         if ($order['parent_id']) return in_array((int)$order['store_id'], $ids, true);
@@ -43,17 +46,23 @@ class Orders
     {
         $mine = self::myStores();
         $status = $_GET['status'] ?? 'all';
+        // за замовчуванням кабінет заточений під свої точки; «всі» — коли треба
+        // подивитись картину по мережі або забрати позицію собі
+        $seesAll = $mine !== null && Auth::can('orders.view_all');
+        $scope = ($_GET['scope'] ?? 'mine') === 'all' && $seesAll ? 'all' : 'mine';
         $params = [];
-        if ($mine === null)  $where = 'o.parent_id IS NULL';           // адмін — замовлення цілком
-        elseif (!$mine)      $where = '1=0';
-        else                 $where = 'o.parent_id IS NOT NULL AND o.store_id IN (' . implode(',', array_map('intval', $mine)) . ')';
+        if ($mine === null)       $where = 'o.parent_id IS NULL';      // адмін — замовлення цілком
+        elseif ($scope === 'all') $where = 'o.parent_id IS NOT NULL';  // уся мережа, чуже — лише читання
+        elseif (!$mine)           $where = '1=0';
+        else                      $where = 'o.parent_id IS NOT NULL AND o.store_id IN (' . implode(',', array_map('intval', $mine)) . ')';
         if ($status !== 'all' && isset(self::STATUSES[$status])) { $where .= ' AND o.status = ?'; $params[] = $status; }
 
         $orders = DB::all(
-            "SELECT o.*, s.name AS store_name, p.number AS parent_number
+            "SELECT o.*, s.name AS store_name, p.number AS parent_number, au.name AS assigned_name
              FROM orders o
              LEFT JOIN stores s ON s.id = o.store_id
              LEFT JOIN orders p ON p.id = o.parent_id
+             LEFT JOIN users au ON au.id = o.assigned_user_id
              WHERE $where ORDER BY o.id DESC", $params);
 
         $items = []; $children = [];
@@ -67,6 +76,8 @@ class Orders
             'orders' => $orders, 'items' => $items, 'children' => $children,
             'status' => $status, 'statuses' => self::STATUSES,
             'is_seller_view' => $mine !== null,
+            'my_store_ids' => $mine ?? [],
+            'sees_all' => $seesAll, 'scope' => $scope,
             'page_title' => 'Замовлення — адмінка',
         ], 'layouts/admin');
     }
@@ -95,6 +106,12 @@ class Orders
             }
         }
 
+        // нотатки живуть у тій самій стрічці подій, але показуємо їх окремо:
+        // серед статусів вони губляться, а читають їх перед роботою
+        $all = OrderFlow::events((int)$parent['id']);
+        $notes = array_values(array_filter($all, fn($e) => $e['type'] === 'note'));
+        $events = array_values(array_filter($all, fn($e) => $e['type'] !== 'note'));
+
         View::show('admin/orders/view', [
             'order' => $order,          // те, що відкрили
             'parent' => $parent,        // головне замовлення
@@ -103,15 +120,42 @@ class Orders
             'items' => $items,
             'item_stock' => $stock,
             'can_manage' => $manage,
+            'assignees' => self::assignees($children),
             'stores' => Catalog::stores(),
-            'events' => OrderFlow::events((int)$parent['id']),
+            'events' => $events,
+            'notes' => $notes,
+            'can_note' => Auth::can('orders.note'),
+            'can_assign' => Auth::can('orders.assign'),
             'statuses' => self::STATUSES,
             'can_manage_parent' => Auth::isAdmin(),
             'page_title' => 'Замовлення ' . $order['number'] . ' — адмінка',
         ], 'layouts/admin');
     }
 
-    /** POST зі сторінки замовлення: статус частини (чи всього) або передача позиції */
+    /** Хто взяв частини в роботу: [id підзамовлення => ['name','at','is_me']] */
+    private static function assignees(array $children): array
+    {
+        $ids = [];
+        foreach ($children as $c) if ($c['assigned_user_id']) $ids[] = (int)$c['assigned_user_id'];
+        if (!$ids) return [];
+        $names = [];
+        foreach (DB::all('SELECT id, name FROM users WHERE id IN (' . implode(',', array_unique($ids)) . ')') as $u) {
+            $names[(int)$u['id']] = $u['name'];
+        }
+        $out = [];
+        foreach ($children as $c) {
+            $uid = (int)($c['assigned_user_id'] ?? 0);
+            if (!$uid) continue;
+            $out[(int)$c['id']] = [
+                'name' => $names[$uid] ?? '—',
+                'at' => $c['assigned_at'],
+                'is_me' => $uid === (int)Auth::id(),
+            ];
+        }
+        return $out;
+    }
+
+    /** POST зі сторінки замовлення: статус, передача позиції, робота над частиною, нотатка */
     private static function handle(array $order): void
     {
         $parent = OrderFlow::head($order);
@@ -120,7 +164,32 @@ class Orders
         $tree = [(int)$parent['id'] => $parent];
         foreach (OrderFlow::children((int)$parent['id']) as $c) $tree[(int)$c['id']] = $c;
 
-        if (($_POST['action'] ?? 'status') === 'transfer') {
+        $action = $_POST['action'] ?? 'status';
+
+        if ($action === 'note') {
+            Auth::requireCap('orders.note');
+            $text = trim((string)($_POST['note'] ?? ''));
+            if ($text === '') { flash('error', 'Нотатка порожня.'); redirect($back); }
+            if (mb_strlen($text) > 2000) $text = mb_substr($text, 0, 2000);
+            OrderFlow::log((int)$parent['id'], $order['parent_id'] ? (int)$order['id'] : null,
+                'note', $text, Auth::id());
+            flash('success', 'Нотатку додано.');
+            redirect($back);
+        }
+
+        if ($action === 'claim' || $action === 'release') {
+            Auth::requireCap('orders.assign');
+            $target = $tree[(int)($_POST['order_id'] ?? 0)] ?? null;
+            // мітка ставиться на частину магазину, а не на замовлення цілком
+            if (!$target || !$target['parent_id'] || !self::canManage($target)) {
+                flash('error', 'Немає прав брати цю частину в роботу.');
+                redirect($back);
+            }
+            self::setAssignee($target, $action === 'claim');
+            redirect($back);
+        }
+
+        if ($action === 'transfer') {
             $item = DB::row('SELECT * FROM order_items WHERE id = ?', [(int)($_POST['item_id'] ?? 0)]);
             $src = $item ? ($tree[(int)$item['order_id']] ?? null) : null;
             if (!$src || !self::canManage($src)) { flash('error', 'Немає прав передавати цю позицію.'); redirect($back); }
@@ -142,5 +211,29 @@ class Orders
                 . ' оновлено: ' . OrderFlow::statusLabel($new));
         }
         redirect($back);
+    }
+
+    /**
+     * Мітка «в роботі» — без замка: інший продавець може перебрати частину на себе.
+     * Замок тут зробив би більше шкоди, ніж користі: людина забула зняти — і частина
+     * висить, доки хтось не покличе адміна.
+     */
+    private static function setAssignee(array $target, bool $claim): void
+    {
+        $prev = $target['assigned_user_id']
+            ? DB::val('SELECT name FROM users WHERE id = ?', [(int)$target['assigned_user_id']])
+            : null;
+        DB::update('orders', [
+            'assigned_user_id' => $claim ? Auth::id() : null,
+            'assigned_at' => $claim ? now() : null,
+        ], 'id = ?', [(int)$target['id']]);
+
+        $who = Auth::user()['name'] ?? '';
+        $msg = $claim
+            ? $target['number'] . ': узяв(ла) в роботу ' . $who
+                . ($prev && (int)$target['assigned_user_id'] !== (int)Auth::id() ? ' (раніше — ' . $prev . ')' : '')
+            : $target['number'] . ': знято з роботи' . ($prev ? ' (' . $prev . ')' : '');
+        OrderFlow::log((int)$target['parent_id'], (int)$target['id'], 'assign', $msg, Auth::id());
+        flash('success', $claim ? 'Взято в роботу.' : 'Знято з роботи.');
     }
 }

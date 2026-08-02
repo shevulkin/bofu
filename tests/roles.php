@@ -31,6 +31,7 @@ final class RolesTest
             $this->testForgedSessionGrantsNothing();
             $this->testInvariantExhaustively();
             $this->testStores();
+            $this->testWorkStore();
         } finally {
             $this->tearDown();
         }
@@ -124,6 +125,9 @@ final class RolesTest
         $this->ok('продавець НЕ створює товари', !Auth::can('products.manage'));
         $this->ok('продавець НЕ бачить усі магазини', !Auth::can('stores.all'));
         $this->ok('продавець не є адміном', !Auth::isAdmin());
+        $this->ok('продавець бачить замовлення мережі', Auth::can('orders.view_all'));
+        $this->ok('продавець бере замовлення в роботу', Auth::can('orders.assign'));
+        $this->ok('продавець пише нотатки', Auth::can('orders.note'));
         $this->as(Roles::CUSTOMER);
         $this->ok('покупець не має прав', Auth::caps() === []);
         $this->ok('покупець не стаф', !Auth::isStaff());
@@ -215,6 +219,32 @@ final class RolesTest
         $this->ok('продавцю дозволено власну точку', Auth::simulate(Roles::SELLER, $mine) === true);
         $this->as(Roles::SELLER);
         $this->ok('продавцю відмовлено вдавати адміна', Auth::simulate(Roles::ADMIN) === false);
+    }
+
+    /** Робоча точка звужує кабінет, але не роздає доступу */
+    private function testWorkStore(): void
+    {
+        [$mine, $foreign] = $this->storeIds;
+        $seller = $this->userIds[Roles::SELLER];
+        DB::insert('seller_stores', ['user_id' => $seller, 'store_id' => $foreign]);
+
+        $this->group('робоча точка');
+        $this->as(Roles::SELLER);
+        $this->ok('без вибору працює по всіх своїх', count(Auth::storeIds()) === 2);
+        $this->ok('вибір власної точки приймається', Auth::setWorkStore($mine) === true);
+        $this->ok('кабінет звузився до неї', Auth::storeIds() === [$mine]);
+        $this->ok('скидання повертає всі точки', Auth::setWorkStore(null) === true && count(Auth::storeIds()) === 2);
+
+        DB::delete('seller_stores', 'user_id = ? AND store_id = ?', [$seller, $foreign]);
+        Auth::forgetRoles();
+        $this->as(Roles::SELLER);
+        $this->ok('чужу точку як робочу не взяти', Auth::setWorkStore($foreign) === false);
+        $_SESSION['act_store'] = $foreign;   // підробка в обхід сеттера
+        $this->ok('підроблена робоча точка нічого не відкриває', Auth::storeIds() === []);
+
+        $this->as(Roles::ADMIN);
+        $_SESSION['act_store'] = $foreign;
+        $this->ok('адміну робоча точка не звужує мережу', count(Auth::storeIds()) === count($this->storeIds));
     }
 }
 

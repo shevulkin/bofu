@@ -125,11 +125,27 @@ class Auth
         return (is_string($r) && Roles::exists($r)) ? $r : null;
     }
 
-    /** Магазин, обраний для режиму продавця (щоб бачити те саме, що бачить він) */
-    public static function actingStoreId(): ?int
+    /**
+     * Робоча точка. Для продавця з кількома магазинами це спосіб звузити кабінет
+     * до однієї точки; для адміна в ролі продавця — те саме, лише для перевірки.
+     * null = працюємо по всіх доступних.
+     */
+    public static function workStoreId(): ?int
     {
         $s = $_SESSION['act_store'] ?? null;
         return $s ? (int)$s : null;
+    }
+
+    /** Сумісність зі старою назвою */
+    public static function actingStoreId(): ?int { return self::workStoreId(); }
+
+    /** Обрати робочу точку. Приймаємо лише ту, до якої доступ уже є. */
+    public static function setWorkStore(?int $storeId): bool
+    {
+        if ($storeId === null) { unset($_SESSION['act_store']); return true; }
+        if (!in_array($storeId, self::authorityStoreIds(), true)) return false;
+        $_SESSION['act_store'] = $storeId;
+        return true;
     }
 
     /**
@@ -207,14 +223,13 @@ class Auth
     public static function storeIds(): array
     {
         $authority = self::authorityStoreIds();
-        if (self::actingAs() !== Roles::SELLER) return $authority;
-        $sid = self::actingStoreId();
-        // обраний магазин має бути серед доступних, інакше перемикач став би
-        // способом зазирнути в чужу точку через підміну сесії
-        if ($sid !== null) return in_array($sid, $authority, true) ? [$sid] : [];
-        // магазин не обрано: показуємо власні призначення. Інтерфейс завжди пропонує
-        // вибір, тож сюди потрапляє хіба що стара сесія.
-        return self::assignedStoreIds();
+        // робоча точка діє лише в ролі продавця: адмін керує мережею цілком
+        if (self::role() !== Roles::SELLER) return $authority;
+        $sid = self::workStoreId();
+        if ($sid === null) return $authority;   // точку не обрано — усі свої
+        // обрана точка має бути серед доступних, інакше селектор став би
+        // способом зазирнути в чужу через підміну сесії
+        return in_array($sid, $authority, true) ? [$sid] : [];
     }
 
     /** Магазини, до яких людину призначено, — незалежно від ролі й режиму перегляду */

@@ -66,21 +66,38 @@
           <div class="dim">Частина магазину: <b><?= e(price_fmt($c['total'])) ?></b>
             <?php if ((float)$c['discount'] > 0): ?> (знижка −<?= e(price_fmt($c['discount'])) ?>)<?php endif; ?>
           </div>
-          <?php if ($mine): ?>
-            <form method="post" action="<?= e(url('/admin/orders/' . $order['id'])) ?>" style="display:flex;gap:8px;align-items:center">
-              <?= Csrf::field() ?>
-              <input type="hidden" name="action" value="status">
-              <input type="hidden" name="order_id" value="<?= $cid ?>">
-              <select name="status">
-                <?php foreach ($statuses as $key => $label): ?>
-                  <option value="<?= $key ?>" <?= $c['status'] === $key ? 'selected' : '' ?>><?= e($label) ?></option>
-                <?php endforeach; ?>
-              </select>
-              <button class="btn btn-gold btn-sm" type="submit">Оновити</button>
-            </form>
-          <?php else: ?>
-            <span class="dim">Цю частину веде інший магазин</span>
-          <?php endif; ?>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <?php $who = $assignees[$cid] ?? null; ?>
+            <?php if ($who): ?>
+              <span class="dim" style="white-space:nowrap">у роботі: <b><?= e($who['name']) ?></b><?php
+                if ($who['at']): ?> · <?= e(date('d.m H:i', strtotime($who['at']))) ?><?php endif; ?></span>
+            <?php endif; ?>
+            <?php if ($mine && $can_assign): ?>
+              <form method="post" action="<?= e(url('/admin/orders/' . $order['id'])) ?>" style="display:inline">
+                <?= Csrf::field() ?>
+                <input type="hidden" name="action" value="<?= $who && $who['is_me'] ? 'release' : 'claim' ?>">
+                <input type="hidden" name="order_id" value="<?= $cid ?>">
+                <button class="btn btn-line btn-xs" type="submit"><?= $who
+                  ? ($who['is_me'] ? 'Звільнити' : 'Перебрати на себе')
+                  : 'Взяти в роботу' ?></button>
+              </form>
+            <?php endif; ?>
+            <?php if ($mine): ?>
+              <form method="post" action="<?= e(url('/admin/orders/' . $order['id'])) ?>" style="display:flex;gap:8px;align-items:center">
+                <?= Csrf::field() ?>
+                <input type="hidden" name="action" value="status">
+                <input type="hidden" name="order_id" value="<?= $cid ?>">
+                <select name="status">
+                  <?php foreach ($statuses as $key => $label): ?>
+                    <option value="<?= $key ?>" <?= $c['status'] === $key ? 'selected' : '' ?>><?= e($label) ?></option>
+                  <?php endforeach; ?>
+                </select>
+                <button class="btn btn-gold btn-sm" type="submit">Оновити</button>
+              </form>
+            <?php else: ?>
+              <span class="dim">Цю частину веде інший магазин</span>
+            <?php endif; ?>
+          </div>
         </div>
       </div>
     <?php endforeach; ?>
@@ -132,6 +149,31 @@
       <?php endif; ?>
       <p class="dim" style="margin-top:12px">Статус замовлення рахується сам: він дорівнює найменш просунутій частині, тож «Доставлено» зʼявиться, коли всі магазини закриють свої.</p>
     </div>
+
+    <?php if ($notes || $can_note): ?>
+      <div class="admin-card">
+        <h2 class="h-serif">Нотатки</h2>
+        <p class="dim" style="margin-bottom:10px">Внутрішні записи для персоналу — покупець їх не бачить.</p>
+        <?php foreach ($notes as $n): ?>
+          <div style="padding:8px 0;border-bottom:1px solid var(--bg3);font-size:13.5px">
+            <div style="white-space:pre-wrap"><?= e($n['message']) ?></div>
+            <div class="dim"><?= e(date('d.m.Y H:i', strtotime($n['created_at']))) ?><?= $n['user_name'] ? ' · ' . e($n['user_name']) : '' ?><?php
+              if (!empty($n['role'])): ?> · <?= e(Roles::label($n['role'])) ?><?php endif; ?></div>
+          </div>
+        <?php endforeach; ?>
+        <?php if (!$notes): ?><p class="muted" style="margin-bottom:10px">Поки порожньо.</p><?php endif; ?>
+        <?php if ($can_note): ?>
+          <form method="post" action="<?= e(url('/admin/orders/' . $order['id'])) ?>" style="margin-top:12px">
+            <?= Csrf::field() ?>
+            <input type="hidden" name="action" value="note">
+            <div class="field">
+              <textarea name="note" rows="2" maxlength="2000" placeholder="Наприклад: клієнт просив зателефонувати після 18:00"></textarea>
+            </div>
+            <button class="btn btn-line btn-sm" type="submit">Додати нотатку</button>
+          </form>
+        <?php endif; ?>
+      </div>
+    <?php endif; ?>
 
     <?php if ($events): ?>
       <div class="admin-card">
