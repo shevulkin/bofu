@@ -7,7 +7,7 @@ declare(strict_types=1);
  */
 class Schema
 {
-    public const VERSION = 14;
+    public const VERSION = 15;
 
     /** Оновлення існуючої бази до поточної версії без втрати даних */
     public static function upgrade(): void
@@ -99,6 +99,14 @@ class Schema
         if ($ver < 14) {
             // особисті налаштування сповіщень; порожньо = усе, що дозволив адмін
             self::createAll(); // user_notify_prefs
+        }
+        if ($ver < 15) {
+            // Прив'язка до точки тепер живе лише разом із роллю продавця
+            // (Controllers\Admin\Users::saveStores). Прибираємо рядки, що лишились
+            // від тих, хто роль уже втратив: інакше правило діяло б тільки для
+            // нових змін, а старі «вічні» доступи тихо пережили б його.
+            DB::query('DELETE FROM seller_stores WHERE user_id NOT IN
+                       (SELECT user_id FROM user_roles WHERE role = ?)', [Roles::SELLER]);
         }
         Settings::set('schema_version', (string)self::VERSION);
     }
