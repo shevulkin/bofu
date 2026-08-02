@@ -18,10 +18,7 @@
     <div id="loginHint" class="dim" style="margin-top:12px;display:none"></div>
 
     <div id="phoneLoginBox" style="display:none;margin-top:14px">
-      <?php /* data-phone="ua" — вхід за номером приймає лише український
-               (AuthController::phoneStart через normPhone), тож і підказка
-               має бути про український, а не пускати +49 і потім відмовляти */ ?>
-      <div class="field"><label>Номер телефону</label><input type="tel" id="phoneInput" data-phone="ua" placeholder="067 123 45 67"></div>
+      <div class="field"><label>Номер телефону</label><input type="tel" id="phoneInput" placeholder="067 123 45 67"></div>
       <div class="field" id="codeField" style="display:none"><label>Код з месенджера</label><input type="text" id="codeInput" placeholder="123456" inputmode="numeric"></div>
       <button class="btn btn-gold btn-sm" id="phoneSendBtn" type="button">Отримати код</button>
       <button class="btn btn-gold btn-sm" id="codeVerifyBtn" type="button" style="display:none">Увійти</button>
