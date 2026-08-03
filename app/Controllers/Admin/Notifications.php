@@ -28,7 +28,7 @@ class Notifications
             'by_event' => $byEvent, 'event_labels' => Notify::EVENTS,
             'channel_labels' => ['telegram' => 'Telegram', 'viber' => 'Viber', 'email' => 'Email', 'push' => 'Push'],
             'vars_hint' => [
-                'order_new' => '{number} {name} {phone} {delivery} {total} {store}',
+                'order_new' => '{number} {name} {phone} {delivery} {address} {items} {total} {store}',
                 'order_status' => '{number} {status}',
                 'user_new' => '{name} {email}',
                 'stock_low' => '{product} {qty} {store}',

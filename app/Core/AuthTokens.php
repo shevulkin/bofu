@@ -9,10 +9,40 @@ class AuthTokens
         $token = bin2hex(random_bytes(16));
         $id = DB::insert('auth_tokens', array_merge([
             'user_id' => $userId, 'purpose' => $purpose, 'token' => $token,
+            'ip' => RateLimit::ip(), 'agent' => self::device($_SERVER['HTTP_USER_AGENT'] ?? ''),
             'expires_at' => date('Y-m-d H:i:s', time() + $ttlMin * 60),
             'used' => 0, 'created_at' => now(),
         ], $extra));
         return ['id' => $id, 'token' => $token];
+    }
+
+    /**
+     * Браузер і система коротким рядком: «Chrome на Windows».
+     *
+     * Зберігаємо саме такий рядок, а не сирий User-Agent: його читатиме
+     * покупець у боті, коли вирішуватиме, його це вхід чи чужий. З рядка на
+     * двісті символів він не зрозуміє нічого, а нам більше й не треба.
+     *
+     * Порядок перевірок важливий: Edge і Opera теж пишуть про себе «Chrome»,
+     * а Chrome — «Safari». Тому рідкісніше йде першим.
+     */
+    public static function device(string $ua): ?string
+    {
+        $ua = trim($ua);
+        if ($ua === '') return null;
+        $browser = '';
+        foreach (['Edg' => 'Edge', 'OPR' => 'Opera', 'YaBrowser' => 'Yandex', 'Firefox' => 'Firefox',
+                  'Chrome' => 'Chrome', 'Safari' => 'Safari'] as $needle => $name) {
+            if (str_contains($ua, $needle)) { $browser = $name; break; }
+        }
+        $os = '';
+        foreach (['Android' => 'Android', 'iPhone' => 'iPhone', 'iPad' => 'iPad', 'Windows' => 'Windows',
+                  'Macintosh' => 'macOS', 'Linux' => 'Linux'] as $needle => $name) {
+            if (str_contains($ua, $needle)) { $os = $name; break; }
+        }
+        if ($browser === '' && $os === '') return mb_substr($ua, 0, 60);
+        if ($browser === '') return $os;
+        return $os === '' ? $browser : $browser . ' на ' . $os;
     }
 
     public static function find(string $token, string $purpose): ?array

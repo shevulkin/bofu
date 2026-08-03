@@ -22,7 +22,8 @@ class BotAuth
     /** Тексти бота. Адмін править їх у Налаштуваннях; тут — розумні значення за замовчуванням. */
     public const TEXTS = [
         'bot_ask_phone' => [
-            'Підтвердіть, що це ви: поділіться номером телефону кнопкою нижче. Без номера ми не зможемо повідомити про замовлення.',
+            'Підтвердіть, що це ви: поділіться номером телефону кнопкою нижче. Без номера ми не зможемо повідомити про замовлення.'
+            . "\nНе бачите кнопки? У веб-версії Telegram вона схована за іконкою клавіатури біля поля вводу.",
             'Прохання поділитися номером',
         ],
         'bot_ask_phone_btn' => ['📱 Поділитися номером', 'Напис на кнопці «поділитися номером»'],
@@ -31,6 +32,17 @@ class BotAuth
             'Успішний вхід (доступні {name}, {phone}, {site_name})',
         ],
         'bot_done_btn' => ['Повернутись на сайт', 'Напис на кнопці-посиланні після входу'],
+        'bot_confirm_login' => [
+            "Хтось починає вхід на сайт {site_name} з вашим {messenger}:\n{device}, IP {ip}\n\n"
+            . 'Якщо це ви — підтвердіть. Якщо ні — натисніть «Це не я», і вхід не відбудеться.',
+            'Підтвердження входу, коли месенджер уже привʼязаний (доступні {device}, {ip}, {messenger})',
+        ],
+        'bot_confirm_btn' => ['✅ Так, це я', 'Напис на кнопці підтвердження входу'],
+        'bot_decline_btn' => ['🚫 Це не я', 'Напис на кнопці відмови від входу'],
+        'bot_declined' => [
+            'Вхід скасовано — ми нікого не пустили. Робити більше нічого не треба.',
+            'Людина відмовилась підтвердити вхід',
+        ],
         'bot_bad_phone' => [
             'Не вдалося прочитати номер. Спробуйте ще раз кнопкою нижче — надішліть саме свій контакт.',
             'Номер не розпізнано',
@@ -61,7 +73,7 @@ class BotAuth
         $t = trim((string)Settings::get($key, ''));
         if ($t === '') $t = self::TEXTS[$key][0] ?? '';
         $vars += [
-            'name' => '', 'phone' => '', 'messenger' => '',
+            'name' => '', 'phone' => '', 'messenger' => '', 'device' => '', 'ip' => '',
             'site_name' => (string)cfg('app_name'), 'site' => self::siteUrl(),
         ];
         foreach ($vars as $k => $v) $t = str_replace('{' . $k . '}', (string)$v, $t);
@@ -80,9 +92,29 @@ class BotAuth
         $set = trim((string)Settings::get('bot_site_url', ''));
         if ($set !== '') return rtrim($set, '/');
         $host = $_SERVER['HTTP_HOST'] ?? '';
-        if ($host === '') return '';
+        if ($host === '' || !self::isPublicHost($host)) return '';
         $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
         return rtrim($scheme . '://' . $host . base_url(''), '/');
+    }
+
+    /**
+     * Чи годиться цей хост для кнопки-посилання в месенджері.
+     *
+     * На локальній машині автовизначення дає https://localhost/bofu, і Telegram
+     * відхиляє таку кнопку («Wrong HTTP URL») — разом із усім повідомленням.
+     * Виглядало це як «бот не дав посилання на сайт», а причини не було видно
+     * ніде. Локальна адреса покупцеві все одно не відкриється, тож кнопку
+     * краще не слати взагалі; для тестів є поле bot_site_url у Налаштуваннях.
+     */
+    private static function isPublicHost(string $host): bool
+    {
+        $host = strtolower(preg_replace('~:\d+$~', '', $host));
+        if (!str_contains($host, '.')) return false;                 // localhost, myhost
+        foreach (['.local', '.localhost', '.test', '.internal'] as $suffix) {
+            if (str_ends_with($host, $suffix)) return false;
+        }
+        if (str_starts_with($host, '127.') || $host === '::1') return false;
+        return true;
     }
 
     /**
@@ -139,6 +171,45 @@ class BotAuth
     private static function detachFrom(string $idField, string $extId, int $keepUserId): void
     {
         DB::query("UPDATE users SET $idField = NULL WHERE $idField = ? AND id <> ?", [$extId, $keepUserId]);
+    }
+
+    /**
+     * Акаунт, до якого цей месенджер уже привʼязаний.
+     *
+     * Якщо привʼязка є — контакт просити нема за що: сам факт, що ми пишемо
+     * саме в цей чат, доводить, що людина ним володіє. А привʼязка не береться
+     * нізвідки: її ставить або підтверджений контакт (resolveUser), або
+     * підключення месенджера зі сторінки профілю, куди ще треба увійти.
+     *
+     * Раніше тут була схожа перевірка, і її довелось прибрати (d290405): вона
+     * питала не про привʼязку, а про наявність телефону в акаунті — а телефон
+     * можна було вписати руками, і вхід потрапляв у дубль із одруківкою в
+     * номері. Тепер ми не віримо збереженому номеру взагалі й дивимось лише на
+     * привʼязку; дублів же по номеру більше не буває — телефон унікальний.
+     *
+     * @param string $idField 'tg_chat_id' | 'viber_id'
+     */
+    public static function linkedUser(string $idField, string $extId): ?array
+    {
+        if (!in_array($idField, ['tg_chat_id', 'viber_id'], true)) {
+            throw new InvalidArgumentException('Невідоме поле месенджера: ' . $idField);
+        }
+        return DB::row("SELECT * FROM users WHERE $idField = ? AND active = 1 ORDER BY id LIMIT 1", [$extId]);
+    }
+
+    /**
+     * Звідки почався вхід — підстановки для тексту підтвердження.
+     *
+     * Пусті поля бувають у токенів, створених до появи цих колонок, і в тих,
+     * що народились не з браузера. Прочерк чесніший за вигадану деталь: людина
+     * має бачити, що саме ми знаємо, і не більше.
+     */
+    public static function loginFrom(array $token): array
+    {
+        return [
+            'device' => trim((string)($token['agent'] ?? '')) ?: 'невідомий пристрій',
+            'ip' => trim((string)($token['ip'] ?? '')) ?: '—',
+        ];
     }
 
     /** Незавершений вхід цього чату: /start уже був, номера ще немає */
