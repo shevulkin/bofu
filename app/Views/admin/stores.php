@@ -10,16 +10,19 @@
 <form method="post" action="<?= e(url('/admin/stores')) ?>">
   <?= Csrf::field() ?><input type="hidden" name="_action" value="save">
   <table class="tbl">
-    <tr><th>Назва</th><th>Місто</th><th>Адреса</th><th>Телефон</th><th>Активний</th></tr>
+    <tr><th>Назва</th><th>Місто</th><th>Адреса</th><th>Телефон</th><th class="col-mid">Активний</th></tr>
     <?php foreach ($stores as $s): ?>
       <tr>
         <td><input type="text" name="store[<?= (int)$s['id'] ?>][name]" value="<?= e($s['name']) ?>"></td>
         <td><input type="text" name="store[<?= (int)$s['id'] ?>][city]" value="<?= e($s['city']) ?>"></td>
         <td><input type="text" name="store[<?= (int)$s['id'] ?>][address]" value="<?= e($s['address']) ?>"></td>
         <td><input type="text" name="store[<?= (int)$s['id'] ?>][phone]" value="<?= e($s['phone']) ?>"></td>
-        <td style="text-align:center"><input type="checkbox" name="store[<?= (int)$s['id'] ?>][active]" <?= $s['active'] ? 'checked' : '' ?>></td>
+        <td class="col-mid"><input type="checkbox" name="store[<?= (int)$s['id'] ?>][active]" <?= $s['active'] ? 'checked' : '' ?>></td>
       </tr>
     <?php endforeach; ?>
   </table>
-  <button class="btn btn-gold" style="margin-top:16px" type="submit">💾 Зберегти</button>
+  <div class="admin-save">
+    <button class="btn btn-gold" type="submit">💾 Зберегти</button>
+    <span class="admin-save-note"></span>
+  </div>
 </form>

@@ -22,7 +22,8 @@
 </div>
 <?php if (!$orders): ?><p class="muted">Замовлень немає.</p><?php else: ?>
 <table class="tbl">
-  <tr><th>Номер</th><th>Клієнт</th><th>Товари</th><th><?= $is_seller_view ? 'Замовлення' : 'Магазини' ?></th><th>Сума</th><th>Статус</th><th>Дата</th><th></th></tr>
+  <tr><th>Номер</th><th>Клієнт</th><th>Товари</th><th><?= $is_seller_view ? 'Замовлення' : 'Магазини' ?></th>
+      <th class="num">Сума</th><th>Статус</th><th>Дата</th><th></th></tr>
   <?php foreach ($orders as $o): $id = (int)$o['id'];
         $foreign = $is_seller_view && $o['store_id'] && !in_array((int)$o['store_id'], $my_store_ids, true); ?>
     <tr<?= $foreign ? ' class="row-foreign"' : '' ?>>
@@ -47,9 +48,18 @@
           <?php endforeach; ?>
         <?php endif; ?>
       </td>
-      <td><b><?= e(price_fmt($o['total'])) ?></b></td>
+      <td class="num"><b><?= e(price_fmt($o['total'])) ?></b></td>
       <td><span class="status-pill st-<?= e($o['status']) ?>"><?= e($statuses[$o['status']] ?? $o['status']) ?></span></td>
-      <td class="dim"><?= e(date('d.m.Y H:i', strtotime($o['created_at']))) ?></td>
+      <?php
+        // «Сьогодні 09:40» відповідає на питання, яке продавець ставить насправді
+        // («це свіже чи вчорашнє?»), а 03.08.2026 змушує це вираховувати
+        $ts = strtotime($o['created_at']);
+        $day = date('Y-m-d', $ts);
+        $when = $day === date('Y-m-d') ? 'сьогодні ' . date('H:i', $ts)
+              : ($day === date('Y-m-d', strtotime('-1 day')) ? 'вчора ' . date('H:i', $ts)
+              : date('d.m.Y H:i', $ts));
+      ?>
+      <td class="dim" style="white-space:nowrap"<?= $day === date('Y-m-d') ? ' title="Сьогоднішнє замовлення"' : '' ?>><?= e($when) ?></td>
       <td><a class="btn btn-line btn-xs" href="<?= e(url('/admin/orders/' . $id)) ?>">Відкрити</a></td>
     </tr>
   <?php endforeach; ?>

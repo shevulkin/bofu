@@ -98,9 +98,13 @@
       Кнопка «назад на сайт» веде на
       <?php if ($bot_site !== ''): ?><code><?= e($bot_site) ?></code><?php else: ?>
         <b style="color:var(--gold)">нікуди — заповніть «Адреса сайту для кнопки в боті» вище</b><?php endif; ?>.
-      Локально адреса визначається сама, але Viber стукає у webhook власним запитом, тож на бойовому
-      сервері поле краще заповнити явно.
+      На домені адреса визначається сама, а от з localhost кнопки не буде: Telegram відхиляє
+      посилання на локальну адресу разом з усім повідомленням. Viber до того ж стукає у webhook
+      власним запитом, тож на бойовому сервері поле краще заповнити явно.
     </p>
   </div>
-  <button class="btn btn-gold" type="submit">💾 Зберегти налаштування</button>
+  <div class="admin-save">
+    <button class="btn btn-gold" type="submit">💾 Зберегти налаштування</button>
+    <span class="admin-save-note"></span>
+  </div>
 </form>

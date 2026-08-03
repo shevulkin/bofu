@@ -25,12 +25,12 @@ $roCard = $canCard ? '' : 'disabled';
   </p>
   <table class="tbl">
     <tr>
-      <th>Товар</th><th class="w-price">Базова ціна</th>
+      <th>Товар</th><th class="w-price num">Базова ціна</th>
       <?php foreach ($stores as $s): $lock = $canStore((int)$s['id']) ? '' : ' 🔒'; ?>
-        <th class="w-price">Ціна · <?= e($s['city'] ?: $s['name']) . $lock ?></th>
-        <th class="w-stock">Залишок · <?= e($s['city'] ?: $s['name']) . $lock ?></th>
+        <th class="w-price num">Ціна · <?= e($s['city'] ?: $s['name']) . $lock ?></th>
+        <th class="w-stock num">Залишок · <?= e($s['city'] ?: $s['name']) . $lock ?></th>
       <?php endforeach; ?>
-      <th>Активний</th>
+      <th class="col-mid">Активний</th>
     </tr>
     <?php foreach ($products as $p): $pid = (int)$p['id']; $vs = $variants[$pid] ?? []; ?>
       <tr>
@@ -38,11 +38,11 @@ $roCard = $canCard ? '' : 'disabled';
           <input type="text" name="p[<?= $pid ?>][name]" value="<?= e($p['name']) ?>" style="min-width:220px" <?= $roCard ?>>
           <div class="dim"><?= e($p['cat_name'] ?? '') ?><?= $vs ? ' · варіантів: ' . count($vs) : '' ?></div>
         </td>
-        <td><input type="number" step="0.01" name="p[<?= $pid ?>][base_price]" value="<?= e($p['base_price']) ?>" placeholder="За запитом" <?= $roCard ?>></td>
+        <td class="num"><input type="number" step="0.01" name="p[<?= $pid ?>][base_price]" value="<?= e($p['base_price']) ?>" placeholder="За запитом" <?= $roCard ?>></td>
         <?php foreach ($stores as $s): $sid = (int)$s['id']; $ro = $canStore($sid) ? '' : 'disabled title="Магазин не ваш — правити може лише його продавець або адмін"'; ?>
-          <td><input type="number" step="0.01" name="p[<?= $pid ?>][store_price][<?= $sid ?>]"
+          <td class="num"><input type="number" step="0.01" name="p[<?= $pid ?>][store_price][<?= $sid ?>]"
                      value="<?= e($prices[$pid][$sid] ?? '') ?>" placeholder="базова" <?= $ro ?>></td>
-          <td>
+          <td class="num">
             <?php if ($vs): $sum = 0; foreach ($vs as $v) $sum += (int)($vstocks[(int)$v['id']][$sid] ?? 0); ?>
               <span class="dim" title="Сума по варіантах — редагуйте в рядках нижче">Σ <?= $sum ?></span>
             <?php else: ?>
@@ -50,7 +50,7 @@ $roCard = $canCard ? '' : 'disabled';
             <?php endif; ?>
           </td>
         <?php endforeach; ?>
-        <td style="text-align:center">
+        <td class="col-mid">
           <?php if ($canCard): ?>
             <input type="hidden" name="p[<?= $pid ?>][active]" value="0">
             <input type="checkbox" name="p[<?= $pid ?>][active]" value="1" <?= $p['active'] ? 'checked' : '' ?>>
@@ -64,9 +64,9 @@ $roCard = $canCard ? '' : 'disabled';
           <td style="padding-left:26px" class="muted">↳ <?= e($v['name']) ?><?= $v['sku'] ? ' · ' . e($v['sku']) : '' ?></td>
           <td class="dim" style="text-align:center"><?= $v['price'] !== null && $v['price'] !== '' ? e(price_fmt($v['price'])) : '—' ?></td>
           <?php foreach ($stores as $s): $sid = (int)$s['id']; $ro = $canStore($sid) ? '' : 'disabled title="Магазин не ваш — правити може лише його продавець або адмін"'; ?>
-            <td><input type="number" step="0.01" name="p[<?= $pid ?>][vprice][<?= $vid ?>][<?= $sid ?>]"
+            <td class="num"><input type="number" step="0.01" name="p[<?= $pid ?>][vprice][<?= $vid ?>][<?= $sid ?>]"
                        value="<?= e($vprices[$vid][$sid] ?? '') ?>" placeholder="базова" <?= $ro ?>></td>
-            <td><input type="number" name="p[<?= $pid ?>][vstock][<?= $vid ?>][<?= $sid ?>]"
+            <td class="num"><input type="number" name="p[<?= $pid ?>][vstock][<?= $vid ?>][<?= $sid ?>]"
                        value="<?= e($vstocks[$vid][$sid] ?? '') ?>" <?= $ro ?>></td>
           <?php endforeach; ?>
           <td></td>
@@ -74,7 +74,8 @@ $roCard = $canCard ? '' : 'disabled';
       <?php endforeach; ?>
     <?php endforeach; ?>
   </table>
-  <div style="position:sticky;bottom:0;background:var(--bg);padding:14px 0;border-top:1px solid var(--line);margin-top:2px">
+  <div class="admin-save">
     <button class="btn btn-gold" type="submit">💾 Зберегти все</button>
+    <span class="admin-save-note"></span>
   </div>
 </form>

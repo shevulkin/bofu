@@ -464,12 +464,50 @@ footer{border-top:1px solid var(--line);padding:44px 0 60px;margin-top:40px}
 .stat{background:var(--bg2);border:1px solid var(--line);border-radius:4px;padding:20px}
 .stat b{display:block;font-family:var(--serif);font-size:32px;color:var(--gold)}
 .stat span{color:var(--muted);font-size:12.5px;text-transform:uppercase;letter-spacing:.05em}
-.tbl{width:100%;border-collapse:collapse;background:var(--bg2);border:1px solid var(--line);border-radius:4px;overflow:hidden}
-.tbl th{background:var(--bg3);color:var(--muted);font-size:11.5px;text-transform:uppercase;letter-spacing:.07em;text-align:left;padding:11px 13px}
-.tbl td{padding:11px 13px;border-top:1px solid var(--bg3);font-size:14px;vertical-align:middle}
+/* overflow:hidden тут був заради заокруглених кутів, але він же й скасовує
+   липкий заголовок: елемент у контейнері з прихованим переповненням нікуди
+   не «липне». Кути тепер задаємо крайнім коміркам. */
+.tbl{width:100%;border-collapse:collapse;background:var(--bg2);border:1px solid var(--line);border-radius:4px}
+.tbl th{background:var(--bg3);color:var(--muted);font-size:11.5px;text-transform:uppercase;letter-spacing:.07em;text-align:left;padding:10px 12px}
+/* Заголовок лишається на очах: у списку на сорок рядків без нього вже за
+   пів екрана невідомо, що це за колонка. */
+.tbl tr:first-child th{position:sticky;top:0;z-index:3}
+.tbl tr:first-child th:first-child{border-top-left-radius:4px}
+.tbl tr:first-child th:last-child{border-top-right-radius:4px}
+/* Щільність. Рядок у 80px виглядав просторо, але дюжина категорій уже не
+   вміщалась в екран, і порівнювати значення доводилось прокруткою. */
+.tbl td{padding:7px 12px;border-top:1px solid var(--bg3);font-size:14px;vertical-align:middle}
 .tbl tr:hover td{background:rgba(240,180,41,.03)}
-.tbl input[type=text],.tbl input[type=number],.tbl select{padding:8px 10px;font-size:13.5px}
-.tbl .w-price{width:110px}.tbl .w-stock{width:80px}
+/* Таблиця має читатись як дані, а не як стіна полів: шість колонок на тридцять
+   рядків давали під дві сотні однакових прямокутників, і оку не було за що
+   зачепитись. Рамка зʼявляється там, куди навели чи де редагують. */
+.tbl input[type=text],.tbl input[type=number],.tbl select{
+  padding:7px 9px;font-size:13.5px;background:transparent;border-color:transparent}
+.tbl tr:hover input[type=text]:not(:disabled),.tbl tr:hover input[type=number]:not(:disabled),
+.tbl tr:hover select:not(:disabled){background:var(--bg3);border-color:var(--line2)}
+.tbl input:focus,.tbl select:focus{background:var(--bg3);border-color:var(--gold)}
+/* Чуже поле (продавець бачить ціни інших точок) лишається полем, але не
+   пропонує себе: ледь помітна заливка без рамки замість порожнього місця. */
+.tbl input:disabled,.tbl select:disabled{color:var(--dim);border-color:transparent;
+  background:rgba(246,236,217,.03);cursor:not-allowed}
+.tbl .w-price{width:110px}.tbl .w-stock{width:80px}.tbl .w-sort{width:80px}
+/* Числа порівнюють поглядом згори вниз — для цього вони мають стояти праворуч
+   і мати цифри однакової ширини. */
+.tbl .num,.tbl .num input{text-align:right;font-variant-numeric:tabular-nums}
+.tbl .col-mid{text-align:center}
+/* Незворотна дія не має виглядати як звичайна галка. Позначений рядок одразу
+   показує, що саме зникне після збереження. */
+.tbl .col-del input{accent-color:var(--danger);width:17px;height:17px}
+.tbl tr:has(.js-del:checked) td{background:rgba(200,60,50,.09)}
+.tbl tr:has(.js-del:checked) input[type=text]{text-decoration:line-through;color:var(--danger2)}
+/* Панель збереження. Кнопка під довгим списком означала, що правку в третьому
+   рядку йдеш підтверджувати кудись за екран — і легко піти зі сторінки, так і
+   не зберігши. Тепер вона завжди внизу вікна й сама каже, що є незбережене. */
+.admin-save{position:sticky;bottom:0;z-index:5;display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+  margin-top:2px;padding:14px 0;background:var(--bg);border-top:1px solid var(--line)}
+.admin-save-note{font-size:13px;color:var(--dim)}
+.admin-save.is-dirty{box-shadow:0 -12px 26px rgba(20,17,16,.92)}
+.admin-save.is-dirty .admin-save-note{color:var(--gold)}
 .status-pill{display:inline-block;border-radius:20px;font-size:11.5px;font-weight:700;padding:4px 12px;white-space:nowrap}
 .st-new{background:rgba(240,180,41,.15);color:var(--gold)}
 .st-processing{background:rgba(127,176,105,.15);color:var(--ok)}
