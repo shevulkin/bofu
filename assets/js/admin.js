@@ -126,6 +126,46 @@
     });
   });
 
+  // Панель збереження: показує, що є незбережені зміни, і не дає піти мовчки.
+  // Втратити півгодини правок у таблиці на сорок рядків — найдорожча помилка
+  // в адмінці, і робиться вона одним кліком по пункту меню.
+  Array.prototype.forEach.call(document.querySelectorAll('.admin-save'), function (bar) {
+    var form = bar.closest('form');
+    if (!form) return;
+    var note = bar.querySelector('.admin-save-note');
+    var saved = note ? note.textContent : '';
+    var dirty = false;
+
+    function mark() {
+      if (dirty) return;
+      dirty = true;
+      bar.classList.add('is-dirty');
+      if (note) note.textContent = 'Є незбережені зміни';
+    }
+    form.addEventListener('input', mark);
+    form.addEventListener('change', mark);
+    form.addEventListener('submit', function () { dirty = false; });
+    window.addEventListener('beforeunload', function (e) {
+      if (!dirty) return;
+      e.preventDefault();
+      e.returnValue = '';
+    });
+
+    // Видалення позначають галкою, а виконується воно аж при збереженні —
+    // тому перепитуємо саме тут і називаємо поіменно, що зникне.
+    form.addEventListener('submit', function (e) {
+      var del = form.querySelectorAll('.js-del:checked');
+      if (!del.length) return;
+      var names = Array.prototype.map.call(del, function (box) {
+        var row = box.closest('tr'), field = row && row.querySelector('input[type=text]');
+        return field && field.value ? field.value : (row ? row.cells[0].textContent.trim() : '');
+      }).filter(Boolean);
+      var text = 'Буде видалено назавжди (' + del.length + '):\n· ' + names.join('\n· ') + '\n\nПродовжити?';
+      if (!window.confirm(text)) { e.preventDefault(); dirty = true; }
+    });
+    if (note && saved === '') note.textContent = 'Усі зміни збережено';
+  });
+
   function urlB64(s) {
     var pad = '='.repeat((4 - s.length % 4) % 4);
     var b64 = (s + pad).replace(/-/g, '+').replace(/_/g, '/');

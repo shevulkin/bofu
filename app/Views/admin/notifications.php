@@ -27,5 +27,8 @@
       </table>
     </div>
   <?php endforeach; ?>
-  <button class="btn btn-gold" type="submit">💾 Зберегти правила</button>
+  <div class="admin-save">
+    <button class="btn btn-gold" type="submit">💾 Зберегти правила</button>
+    <span class="admin-save-note"></span>
+  </div>
 </form>

@@ -168,10 +168,11 @@ $roEdit = $canEdit ? '' : 'disabled';
     <p class="dim">Характеристики, варіанти та ціни по магазинах зʼявляться одразу після створення товару.</p>
   <?php endif; ?>
 
-  <div style="display:flex;gap:12px;align-items:center">
+  <div class="admin-save">
     <button class="btn btn-gold" type="submit">💾 Зберегти</button>
+    <span class="admin-save-note"></span>
     <?php if (!$isNew && Auth::can('products.manage')): ?>
-      <button class="btn btn-danger" type="submit" name="_action" value="delete"
+      <button class="btn btn-danger" type="submit" name="_action" value="delete" style="margin-left:auto"
         onclick="return confirm('Видалити товар разом із фото та цінами?')">Видалити товар</button>
     <?php endif; ?>
   </div>

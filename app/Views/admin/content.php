@@ -36,7 +36,10 @@
       </div>
     </div>
   </div>
-  <button class="btn btn-gold" type="submit">💾 Зберегти всі тексти</button>
+  <div class="admin-save">
+    <button class="btn btn-gold" type="submit">💾 Зберегти всі тексти</button>
+    <span class="admin-save-note"></span>
+  </div>
 </form>
 
 <div class="admin-card" style="margin-top:22px">

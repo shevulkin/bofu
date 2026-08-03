@@ -10,17 +10,26 @@
 <form method="post" action="<?= e(url('/admin/categories')) ?>">
   <?= Csrf::field() ?><input type="hidden" name="_action" value="save">
   <table class="tbl">
-    <tr><th>Назва</th><th>Тип</th><th>Товарів</th><th style="width:90px">Порядок</th><th>Активна</th><th>Видалити</th></tr>
-    <?php foreach ($cats as $c): ?>
+    <tr>
+      <th style="width:34%">Назва</th><th>Тип</th><th class="num">Товарів</th>
+      <th class="num w-sort">Порядок</th><th class="col-mid">Активна</th><th class="col-mid">Видалити</th>
+    </tr>
+    <?php foreach ($cats as $c): $busy = (int)$c['cnt'] > 0; ?>
       <tr>
         <td><input type="text" name="cat[<?= (int)$c['id'] ?>][name]" value="<?= e($c['name']) ?>"></td>
         <td class="muted"><?= e(['product'=>'Товари','service'=>'Послуги','video'=>'Відео','course'=>'Курси'][$c['type']] ?? $c['type']) ?></td>
-        <td class="muted"><?= (int)$c['cnt'] ?></td>
-        <td><input type="number" name="cat[<?= (int)$c['id'] ?>][sort]" value="<?= (int)$c['sort'] ?>"></td>
-        <td style="text-align:center"><input type="checkbox" name="cat[<?= (int)$c['id'] ?>][active]" <?= $c['active'] ? 'checked' : '' ?>></td>
-        <td style="text-align:center"><input type="checkbox" name="cat[<?= (int)$c['id'] ?>][_delete]" <?= $c['cnt'] > 0 ? 'disabled title="У категорії є товари"' : '' ?>></td>
+        <td class="muted num"><?= (int)$c['cnt'] ?></td>
+        <td class="num"><input type="number" name="cat[<?= (int)$c['id'] ?>][sort]" value="<?= (int)$c['sort'] ?>"></td>
+        <td class="col-mid"><input type="checkbox" name="cat[<?= (int)$c['id'] ?>][active]" <?= $c['active'] ? 'checked' : '' ?>></td>
+        <td class="col-mid col-del">
+          <input type="checkbox" class="js-del" name="cat[<?= (int)$c['id'] ?>][_delete]"
+                 <?= $busy ? 'disabled title="Спершу перенесіть або видаліть товари цієї категорії"' : '' ?>>
+        </td>
       </tr>
     <?php endforeach; ?>
   </table>
-  <button class="btn btn-gold" style="margin-top:16px" type="submit">💾 Зберегти</button>
+  <div class="admin-save">
+    <button class="btn btn-gold" type="submit">💾 Зберегти</button>
+    <span class="admin-save-note"></span>
+  </div>
 </form>
