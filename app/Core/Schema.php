@@ -7,7 +7,7 @@ declare(strict_types=1);
  */
 class Schema
 {
-    public const VERSION = 21;
+    public const VERSION = 22;
 
     /** Оновлення існуючої бази до поточної версії без втрати даних */
     public static function upgrade(): void
@@ -154,6 +154,19 @@ class Schema
             // наявні коди працювали без обмежень — лишаємо їх такими явно
             DB::query('UPDATE promo_codes SET stackable = 1 WHERE stackable IS NULL');
             self::createAll(); // promo_uses
+        }
+        if ($ver < 22) {
+            // Продаж понад залишок більше не мовчить: рахуємо, скільки з позиції
+            // справді зняли зі складу. Старим замовленням лишаємо NULL — що там
+            // сталося, ми вже не знаємо, і вигадувати числа гірше, ніж зізнатись.
+            self::addColumn('order_items', 'stock_taken', 'int null');
+            // Рядок про нестачу в шаблоні сповіщення. Правила тримають текст
+            // копією, тож переписуємо рівно ті, де він лишився типовим.
+            DB::query('UPDATE notification_rules SET template = ? WHERE event = ? AND template = ?', [
+                Notify::DEFAULT_TEMPLATES['order_new'], 'order_new',
+                "🛒 Нове замовлення {number}\nМагазин: {store}\n{items}\nСума: {total} грн\n"
+                . "Доставка: {delivery}\n{address}\n{phone}\nКлієнт: {name}",
+            ]);
         }
         Settings::set('schema_version', (string)self::VERSION);
     }
@@ -389,6 +402,11 @@ class Schema
             'order_items' => [
                 'id' => 'id', 'order_id' => 'int', 'product_id' => 'int null', 'variant_id' => 'int null',
                 'title' => 'str', 'variant_name' => 'str null', 'price' => 'num', 'qty' => 'int', 'sum' => 'num',
+                // Скільки з qty вдалося зняти зі складу магазину. Менше за qty —
+                // позицію продали понад залишок, і продавцю є що робити: передати
+                // її іншій точці або довиробити. NULL — замовлення старіше за цей
+                // облік, тоді поводимось як раніше й вважаємо, що взяли все.
+                'stock_taken' => 'int null',
             ],
             // Історія замовлення: розділення, зміни статусів, передачі позицій між магазинами.
             // parent_id — завжди головне замовлення, щоб уся стрічка читалась одним запитом.

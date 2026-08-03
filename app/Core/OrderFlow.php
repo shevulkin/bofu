@@ -90,6 +90,50 @@ class OrderFlow
         return implode("\n", $lines);
     }
 
+    /**
+     * Чого не вистачило на складі: [['title'=>…, 'qty'=>5, 'taken'=>2, 'lack'=>3], …].
+     *
+     * Сайт дозволяє замовити більше, ніж є, — і це свідомо: виробник доробить.
+     * Але мовчки такий продаж лишати не можна: хтось має або передати позицію
+     * туди, де товар є, або стати за станок. stock_taken = NULL означає
+     * замовлення, оформлене до появи цього обліку, — його не чіпаємо.
+     */
+    public static function shortage(int $orderId): array
+    {
+        $out = [];
+        foreach (self::items($orderId) as $i) {
+            if ($i['stock_taken'] === null) continue;
+            $lack = (int)$i['qty'] - (int)$i['stock_taken'];
+            if ($lack <= 0) continue;
+            $title = trim((string)$i['title']);
+            if (($i['variant_name'] ?? '') !== '') $title .= ', ' . $i['variant_name'];
+            $out[] = ['title' => $title, 'qty' => (int)$i['qty'],
+                      'taken' => (int)$i['stock_taken'], 'lack' => $lack];
+        }
+        return $out;
+    }
+
+    /** «Мед липовий, 0.5 л — 3 з 5» — одним рядком через кому */
+    public static function shortageLine(array $lack): string
+    {
+        return implode(', ', array_map(
+            fn($s) => $s['title'] . ' — ' . $s['lack'] . ' з ' . $s['qty'], $lack));
+    }
+
+    /**
+     * Те саме для месенджера: окремим блоком і зі знаком, бо це єдиний рядок
+     * сповіщення, який вимагає дії, а не просто повідомляє.
+     */
+    public static function shortageSummary(int $orderId): string
+    {
+        $lack = self::shortage($orderId);
+        if (!$lack) return '';
+        $lines = ['⚠️ Не вистачає на складі:'];
+        foreach ($lack as $s) $lines[] = '• ' . $s['title'] . ' — є ' . $s['taken'] . ' з ' . $s['qty'];
+        $lines[] = 'Передайте позицію іншому магазину або довиробіть.';
+        return implode("\n", $lines);
+    }
+
     /** Позиції всього замовлення (з усіх підзамовлень) — для списків і листів */
     public static function allItems(int $parentId): array
     {
@@ -158,16 +202,27 @@ class OrderFlow
                 foreach ($group as $r) {
                     $pid = (int)$r['product']['id'];
                     $vid = isset($r['variant']['id']) ? (int)$r['variant']['id'] : null;
+                    $qty = (int)$r['qty'];
+                    // товар з варіантами, але без вибраного варіанта (старий кошик) —
+                    // списувати нема з чого, і рахувати нестачу теж не по чому
+                    $countable = !($vid === null && Catalog::hasVariants($pid));
+                    $taken = $countable ? self::moveStock($pid, $vid, $sid ?: null, -$qty) : null;
                     DB::insert('order_items', [
                         'order_id' => $childId,
                         'product_id' => $pid, 'variant_id' => $vid,
                         'title' => $r['product']['name'], 'variant_name' => $r['variant']['name'] ?? null,
-                        'price' => $r['price'] ?? 0, 'qty' => $r['qty'], 'sum' => $r['sum'] ?? 0,
+                        'price' => $r['price'] ?? 0, 'qty' => $qty, 'sum' => $r['sum'] ?? 0,
+                        'stock_taken' => $taken,
                     ]);
-                    // товар з варіантами, але без вибраного варіанта (старий кошик) — списувати нема з чого
-                    if ($vid === null && Catalog::hasVariants($pid)) continue;
-                    self::moveStock($pid, $vid, $sid ?: null, -(int)$r['qty']);
                 }
+                // Продали більше, ніж лежало на складі. Пишемо в історію одразу:
+                // сповіщення можна проґавити чи вимкнути, а замовлення однаково
+                // комусь виконувати — і за тиждень має бути видно, чому воно
+                // затрималось.
+                $lack = self::shortage($childId);
+                if ($lack) self::log($parentId, $childId, 'shortage',
+                    'Замовлено понад залишок: ' . self::shortageLine($lack)
+                    . '. Передайте позицію магазину, де товар є, або довиробіть її.');
             }
 
             self::recalcTotals($parentId);
@@ -357,12 +412,20 @@ class OrderFlow
             if (in_array($from['status'], ['done', 'canceled'], true))
                 throw new RuntimeException('Підзамовлення вже закрите — передавати з нього не можна.');
 
-            // залишки: повертаємо старому магазину, знімаємо в нового
+            // Залишки: повертаємо старому магазину рівно те, що з нього колись
+            // зняли, а не всю кількість позиції. Інакше передача позиції,
+            // проданої понад залишок, дарувала б старій точці неіснуючий товар:
+            // зняли 2 з 5 — повернули б 5. NULL — замовлення до цього обліку,
+            // там поводимось як раніше й вважаємо, що взяли все.
             $pid = $item['product_id'] ? (int)$item['product_id'] : null;
             $vid = $item['variant_id'] ? (int)$item['variant_id'] : null;
+            $qty = (int)$item['qty'];
+            $got = null;
             if ($pid && !($vid === null && Catalog::hasVariants($pid))) {
-                self::moveStock($pid, $vid, $from['store_id'] ? (int)$from['store_id'] : null, (int)$item['qty']);
-                self::moveStock($pid, $vid, $toStoreId, -(int)$item['qty']);
+                $taken = $item['stock_taken'] === null ? $qty : (int)$item['stock_taken'];
+                self::moveStock($pid, $vid, $from['store_id'] ? (int)$from['store_id'] : null, $taken);
+                $got = self::moveStock($pid, $vid, $toStoreId, -$qty);
+                DB::update('order_items', ['stock_taken' => $got], 'id = ?', [$itemId]);
             }
 
             // підзамовлення-отримувач: чинне того ж магазину або нове
@@ -391,7 +454,12 @@ class OrderFlow
             self::log($parentId, (int)$to['id'], 'transfer',
                 'Позицію «' . $title . '» передано: ' . $fromName . ' → ' . $store['name'] .
                 ' (' . $to['number'] . ($created ? ', нове підзамовлення' : '') . ')' .
-                ($emptied ? '. Підзамовлення ' . $from['number'] . ' закрито — позицій не лишилось.' : ''), $userId);
+                ($emptied ? '. Підзамовлення ' . $from['number'] . ' закрито — позицій не лишилось.' : '') .
+                // Передали, а легше не стало: у новій точці товару теж бракує.
+                // Сказати про це треба одразу, інакше позицію ганятимуть по колу.
+                ($got !== null && $got < $qty
+                    ? '. Увага: у «' . $store['name'] . '» теж не вистачає — є ' . $got . ' з ' . $qty . '.'
+                    : ''), $userId);
             self::syncParent($parentId, $userId);
 
             return ['child' => self::order((int)$to['id']), 'created' => $created, 'store' => $store['name']];
@@ -407,16 +475,31 @@ class OrderFlow
      * Зміна залишку в магазині. Тільки для наявних рядків store_stock: якщо магазин
      * ніколи не мав цього товару, списання нічого не робить (позиція «під замовлення»),
      * і повернення так само не має вигадувати залишок з нічого.
+     *
+     * Повертає, скільки штук справді пройшло. При списанні це може бути менше за
+     * замовлене — рівно стільки, скільки лежало на складі. Раніше різниця просто
+     * зникала в GREATEST(0, …), і про продаж понад залишок не дізнавався ніхто:
+     * ні продавець, ні наступна передача позиції, яка повертала магазину більше,
+     * ніж з нього колись зняли.
      */
-    private static function moveStock(?int $productId, ?int $variantId, ?int $storeId, int $delta): void
+    private static function moveStock(?int $productId, ?int $variantId, ?int $storeId, int $delta): int
     {
-        if (!$productId || !$storeId || $delta === 0) return;
-        $fn = DB::driver() === 'sqlite' ? 'MAX' : 'GREATEST';
+        if (!$productId || !$storeId || $delta === 0) return 0;
         $cond = $variantId === null ? 'variant_id IS NULL' : 'variant_id = ?';
-        $params = [abs($delta), $productId, $storeId];
-        if ($variantId !== null) $params[] = $variantId;
+        $where = [$productId, $storeId];
+        if ($variantId !== null) $where[] = $variantId;
+
+        $have = DB::val("SELECT SUM(qty) FROM store_stock WHERE product_id = ? AND store_id = ? AND $cond", $where);
+        if ($have === null) return 0; // рядка немає — магазин цього товару не тримає
+
+        $applied = $delta < 0 ? min((int)$have, -$delta) : $delta;
+        if ($applied <= 0) return 0;
+
+        $fn = DB::driver() === 'sqlite' ? 'MAX' : 'GREATEST';
         $expr = $delta < 0 ? "$fn(0, qty - ?)" : 'qty + ?';
-        DB::query("UPDATE store_stock SET qty = $expr WHERE product_id = ? AND store_id = ? AND $cond", $params);
+        DB::query("UPDATE store_stock SET qty = $expr WHERE product_id = ? AND store_id = ? AND $cond",
+            array_merge([$applied], $where));
+        return $applied;
     }
 
     /** Сповіщення магазину про його частину замовлення */
@@ -429,6 +512,8 @@ class OrderFlow
             'delivery' => self::deliveryLabel($child['delivery']),
             'address' => self::deliveryAddress($child),
             'items' => self::itemsSummary((int)$child['id']),
+            // Порожньо, коли все на складі, — і рядок зникне сам (Notify::interpolate)
+            'shortage' => self::shortageSummary((int)$child['id']),
             'total' => number_format((float)$child['total'], 2, '.', ' '),
             'store' => $store,
         ], $child['store_id'] ? (int)$child['store_id'] : null);
