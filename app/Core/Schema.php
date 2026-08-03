@@ -7,7 +7,7 @@ declare(strict_types=1);
  */
 class Schema
 {
-    public const VERSION = 18;
+    public const VERSION = 21;
 
     /** Оновлення існуючої бази до поточної версії без втрати даних */
     public static function upgrade(): void
@@ -126,6 +126,34 @@ class Schema
         if ($ver < 18) {
             // збережені адреси доставки покупця
             self::createAll(); // user_addresses
+        }
+        if ($ver < 19) {
+            // звідки почався вхід — це показується людині в боті, коли вона
+            // підтверджує «це я»: без такої деталі підтвердження перетворюється
+            // на «натисніть ОК», а саме воно й має відрізняти свою спробу входу
+            // від чужої. Старі токени лишаються без цих полів і живуть 15 хвилин.
+            self::addColumn('auth_tokens', 'ip', 'str null');
+            self::addColumn('auth_tokens', 'agent', 'str null');
+        }
+        if ($ver < 20) {
+            // Телефон у сповіщенні про замовлення переїхав на власний рядок.
+            // Правила зберігають свій текст копією, тож без цього оновлення
+            // зміна дійшла б лише до нових установок. Переписуємо рівно ті,
+            // де текст лишився типовим: правлений адміном — його справа.
+            DB::query('UPDATE notification_rules SET template = ? WHERE event = ? AND template = ?', [
+                Notify::DEFAULT_TEMPLATES['order_new'], 'order_new',
+                "🛒 Нове замовлення {number}\nКлієнт: {name}, {phone}\nДоставка: {delivery}\nСума: {total} грн\nМагазин: {store}",
+            ]);
+        }
+        if ($ver < 21) {
+            // ліміти промокодів, сумування зі знижками + журнал використань
+            self::addColumn('promo_codes', 'max_uses', 'int null');
+            self::addColumn('promo_codes', 'per_user_limit', 'int null');
+            self::addColumn('promo_codes', 'stackable', 'bool default 1');
+            self::addColumn('promo_codes', 'max_total_percent', 'num null');
+            // наявні коди працювали без обмежень — лишаємо їх такими явно
+            DB::query('UPDATE promo_codes SET stackable = 1 WHERE stackable IS NULL');
+            self::createAll(); // promo_uses
         }
         Settings::set('schema_version', (string)self::VERSION);
     }
@@ -309,8 +337,26 @@ class Schema
                 'store_id' => 'int null', 'category_id' => 'int null', 'product_id' => 'int null',
                 'starts_at' => 'str null', 'ends_at' => 'str null', 'active' => 'bool default 1',
             ],
+            // Два незалежні ліміти. NULL — без обмежень; це різні питання:
+            // max_uses — скільки разів кодом скористаються всі разом (1 = код
+            // для однієї людини), per_user_limit — скільки разів одна й та сама
+            // людина (1 = кожному по разу, NULL = хоч при кожній покупці).
+            // stackable — чи діє код на товар, який уже продається зі знижкою
+            // (акція магазину або стара ціна). max_total_percent — стеля сумарної
+            // знижки на позицію: акція 20% + код 15% зі стелею 25% дадуть 25%,
+            // а не 35%. Без стелі знижки складаються повністю.
             'promo_codes' => [
-                'id' => 'id', 'code' => 'str unique', 'percent' => 'num', 'active' => 'bool default 1', 'expires_at' => 'str null',
+                'id' => 'id', 'code' => 'str unique', 'percent' => 'num', 'active' => 'bool default 1',
+                'expires_at' => 'str null', 'max_uses' => 'int null', 'per_user_limit' => 'int null',
+                'stackable' => 'bool default 1', 'max_total_percent' => 'num null',
+            ],
+            // Використання промокоду. Рядок зʼявляється лише разом із замовленням,
+            // тож ліміти рахуються по фактах, а не по лічильнику, який може
+            // розʼїхатися з дійсністю. Людину впізнаємо за акаунтом, а гостя —
+            // за нормалізованим номером: іншого сталого імені в нас немає.
+            'promo_uses' => [
+                'id' => 'id', 'promo_id' => 'int', 'code' => 'str', 'order_id' => 'int null',
+                'user_id' => 'int null', 'phone' => 'str null', 'created_at' => 'ts',
             ],
             // Головне замовлення: parent_id IS NULL. Підзамовлення магазину: parent_id = головне,
             // store_id = магазин-виконавець, seq = його порядковий номер у замовленні.
@@ -386,6 +432,7 @@ class Schema
                 'purpose' => 'str', // tg_link|tg_login|viber_link|viber_login|phone_code
                 'token' => 'str unique', 'code' => 'str null', 'phone' => 'str null',
                 'chat_id' => 'str null', 'confirmed_user_id' => 'int null',
+                'ip' => 'str null', 'agent' => 'str null',  // звідки почався вхід — показуємо в боті
                 'expires_at' => 'str', 'used' => 'bool default 0', 'created_at' => 'ts',
             ],
             // Підписники розсилки: email гостя або зареєстрованого користувача.
@@ -431,6 +478,7 @@ class Schema
             'user_roles' => ['user_id', 'role'],
             'user_notify_prefs' => ['user_id'],
             'user_addresses' => ['user_id'],
+            'promo_uses' => ['promo_id', 'user_id', 'phone'],
         ];
         foreach ($idx as $table => $columns) {
             foreach ($columns as $col) {

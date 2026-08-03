@@ -46,7 +46,21 @@ class Checkout
 
     private static function promo(): ?array
     {
-        return Promo::current(isset($_POST['promo_code']) ? (string)$_POST['promo_code'] : null);
+        return Promo::current(
+            isset($_POST['promo_code']) ? Promo::fromInput($_POST['promo_code']) : null,
+            Auth::id(), self::buyerPhone());
+    }
+
+    /**
+     * Кого вважаємо «людиною» для ліміту «один раз на людину»: залогіненого —
+     * за акаунтом, гостя — за номером із форми (у профілі номер уже перевірений).
+     * Номер отримувача теж годиться: іншого сталого імені гостя ми не знаємо.
+     */
+    private static function buyerPhone(): ?string
+    {
+        $u = Auth::user();
+        if ($u && !empty($u['phone'])) return (string)$u['phone'];
+        return AuthTokens::normPhoneAny($_POST['phone'] ?? '');
     }
 
     /**
@@ -57,14 +71,15 @@ class Checkout
     public static function applyPromo(): never
     {
         Csrf::verify();
-        $promo = Promo::apply((string)($_POST['promo_code'] ?? ''));
+        $posted = Promo::fromInput($_POST['promo_code'] ?? '');
+        [$promo, $error] = Promo::apply($posted, Auth::id(), self::buyerPhone());
         $rows = Cart::detailed();
         $totals = Cart::total(null, $promo);
 
         $items = [];
         foreach ($rows as $r) {
             $sum = (float)($r['sum'] ?? 0);
-            $cut = Promo::cut($sum, $promo);
+            $cut = Promo::cut($sum, $promo, Promo::ownPercent($r));
             $items[$r['key']] = [
                 'sum' => price_fmt($sum - $cut),
                 'old' => $cut > 0 ? price_fmt($sum) : null,
@@ -72,9 +87,16 @@ class Checkout
         }
         json_response([
             'ok' => $promo !== null,
-            'empty' => trim((string)($_POST['promo_code'] ?? '')) === '',
+            'empty' => trim($posted) === '',
             'code' => $promo['code'] ?? '',
             'label' => $promo ? Promo::label($promo) : '',
+            // причина відмови приходить з сервера: «вже використаний» і
+            // «такого коду немає» — різні речі, і людина має бачити яка саме
+            'error' => $error,
+            // Код робочий, але ліг не на все або не повністю: інакше «ви
+            // заощадили 0 грн» чи менша за очікувану сума виглядали б як
+            // поломка, а не як умова коду.
+            'note' => Promo::note($promo, $rows),
             // нульову знижку price_fmt показав би як «За запитом» — це про ціну, не про суму
             'discount' => $totals['discount'] > 0 ? price_fmt($totals['discount']) : '0 грн',
             'subtotal' => price_fmt($totals['subtotal']),
@@ -118,7 +140,15 @@ class Checkout
             redirect('/checkout');
         }
 
-        $promo = self::promo();
+        // Останнє слово за сервером: код міг вичерпатись, поки людина заповнювала
+        // форму. Мовчки прибрати знижку не можна — вона підтверджує суму, яку
+        // бачить, тож повертаємо на форму з поясненням і вже без коду.
+        $postedCode = Promo::fromInput($_POST['promo_code'] ?? '');
+        [$promo, $promoError] = Promo::apply($postedCode, Auth::id(), $phone);
+        if ($promoError !== '' && trim($postedCode) !== '') {
+            flash('error', $promoError . '. Перевірте суму й підтвердіть замовлення ще раз.');
+            redirect('/checkout');
+        }
         $totals = Cart::total($storeId, $promo);
         $number = 'BOFU-' . date('ymd') . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 4));
         // Адреса сторінки підтвердження: номер короткий і передбачуваний, тому
@@ -141,6 +171,10 @@ class Checkout
             'subtotal' => $totals['subtotal'], 'discount' => $totals['discount'], 'total' => $totals['total'],
             'created_at' => now(),
         ], Cart::detailed($storeId), $storeId);
+
+        // Використання записуємо лише разом із замовленням — ліміти рахуються
+        // по фактах покупок, а не по спробах ввести код у формі
+        if ($promo) Promo::recordUse($promo, (int)$placed['id'], Auth::id(), $phone);
 
         // Адресу зберігаємо лише за явною галкою і лише залогіненим: гостю
         // її нікуди прив'язати. Самовивіз не зберігаємо — це адреса магазину.
