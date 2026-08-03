@@ -340,6 +340,10 @@ class OrderFlow
         $new = self::aggregateStatus($parentId);
         if (!$parent || $new === null || $new === $parent['status']) return null;
         DB::update('orders', ['status' => $new], 'id = ?', [$parentId]);
+        // Скасоване замовлення не витрачає промокод. Ставимо саме тут: через
+        // syncParent() проходить кожна зміна статусу головного, звідки б вона
+        // не прийшла — від магазину, від адміна чи каскадом.
+        Promo::syncUse($parent, $new);
         self::log($parentId, null, 'status',
             'Статус замовлення оновлено автоматично: ' . self::statusLabel($new) .
             ' (усі магазини опрацювали свої частини)', $userId);
