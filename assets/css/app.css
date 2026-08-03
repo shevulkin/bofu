@@ -516,6 +516,75 @@ footer{border-top:1px solid var(--line);padding:44px 0 60px;margin-top:40px}
 .st-canceled{background:rgba(200,60,50,.15);color:var(--danger2)}
 .admin-card{background:var(--bg2);border:1px solid var(--line);border-radius:4px;padding:24px;margin-bottom:22px}
 .admin-card h2{font-size:21px;margin-bottom:16px}
+/* Що робить блок — одним рядком під заголовком. Сусідні картки часто виглядають
+   як кілька способів зробити те саме, хоча наслідки в них різні: підпис має
+   стояти до полів, а не в довідці, яку відкриють уже після помилки. */
+.card-lead{color:var(--muted);font-size:13.5px;line-height:1.55;margin:-10px 0 18px;max-width:78ch}
+.card-lead b{color:var(--text);font-weight:600}
+/* Те, що адмін мусить прочитати до заповнення поля, а не після скарги покупця */
+.card-warn{background:var(--bg3);border:1px solid var(--line);border-left:3px solid var(--gold);
+  border-radius:3px;padding:11px 13px;margin:0 0 18px;font-size:13px;line-height:1.55;
+  color:var(--muted);max-width:78ch}
+.card-warn b{color:var(--gold);font-weight:600}
+/* Режим підказок: «?» угорі сторінки, далі клік по полю пояснює, що воно робить.
+   Саме на вимогу, а не підписом під кожним рядком: форма з поясненням біля
+   кожного поля перестає читатися як форма, і її однаково перестають читати. */
+/* Кнопка навмисно тиха: це довідка, а не дія. Вона має знайтися, коли її
+   шукають, і не тягнути на себе увагу решту часу. */
+.help-btn{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;
+  width:26px;height:26px;padding:0;border-radius:50%;background:transparent;color:var(--dim);
+  border:1px solid var(--line);font-size:13px;font-weight:600;line-height:1;
+  cursor:pointer;transition:.15s;font-family:inherit;opacity:.65}
+.help-btn:hover{opacity:1;color:var(--muted);border-color:var(--line2)}
+/* Увімкнений режим — навпаки, помітно, і кнопка від'їжджає з шапки на екран:
+   поля пояснюють, гортаючи сторінку донизу, а вихід із режиму мусить лишатися
+   під рукою, а не десь угорі. Пульсація тут не прикраса — вона єдине, що
+   нагадує про ввімкнений режим, коли шапки вже не видно.
+   z-index: вище за липкі шапки таблиць і мобільну панель, але нижче за бічне
+   меню (80), щоб не накривати відкрите меню. */
+.help-btn.is-on{position:fixed;top:20px;right:20px;z-index:75;width:32px;height:32px;font-size:15px;
+  opacity:1;background:var(--gold);border-color:var(--gold);color:var(--bg);
+  animation:help-pulse 2.2s ease-out infinite}
+.help-btn.is-on:hover{background:var(--gold2);border-color:var(--gold2);color:var(--bg)}
+@keyframes help-pulse{
+  0%{box-shadow:0 0 0 0 rgba(240,180,41,.55)}
+  70%{box-shadow:0 0 0 12px rgba(240,180,41,0)}
+  100%{box-shadow:0 0 0 0 rgba(240,180,41,0)}
+}
+/* Рух буває нестерпним: лишаємо статичне кільце, помітність не втрачається */
+@media (prefers-reduced-motion:reduce){
+  .help-btn.is-on{animation:none;box-shadow:0 0 0 3px rgba(240,180,41,.3)}
+}
+/* Нижче 900px угорі висить липка мобільна панель — зсуваємо кнопку під неї.
+   Низ екрана не годиться: там на семи сторінках стоїть липка панель
+   збереження (.admin-save), і кнопка накривала б саме «Зберегти». */
+@media (max-width:900px){
+  .help-btn.is-on{top:58px;right:14px}
+}
+.help-btn[hidden]{display:none}
+/* Смужка-нагадування, поки режим увімкнено — теж стримана */
+.help-bar{display:none;background:var(--bg2);border:1px solid var(--line);border-radius:4px;
+  padding:9px 13px;margin:0 0 18px;font-size:12.5px;line-height:1.5;color:var(--dim)}
+body.help-on .help-bar{display:block}
+/* Підсвічуємо ЛИШЕ те поле, під яким зараз курсор. Обводити все одразу означає
+   перетворити сторінку на рябу сітку рамок: людина шукає відповідь про одне
+   поле, а отримує шум від усіх. */
+body.help-on [data-help]{cursor:help}
+body.help-on [data-help]:hover{outline:1px solid var(--line2);outline-offset:3px;
+  border-radius:3px;background:rgba(240,180,41,.04)}
+/* Клік має дістатися носію підказки, а не інпуту всередині нього */
+body.help-on [data-help] *{pointer-events:none}
+/* Детальна підказка буває довгою: даємо ширину під абзаци, а висоту обмежуємо
+   екраном — краще прокрутка всередині, ніж текст, що вилазить за сторінку.
+   pre-line зберігає порожні рядки з data-help, тож підказку можна писати
+   абзацами, не вставляючи розмітку (текст лишається звичайним текстом). */
+.help-pop{position:absolute;z-index:60;width:420px;max-height:68vh;overflow-y:auto;
+  background:var(--bg3);border:1px solid var(--line2);border-left:3px solid var(--gold);
+  border-radius:4px;padding:14px 16px;
+  font-size:13px;line-height:1.6;color:var(--text);white-space:pre-line;
+  box-shadow:0 14px 34px rgba(0,0,0,.55)}
+.help-pop-title{display:block;color:var(--gold);font-weight:700;font-size:12px;
+  text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px}
 .toggle{position:relative;display:inline-flex;align-items:center;gap:12px;cursor:pointer;font-size:14px;color:var(--text);text-transform:none;letter-spacing:0}
 .toggle input{position:absolute;opacity:0}
 .toggle .tr{width:44px;height:24px;background:var(--bg3);border:1px solid var(--line2);border-radius:20px;position:relative;transition:.2s;flex-shrink:0}
