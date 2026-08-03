@@ -91,12 +91,19 @@ class Cart
         return $rows;
     }
 
+    /**
+     * Підсумки. Знижку рахуємо по кожній позиції окремо, а не від загальної суми:
+     * покупець бачить перераховану ціну кожного товару, і ці числа мають скластися
+     * рівно в «до сплати» — інакше на копійках форма не сходиться сама з собою.
+     */
     public static function total(?int $storeId = null, ?array $promoCode = null): array
     {
-        $subtotal = 0.0;
-        foreach (self::detailed($storeId) as $r) $subtotal += $r['sum'] ?? 0;
-        $discount = 0.0;
-        if ($promoCode) $discount = round($subtotal * (float)$promoCode['percent'] / 100, 2);
+        $subtotal = 0.0; $discount = 0.0;
+        foreach (self::detailed($storeId) as $r) {
+            $sum = (float)($r['sum'] ?? 0);
+            $subtotal += $sum;
+            $discount += Promo::cut($sum, $promoCode);
+        }
         return ['subtotal' => $subtotal, 'discount' => $discount, 'total' => max(0, $subtotal - $discount)];
     }
 }

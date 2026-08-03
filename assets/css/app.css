@@ -210,6 +210,10 @@ input:disabled,select:disabled,textarea:disabled{opacity:.45;cursor:not-allowed}
 .co-item .dim{font-size:12.5px}
 .co-item-sum{margin-left:auto;font-size:14px;white-space:nowrap;font-weight:700}
 .co-sum .totals{margin:0;max-width:none}
+.co-old{color:var(--dim);font-weight:400;margin-right:7px;text-decoration:line-through}
+.co-promo{display:flex;gap:8px}
+.co-promo input{text-transform:uppercase}
+.co-promo .btn{flex:none;padding:11px 16px}
 .co-bar{display:none}
 @media (max-width:1000px){
   .co-grid{grid-template-columns:1fr}

@@ -125,8 +125,8 @@
       <aside class="co-sum">
         <h3 class="co-sum-h">Ваше замовлення</h3>
         <div class="co-items">
-          <?php foreach ($rows as $r): ?>
-            <div class="co-item">
+          <?php foreach ($rows as $r): $cut = Promo::cut((float)($r['sum'] ?? 0), $promo); ?>
+            <div class="co-item" data-key="<?= e($r['key']) ?>">
               <img src="<?= e(asset($r['photo'])) ?>" alt="" loading="lazy">
               <div style="min-width:0">
                 <div class="co-item-name"><?= e($r['product']['name']) ?></div>
@@ -134,22 +134,32 @@
                   <?= $r['variant'] ? e($r['variant']['name']) . ' · ' : '' ?><?= (int)$r['qty'] ?> × <?= e(price_fmt($r['price'])) ?>
                 </div>
               </div>
-              <div class="co-item-sum"><?= e(price_fmt($r['sum'])) ?></div>
+              <div class="co-item-sum">
+                <?php if ($cut > 0): ?><s class="co-old"><?= e(price_fmt($r['sum'])) ?></s><?php endif; ?>
+                <span class="co-now"><?= e(price_fmt(($r['sum'] ?? 0) - $cut)) ?></span>
+              </div>
             </div>
           <?php endforeach; ?>
         </div>
 
         <div class="field" style="margin-bottom:16px">
           <label>Промокод</label>
-          <input type="text" name="promo_code" value="<?= e($promo['code'] ?? '') ?>" placeholder="Напр. MED10" autocomplete="off">
+          <div class="co-promo">
+            <input type="text" name="promo_code" id="promoInput" value="<?= e($promo['code'] ?? '') ?>" autocomplete="off" spellcheck="false">
+            <button class="btn btn-line" type="button" id="promoBtn"><?= $promo ? 'Прибрати' : 'Застосувати' ?></button>
+          </div>
+          <p class="field-hint<?= $promo ? ' is-ok' : '' ?>" id="promoHint">
+            <?= $promo ? e('✓ ' . Promo::label($promo) . ' — мінус ' . price_fmt($totals['discount'])) : '' ?>
+          </p>
         </div>
 
         <div class="totals">
-          <div class="row"><span class="muted">Товари:</span><span><?= e(price_fmt($totals['subtotal'])) ?></span></div>
-          <?php if ($totals['discount'] > 0): ?>
-            <div class="row"><span class="muted">Знижка (<?= e($promo['code']) ?>):</span><span>−<?= e(price_fmt($totals['discount'])) ?></span></div>
-          <?php endif; ?>
-          <div class="row grand"><span>До сплати:</span><span><?= e(price_fmt($totals['total'])) ?></span></div>
+          <div class="row"><span class="muted">Товари:</span><span id="sumSubtotal"><?= e(price_fmt($totals['subtotal'])) ?></span></div>
+          <div class="row" id="sumDiscountRow"<?= $totals['discount'] > 0 ? '' : ' style="display:none"' ?>>
+            <span class="muted" id="sumDiscountLabel"><?= $promo ? e(Promo::label($promo)) : 'Знижка' ?>:</span>
+            <span id="sumDiscount">−<?= e($totals['discount'] > 0 ? price_fmt($totals['discount']) : '0 грн') ?></span>
+          </div>
+          <div class="row grand"><span>До сплати:</span><span id="sumTotal"><?= e(price_fmt($totals['total'])) ?></span></div>
         </div>
 
         <p class="dim" style="margin:16px 0 18px;font-size:13px">Оплата при отриманні або за домовленістю —
@@ -161,7 +171,7 @@
 
       <!-- телефон: сума й кнопка завжди під рукою, без гортання через усю форму -->
       <div class="co-bar">
-        <div class="co-bar-total"><span>До сплати</span><b><?= e(price_fmt($totals['total'])) ?></b></div>
+        <div class="co-bar-total"><span>До сплати</span><b id="barTotal"><?= e(price_fmt($totals['total'])) ?></b></div>
         <button class="btn btn-gold" type="submit">Підтвердити</button>
       </div>
     </form>
@@ -238,6 +248,65 @@
       document.getElementById('otherAddress').value = d.address || '';
     });
   });
+
+  // Промокод: перевіряємо окремим запитом і одразу показуємо, що саме дала
+  // знижка. Без цього людина дізнавалась про долю коду вже після підтвердження
+  // замовлення — тобто коли міняти щось пізно.
+  var promoInput = document.getElementById('promoInput'), promoBtn = document.getElementById('promoBtn');
+  var promoHint = document.getElementById('promoHint');
+  function applyPromo(code){
+    promoBtn.disabled = true;
+    promoHint.className = 'field-hint';
+    promoHint.textContent = 'Перевіряємо…';
+    var body = new URLSearchParams({_csrf: '<?= e(Csrf::token()) ?>', promo_code: code});
+    fetch('<?= e(url('/checkout/promo')) ?>', {method: 'POST', body: body, credentials: 'same-origin'})
+      .then(function(r){ return r.json() }).then(function(d){
+        promoBtn.disabled = false;
+        promoBtn.textContent = d.ok ? 'Прибрати' : 'Застосувати';
+        promoHint.className = 'field-hint' + (d.ok ? ' is-ok' : (d.empty ? '' : ' is-bad'));
+        promoHint.textContent = d.ok ? '✓ ' + d.label + ' — мінус ' + d.discount
+          : (d.empty ? '' : '✕ Такий промокод не діє — перевірте написання або строк дії');
+        // ціни позицій: стара лишається закресленою, щоб знижку було видно
+        document.querySelectorAll('.co-item').forEach(function(el){
+          var it = d.items[el.dataset.key];
+          if (!it) return;
+          var old = el.querySelector('.co-old'), now = el.querySelector('.co-now');
+          now.textContent = it.sum;
+          if (it.old) {
+            if (!old) { old = document.createElement('s'); old.className = 'co-old'; now.parentNode.insertBefore(old, now); }
+            old.textContent = it.old;
+          } else if (old) old.remove();
+        });
+        document.getElementById('sumSubtotal').textContent = d.subtotal;
+        document.getElementById('sumTotal').textContent = d.total;
+        var bar = document.getElementById('barTotal');
+        if (bar) bar.textContent = d.total;
+        document.getElementById('sumDiscountRow').style.display = d.ok ? '' : 'none';
+        document.getElementById('sumDiscountLabel').textContent = (d.label || 'Знижка') + ':';
+        document.getElementById('sumDiscount').textContent = '−' + d.discount;
+      }).catch(function(){
+        promoBtn.disabled = false;
+        promoHint.className = 'field-hint is-bad';
+        promoHint.textContent = 'Не вдалося перевірити код — спробуйте ще раз';
+      });
+  }
+  if (promoBtn) {
+    promoBtn.addEventListener('click', function(){
+      // «Прибрати» — це та сама перевірка з порожнім кодом
+      if (promoBtn.textContent === 'Прибрати') promoInput.value = '';
+      applyPromo(promoInput.value.trim());
+    });
+    promoInput.addEventListener('keydown', function(e){
+      if (e.key === 'Enter') { e.preventDefault(); applyPromo(promoInput.value.trim()); }
+    });
+    // правка коду руками скасовує попередній результат: показані суми більше
+    // не відповідають тому, що в полі
+    promoInput.addEventListener('input', function(){
+      promoBtn.textContent = 'Застосувати';
+      promoHint.className = 'field-hint';
+      promoHint.textContent = 'Натисніть «Застосувати», щоб перевірити код';
+    });
+  }
 
   // галка розсилки має сенс лише коли вказано email
   var em = document.getElementById('orderEmail'), nlRow = document.getElementById('newsletterRow');

@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 namespace Controllers;
 
-use DB, View, Cart, Csrf, Auth, Catalog, OrderFlow, Settings, AuthTokens, Newsletter, RateLimit, Addresses;
+use DB, View, Cart, Csrf, Auth, Catalog, OrderFlow, Settings, AuthTokens, Newsletter, RateLimit, Addresses, Promo;
 
 class Checkout
 {
@@ -46,14 +46,41 @@ class Checkout
 
     private static function promo(): ?array
     {
-        $code = trim($_POST['promo_code'] ?? $_SESSION['promo_code'] ?? '');
-        if ($code === '') return null;
-        $row = DB::row('SELECT * FROM promo_codes WHERE code = ? AND active = 1', [strtoupper($code)]);
-        if ($row && ($row['expires_at'] === null || $row['expires_at'] === '' || $row['expires_at'] >= date('Y-m-d'))) {
-            $_SESSION['promo_code'] = strtoupper($code);
-            return $row;
+        return Promo::current(isset($_POST['promo_code']) ? (string)$_POST['promo_code'] : null);
+    }
+
+    /**
+     * Кнопка «Застосувати» біля промокоду. Відповідає перерахованими сумами, а не
+     * перезавантаженням сторінки: інакше все вже введене в форму (отримувач,
+     * адреса) зникло б заради перевірки коду.
+     */
+    public static function applyPromo(): never
+    {
+        Csrf::verify();
+        $promo = Promo::apply((string)($_POST['promo_code'] ?? ''));
+        $rows = Cart::detailed();
+        $totals = Cart::total(null, $promo);
+
+        $items = [];
+        foreach ($rows as $r) {
+            $sum = (float)($r['sum'] ?? 0);
+            $cut = Promo::cut($sum, $promo);
+            $items[$r['key']] = [
+                'sum' => price_fmt($sum - $cut),
+                'old' => $cut > 0 ? price_fmt($sum) : null,
+            ];
         }
-        return null;
+        json_response([
+            'ok' => $promo !== null,
+            'empty' => trim((string)($_POST['promo_code'] ?? '')) === '',
+            'code' => $promo['code'] ?? '',
+            'label' => $promo ? Promo::label($promo) : '',
+            // нульову знижку price_fmt показав би як «За запитом» — це про ціну, не про суму
+            'discount' => $totals['discount'] > 0 ? price_fmt($totals['discount']) : '0 грн',
+            'subtotal' => price_fmt($totals['subtotal']),
+            'total' => price_fmt($totals['total']),
+            'items' => $items,
+        ]);
     }
 
     public static function submit(): never
