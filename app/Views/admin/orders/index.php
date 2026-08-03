@@ -48,7 +48,16 @@
           <?php endforeach; ?>
         <?php endif; ?>
       </td>
-      <td class="num"><b><?= e(price_fmt($o['total'])) ?></b></td>
+      <td class="num"><b><?= e(price_fmt($o['total'])) ?></b>
+        <?php if ((float)$o['discount'] > 0): ?>
+          <?php /* Продавець має бачити знижку ще у списку: інакше «чому сума менша
+                   за товари» зʼясовується лише всередині картки, і то не одразу. */ ?>
+          <div class="dim" style="white-space:nowrap">−<?= e(price_fmt($o['discount'])) ?><?php
+            if ($o['promo_code']): ?> · <?= e($o['promo_code']) ?><?php endif; ?></div>
+        <?php elseif ($o['promo_code']): ?>
+          <div class="dim" style="white-space:nowrap">код <?= e($o['promo_code']) ?> — без знижки</div>
+        <?php endif; ?>
+      </td>
       <td><span class="status-pill st-<?= e($o['status']) ?>"><?= e($statuses[$o['status']] ?? $o['status']) ?></span></td>
       <?php
         // «Сьогодні 09:40» відповідає на питання, яке продавець ставить насправді

@@ -64,7 +64,9 @@
 
         <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:16px;margin-top:14px;flex-wrap:wrap">
           <div class="dim">Частина магазину: <b><?= e(price_fmt($c['total'])) ?></b>
-            <?php if ((float)$c['discount'] > 0): ?> (знижка −<?= e(price_fmt($c['discount'])) ?>)<?php endif; ?>
+            <?php if ((float)$c['discount'] > 0): ?>
+              (знижка −<?= e(price_fmt($c['discount'])) ?><?= $c['promo_code'] ? ' за кодом ' . e($c['promo_code']) : '' ?>)
+            <?php endif; ?>
           </div>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
             <?php $who = $assignees[$cid] ?? null; ?>
@@ -106,7 +108,22 @@
       <div class="totals">
         <div class="row"><span class="muted">Товари:</span><span><?= e(price_fmt($parent['subtotal'])) ?></span></div>
         <?php if ((float)$parent['discount'] > 0): ?>
-          <div class="row"><span class="muted">Знижка<?= $parent['promo_code'] ? ' (' . e($parent['promo_code']) . ')' : '' ?>:</span><span>−<?= e(price_fmt($parent['discount'])) ?></span></div>
+          <?php
+            // Відсоток рахуємо з самого замовлення, а не з довідника кодів: код
+            // могли відтоді змінити або видалити, а в замовленні має лишатись те,
+            // на чому зійшлися з покупцем.
+            $pct = (float)$parent['subtotal'] > 0
+                 ? round((float)$parent['discount'] / (float)$parent['subtotal'] * 100, 1) : 0;
+          ?>
+          <div class="row">
+            <span class="muted"><?= $parent['promo_code']
+              ? 'Промокод ' . e($parent['promo_code']) . ($pct > 0 ? ' (−' . e(rtrim(rtrim(number_format($pct, 1, ',', ''), '0'), ',')) . '%)' : '')
+              : 'Знижка' ?>:</span>
+            <span>−<?= e(price_fmt($parent['discount'])) ?></span>
+          </div>
+        <?php elseif ($parent['promo_code']): ?>
+          <div class="row"><span class="muted">Промокод <?= e($parent['promo_code']) ?>:</span>
+            <span class="dim">не дав знижки</span></div>
         <?php endif; ?>
         <div class="row grand"><span>Разом за замовленням:</span><span><?= e(price_fmt($parent['total'])) ?></span></div>
       </div>
