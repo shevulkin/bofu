@@ -81,7 +81,7 @@ class Profile
             $saved = Addresses::save(Auth::id(), [
                 'delivery' => $_POST['delivery'] ?? 'np',
                 'label' => $_POST['label'] ?? '',
-                'city' => $_POST['city'] ?? '',
+                'city' => $_POST['np_city'] ?? '',   // див. коментар у формі: назва не «city» через Chrome
                 'city_ref' => $_POST['city_ref'] ?? '',
                 'np_office' => $_POST['np_office'] ?? '',
                 'address' => $_POST['address'] ?? '',

@@ -70,8 +70,12 @@
 
       <div id="npFields"<?= $selDelivery === 'np' ? '' : ' style="display:none"' ?>>
         <div class="form-grid">
-          <div class="field"><label>Місто</label><input type="text" name="city" id="npCity" value="<?= e($selCity) ?>" placeholder="Почніть вводити місто…" autocomplete="off"></div>
-          <div class="field"><label>Відділення / поштомат</label><input type="text" name="np_office" id="npOffice" value="<?= e($selOffice) ?>" placeholder="Номер, вулиця або «поштомат»" autocomplete="off"></div>
+          <?php /* autocomplete="new-password" — єдине, що глушить автопідстановку адрес
+                    у Chrome: "off" він для адресних полів свідомо ігнорує і накриває наш
+                    список своїм. Ім'я поля теж не "city" — інакше евристика впізнає його
+                    за назвою. data-* — те саме для менеджерів паролів. */ ?>
+          <div class="field"><label>Місто</label><input type="text" name="np_city" id="npCity" value="<?= e($selCity) ?>" placeholder="Почніть вводити місто…" autocomplete="new-password" data-lpignore="true" data-1p-ignore data-form-type="other" spellcheck="false"></div>
+          <div class="field"><label>Відділення / поштомат</label><input type="text" name="np_office" id="npOffice" value="<?= e($selOffice) ?>" placeholder="Номер, вулиця або «поштомат»" autocomplete="new-password" data-lpignore="true" data-1p-ignore data-form-type="other" spellcheck="false"></div>
         </div>
         <input type="hidden" name="city_ref" id="npCityRef" value="<?= e($selRef) ?>">
       </div>

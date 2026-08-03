@@ -104,7 +104,8 @@ class Checkout
             'number' => $number, 'token' => $token, 'user_id' => Auth::id(),
             'name' => $name, 'phone' => $phone, 'email' => $email,
             'delivery' => $delivery,
-            'city' => trim($_POST['city'] ?? '') ?: null,
+            // np_city, а не city: назва «city» вмикала автопідстановку адрес Chrome
+            'city' => trim($_POST['np_city'] ?? '') ?: null,
             'np_office' => trim($_POST['np_office'] ?? '') ?: null,
             'address' => trim($_POST['address'] ?? '') ?: null,
             'comment' => trim($_POST['comment'] ?? '') ?: null,
@@ -124,7 +125,7 @@ class Checkout
                 // дублюється (dedupe в Addresses::save) і піднімається в списку.
                 Addresses::save(Auth::id(), [
                     'delivery' => $delivery,
-                    'city' => $_POST['city'] ?? '',
+                    'city' => $_POST['np_city'] ?? '',
                     'city_ref' => $_POST['city_ref'] ?? '',
                     'np_office' => $_POST['np_office'] ?? '',
                     'address' => $_POST['address'] ?? '',
