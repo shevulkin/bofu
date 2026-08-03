@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 namespace Controllers\Admin;
 
-use View, Auth, Settings, WebPush, BotAuth, IntegrationCheck, RateLimit;
+use View, Auth, Settings, WebPush, BotAuth, IntegrationCheck, RateLimit, Catalog, OrderFlow;
 
 class SettingsAdmin
 {
@@ -58,6 +58,12 @@ class SettingsAdmin
             }
             // окремо від TOGGLES: там усе типово увімкнене, а індексація має бути дозволена за замовчуванням
             Settings::set('seo_noindex', isset($_POST['seo_noindex']) ? '1' : '0');
+            // Магазин, якому дістаються позиції, яких немає ніде. Приймаємо лише
+            // чинну активну точку: неіснуючий id мовчки відкотив би нас до
+            // «першої активної», і власник вважав би, що вибір діє.
+            $store = (int)($_POST['default_store_id'] ?? 0);
+            $valid = $store && in_array($store, OrderFlow::activeStoreIds(), true);
+            Settings::set('default_store_id', $valid ? (string)$store : '');
             $oldViber = Settings::get('viber_bot_token', '');
             foreach (self::TEXT_KEYS as $key => $label) {
                 if (isset($_POST['text'][$key])) Settings::set($key, trim($_POST['text'][$key]));
@@ -89,6 +95,9 @@ class SettingsAdmin
         [$vapidPub] = WebPush::ensureKeys();
         View::show('admin/settings', [
             'toggles' => self::TOGGLES, 'text_keys' => self::TEXT_KEYS,
+            'stores' => Catalog::stores(),
+            'default_store_id' => OrderFlow::defaultStoreId(),
+            'default_store_set' => Settings::get('default_store_id', '') !== '',
             'bot_texts' => BotAuth::TEXTS, 'bot_site' => BotAuth::siteUrl(),
             'vapid_public' => $vapidPub,
             'page_title' => 'Налаштування — адмінка',

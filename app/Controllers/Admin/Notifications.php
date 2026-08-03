@@ -12,9 +12,19 @@ class Notifications
         Auth::requireCap('notifications.manage');
         if (is_post()) {
             foreach ((array)($_POST['rule'] ?? []) as $id => $r) {
+                $rule = DB::row('SELECT event, recipients FROM notification_rules WHERE id = ?', [(int)$id]);
+                if (!$rule) continue;
+                // Подія, адресована покупцю, одержувача не міняє: «всі покупці» —
+                // це вже не сповіщення, а розсилка по базі. Раніше форма не знала
+                // такого значення й мовчки переписувала його на «адмінів»,
+                // після чого людина переставала отримувати те, що для неї.
+                $to = Notify::isCustomerEvent((string)$rule['event'])
+                    ? 'customer'
+                    : (in_array($r['recipients'] ?? '', ['admins', 'sellers', 'admins_sellers'], true)
+                        ? $r['recipients'] : 'admins');
                 DB::update('notification_rules', [
                     'enabled' => !empty($r['enabled']) ? 1 : 0,
-                    'recipients' => in_array($r['recipients'] ?? '', ['admins', 'sellers', 'admins_sellers'], true) ? $r['recipients'] : 'admins',
+                    'recipients' => $to,
                     'template' => $r['template'] ?? '',
                 ], 'id = ?', [(int)$id]);
             }
@@ -30,6 +40,7 @@ class Notifications
             'vars_hint' => [
                 'order_new' => '{number} {name} {phone} {delivery} {address} {items} {shortage} {total} {store}',
                 'order_status' => '{number} {status}',
+                'order_customer' => '{number} {status} {part} {items} {total}',
                 'user_new' => '{name} {email}',
                 'stock_low' => '{product} {qty} {store}',
                 'stock_wanted' => '{product} {waiting} {store}',

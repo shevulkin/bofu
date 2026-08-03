@@ -100,6 +100,10 @@ class OrderFlow
      */
     public static function shortage(int $orderId): array
     {
+        // Скасована частина нічого зі складу не тримає — залишки з неї вже
+        // повернулись. «Не вистачає» тут означало б лише те, що її скасували,
+        // і гнало б продавця робити те, чого робити не треба.
+        if (DB::val('SELECT status FROM orders WHERE id = ?', [$orderId]) === 'canceled') return [];
         $out = [];
         foreach (self::items($orderId) as $i) {
             if ($i['stock_taken'] === null) continue;
@@ -307,6 +311,12 @@ class OrderFlow
             return $parentId;
         });
 
+        $parent = self::order($parentId);
+        // Перше, чого чекає покупець після кнопки «Замовити», — підтвердження
+        // не лише на екрані. Статус тут «Прийнято», а не «Нове»: «нове» — це
+        // погляд магазину на свою чергу, людині воно нічого не каже.
+        if ($parent) self::tellCustomer($parent, 'Прийнято');
+
         return ['id' => $parentId, 'children' => self::children($parentId)];
     }
 
@@ -422,6 +432,9 @@ class OrderFlow
         Notify::fire('order_status', [
             'number' => $parent['number'], 'status' => self::statusLabel($new),
         ], $parent['store_id'] ? (int)$parent['store_id'] : null);
+        // Покупцю це головна новина дня — і саме тут, а не в кожній частині:
+        // рух усього замовлення важливіший за рух однієї з його половин.
+        self::tellCustomer($parent, self::statusLabel($new));
         return $new;
     }
 
@@ -436,33 +449,171 @@ class OrderFlow
         if (!$order) return false;
 
         if ($order['parent_id']) {
-            if ($order['status'] === $status) return false;
-            DB::update('orders', ['status' => $status], 'id = ?', [$orderId]);
-            $store = $order['store_id'] ? DB::val('SELECT name FROM stores WHERE id = ?', [$order['store_id']]) : null;
-            self::log((int)$order['parent_id'], $orderId, 'status',
-                ($store ? $store . ': ' : '') . 'статус підзамовлення ' . $order['number'] . ' → ' . self::statusLabel($status), $userId);
-            Notify::fire('order_status', [
-                'number' => $order['number'], 'status' => self::statusLabel($status),
-            ], $order['store_id'] ? (int)$order['store_id'] : null);
-            self::syncParent((int)$order['parent_id'], $userId);
+            if (!self::applyChildStatus($order, $status, $userId)) return false;
+            // Головне змінилось — покупцю пішла новина про все замовлення, і
+            // дублювати її розповіддю про одну частину не треба.
+            if (self::syncParent((int)$order['parent_id'], $userId) === null) {
+                self::tellCustomer(self::head($order), self::statusLabel($status), $order);
+            }
             return true;
         }
 
         // головне: розкладаємо на всі частини, що ще в роботі
         $changed = 0;
         foreach (self::children($orderId) as $c) {
-            if ($c['status'] === $status) continue;
             if ($c['status'] === 'canceled' && $status !== 'canceled') continue; // скасоване не воскрешаємо
-            DB::update('orders', ['status' => $status], 'id = ?', [$c['id']]);
-            Notify::fire('order_status', [
-                'number' => $c['number'], 'status' => self::statusLabel($status),
-            ], $c['store_id'] ? (int)$c['store_id'] : null);
-            $changed++;
+            if (self::applyChildStatus($c, $status, $userId)) $changed++;
         }
         if ($changed) self::log($orderId, null, 'status',
             'Статус проставлено всім підзамовленням: ' . self::statusLabel($status), $userId);
         self::syncParent($orderId, $userId);
         return $changed > 0;
+    }
+
+    /**
+     * Статус однієї частини: склад, історія, сповіщення магазину.
+     * Повертає false, якщо статус той самий (тоді нічого й не сталось).
+     */
+    private static function applyChildStatus(array $child, string $status, ?int $userId): bool
+    {
+        if ($child['status'] === $status) return false;
+        $was = (string)$child['status'];
+        $cid = (int)$child['id'];
+
+        $note = ''; $freed = [];
+        self::tx(function () use ($child, $cid, $status, $was, &$note, &$freed) {
+            if ($status === 'canceled') {
+                $freed = self::releaseStock($child);
+                if ($freed) $note = '. Залишки повернено на склад: '
+                    . implode(', ', array_column($freed, 'line'));
+            } elseif ($was === 'canceled') {
+                $lack = self::reserveStock($child);
+                $note = $lack
+                    ? '. Залишки списано знову, але вже не все: ' . self::shortageLine($lack)
+                    : '. Залишки списано зі складу знову';
+            }
+            DB::update('orders', ['status' => $status], 'id = ?', [$cid]);
+        });
+
+        $store = $child['store_id'] ? DB::val('SELECT name FROM stores WHERE id = ?', [$child['store_id']]) : null;
+        self::log((int)$child['parent_id'], $cid, 'status',
+            ($store ? $store . ': ' : '') . 'статус підзамовлення ' . $child['number']
+            . ' → ' . self::statusLabel($status) . $note, $userId);
+        Notify::fire('order_status', [
+            'number' => $child['number'], 'status' => self::statusLabel($status),
+        ], $child['store_id'] ? (int)$child['store_id'] : null);
+
+        // Товар знову на полиці — а на нього могли чекати. Після коміту:
+        // fulfil() шле листи й закриває запити, і робити це всередині
+        // транзакції, яку ще може відкотити, не можна.
+        foreach ($freed as $f) StockWatch::fulfil($f['pid'], $f['vid']);
+        return true;
+    }
+
+    /**
+     * Скасування повертає товар на склад.
+     *
+     * Повертаємо рівно те, що з магазину колись зняли (stock_taken), а не всю
+     * кількість позиції: замовлення, оформлене понад залишок, інакше подарувало б
+     * точці неіснуючий товар. NULL — замовлення старіше за цей облік, там
+     * вважаємо, що взяли все. Після повернення stock_taken = 0 — саме воно й
+     * означає «скільки штук ця частина зараз тримає зі складу».
+     *
+     * @return array<array{pid:int,vid:?int,line:string}> що саме повернулось
+     */
+    private static function releaseStock(array $child): array
+    {
+        $storeId = $child['store_id'] ? (int)$child['store_id'] : null;
+        $out = [];
+        foreach (self::items((int)$child['id']) as $i) {
+            $pid = $i['product_id'] ? (int)$i['product_id'] : null;
+            $vid = $i['variant_id'] ? (int)$i['variant_id'] : null;
+            if (!$pid || ($vid === null && Catalog::hasVariants($pid))) continue;
+            $taken = $i['stock_taken'] === null ? (int)$i['qty'] : (int)$i['stock_taken'];
+            $given = $taken > 0 ? self::moveStock($pid, $vid, $storeId, $taken) : 0;
+            DB::update('order_items', ['stock_taken' => 0], 'id = ?', [(int)$i['id']]);
+            if ($given > 0) {
+                $title = trim((string)$i['title']);
+                if (($i['variant_name'] ?? '') !== '') $title .= ', ' . $i['variant_name'];
+                $out[] = ['pid' => $pid, 'vid' => $vid, 'line' => $title . ' × ' . $given];
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * Зняття скасування забирає товар зі складу знову — і цілком може виявити,
+     * що його вже немає: поки замовлення лежало скасованим, залишок міг піти
+     * комусь іншому. Мовчати про це не можна, тому повертаємо нестачу.
+     *
+     * @return array<array{title:string,qty:int,taken:int,lack:int}>
+     */
+    private static function reserveStock(array $child): array
+    {
+        $storeId = $child['store_id'] ? (int)$child['store_id'] : null;
+        foreach (self::items((int)$child['id']) as $i) {
+            $pid = $i['product_id'] ? (int)$i['product_id'] : null;
+            $vid = $i['variant_id'] ? (int)$i['variant_id'] : null;
+            if (!$pid || ($vid === null && Catalog::hasVariants($pid))) continue;
+            $taken = self::moveStock($pid, $vid, $storeId, -(int)$i['qty']);
+            DB::update('order_items', ['stock_taken' => $taken], 'id = ?', [(int)$i['id']]);
+        }
+        // статус у базі ще 'canceled', тож рахуємо нестачу самі, а не через shortage()
+        $out = [];
+        foreach (self::items((int)$child['id']) as $i) {
+            $lack = (int)$i['qty'] - (int)$i['stock_taken'];
+            if ($lack <= 0) continue;
+            $title = trim((string)$i['title']);
+            if (($i['variant_name'] ?? '') !== '') $title .= ', ' . $i['variant_name'];
+            $out[] = ['title' => $title, 'qty' => (int)$i['qty'],
+                      'taken' => (int)$i['stock_taken'], 'lack' => $lack];
+        }
+        return $out;
+    }
+
+    /**
+     * Транзакція, якщо ми ще не всередині чужої: статус міняють і окремо з
+     * адмінки, і зсередини передачі позиції, а вкладену транзакцію PDO не
+     * відкриє. Склад і статус мають змінитися разом або ніяк — інакше
+     * скасування, що обірвалось посередині, поверне товар двічі.
+     */
+    private static function tx(callable $fn)
+    {
+        return DB::pdo()->inTransaction() ? $fn() : DB::tx($fn);
+    }
+
+    /**
+     * Покупцю: що сталося з його замовленням. $child — коли рухається лише
+     * одна частина; тоді називаємо магазин і перелічуємо саме її товари, бо
+     * інакше «В дорозі» на весь номер збиває з пантелику: половина ще збирається.
+     */
+    private static function tellCustomer(array $parent, string $statusLabel, ?array $child = null): void
+    {
+        Notify::toCustomer(
+            $parent['user_id'] ? (int)$parent['user_id'] : null,
+            ((string)($parent['email'] ?? '')) !== '' ? (string)$parent['email'] : null,
+            'order_customer', self::customerVars($parent, $statusLabel, $child));
+    }
+
+    /**
+     * Що саме побачить покупець. Винесено окремо, бо тут важливий не факт
+     * відправки, а текст: номер завжди один — той, який людина знає, — а от
+     * сума й перелік товарів мають стосуватись того, про що йдеться.
+     */
+    public static function customerVars(array $parent, string $statusLabel, ?array $child = null): array
+    {
+        $store = '';
+        if ($child) {
+            $store = (string)($child['store_name']
+                ?? ($child['store_id'] ? (DB::val('SELECT name FROM stores WHERE id = ?', [$child['store_id']]) ?? '') : ''));
+        }
+        return [
+            'number' => $parent['number'],
+            'status' => $statusLabel,
+            'part'   => $child ? 'Частина від магазину «' . ($store ?: 'уточнюємо') . '»' : '',
+            'items'  => $child ? self::itemsSummary((int)$child['id']) : '',
+            'total'  => number_format((float)($child['total'] ?? $parent['total']), 2, '.', ' '),
+        ];
     }
 
     // ------------------------------------------------------------------ передача позиції
