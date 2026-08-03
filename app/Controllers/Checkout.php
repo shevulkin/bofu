@@ -160,6 +160,16 @@ class Checkout
             flash('error', $promoError . '. Перевірте суму й підтвердіть замовлення ще раз.');
             redirect('/checkout');
         }
+        // Товар міг розібратись, поки людина заповнювала форму. Кажемо це до
+        // оформлення й повертаємо в кошик — виправляти треба саме кількість.
+        // Мовчки її не зменшуємо: чужий кошик правити не наша справа.
+        $short = OrderFlow::unavailable(Cart::detailed($storeId));
+        if ($short) {
+            flash('error', 'На жаль, товару вже не вистачає. ' . OrderFlow::unavailableLine($short)
+                . '. Змініть кількість у кошику або приберіть позицію.');
+            redirect('/cart');
+        }
+
         $totals = Cart::total($storeId, $promo);
         $number = 'BOFU-' . date('ymd') . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 4));
         // Адреса сторінки підтвердження: номер короткий і передбачуваний, тому
@@ -168,6 +178,11 @@ class Checkout
 
         // Замовлення завжди розкладається на підзамовлення по магазинах-виконавцях:
         // покупець бачить одне замовлення, кожен продавець — свою частину (див. OrderFlow).
+        // Перевірка вище могла й не спіймати: між нею та транзакцією лишається
+        // мить, у яку останню банку забирає хтось інший. Усередині place()
+        // перевірка йде вже під блокуванням і кидає виняток — ловимо його тут,
+        // щоб покупець побачив пояснення, а не сторінку помилки.
+        try {
         $placed = OrderFlow::place([
             'number' => $number, 'token' => $token, 'user_id' => Auth::id(),
             'name' => $name, 'phone' => $phone, 'email' => $email,
@@ -182,6 +197,10 @@ class Checkout
             'subtotal' => $totals['subtotal'], 'discount' => $totals['discount'], 'total' => $totals['total'],
             'created_at' => now(),
         ], Cart::detailed($storeId), $storeId);
+        } catch (\RuntimeException $e) {
+            flash('error', $e->getMessage() . '. Змініть кількість у кошику або приберіть позицію.');
+            redirect('/cart');
+        }
 
         // Використання записуємо лише разом із замовленням — ліміти рахуються
         // по фактах покупок, а не по спробах ввести код у формі

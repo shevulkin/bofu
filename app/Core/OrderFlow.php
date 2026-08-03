@@ -134,6 +134,70 @@ class OrderFlow
         return implode("\n", $lines);
     }
 
+    /**
+     * Скільки цієї позиції реально можна продати просто зараз: сума по активних
+     * магазинах. Неактивні точки не рахуємо — з них не відвантажують.
+     *
+     * $lock — узяти рядки під блокування до кінця транзакції. Без цього двоє
+     * покупців одночасно бачать останню банку й обоє її купують: перевірка
+     * пройшла б у кожного, бо між нею й списанням є розрив. FOR UPDATE його
+     * прибирає. На SQLite такого синтаксису немає, і він там не потрібен:
+     * ця база тримає лише тести, які йдуть в один потік.
+     */
+    private static function sellable(int $productId, ?int $variantId, bool $lock = false): int
+    {
+        $active = self::activeStoreIds();
+        if (!$active) return 0;
+        $cond = $variantId === null ? 'variant_id IS NULL' : 'variant_id = ?';
+        $args = [$productId];
+        if ($variantId !== null) $args[] = $variantId;
+        $in = implode(',', array_fill(0, count($active), '?'));
+        $sql = "SELECT COALESCE(SUM(qty), 0) FROM store_stock
+                 WHERE product_id = ? AND $cond AND store_id IN ($in)";
+        if ($lock && DB::driver() === 'mysql') $sql .= ' FOR UPDATE';
+        return (int)DB::val($sql, array_merge($args, $active));
+    }
+
+    /**
+     * Позиції кошика, яких не вистачить і які ніде взяти.
+     *
+     * Правило навмисно вузьке. Не вистачає в одному магазині — це не привід
+     * відмовляти: товар є в мережі, продавець передасть позицію, і для цього
+     * все вже зроблено. Відмовляємо лише тоді, коли не вистачає на всю мережу
+     * і товар не можна виготовити («Виготовляємо під замовлення» знято).
+     *
+     * Прапорець стоїть за замовчуванням, тож для більшості каталогу нічого не
+     * змінюється, доки власник свідомо не зніме галку на конкретному товарі.
+     *
+     * @return array<array{title:string,want:int,have:int}>
+     */
+    public static function unavailable(array $rows, bool $lock = false): array
+    {
+        $out = [];
+        foreach ($rows as $r) {
+            if (!empty($r['product']['made_to_order'])) continue;
+            $pid = (int)$r['product']['id'];
+            $vid = isset($r['variant']['id']) ? (int)$r['variant']['id'] : null;
+            // товар із варіантами, але без обраного — рахувати нема по чому
+            if ($vid === null && Catalog::hasVariants($pid)) continue;
+            $want = (int)$r['qty'];
+            $have = self::sellable($pid, $vid, $lock);
+            if ($have >= $want) continue;
+            $title = (string)$r['product']['name'];
+            if (isset($r['variant']['name'])) $title .= ', ' . $r['variant']['name'];
+            $out[] = ['title' => $title, 'want' => $want, 'have' => $have];
+        }
+        return $out;
+    }
+
+    /** «Мед липовий, 0.5 л — у наявності 2 шт., у кошику 5» */
+    public static function unavailableLine(array $short): string
+    {
+        return implode('; ', array_map(
+            fn($s) => $s['title'] . ' — у наявності ' . $s['have'] . ' шт., у кошику ' . $s['want'],
+            $short));
+    }
+
     /** Позиції всього замовлення (з усіх підзамовлень) — для списків і листів */
     public static function allItems(int $parentId): array
     {
@@ -182,6 +246,14 @@ class OrderFlow
     public static function place(array $head, array $rows, ?int $pickupStore): array
     {
         $parentId = DB::tx(function () use ($head, $rows, $pickupStore) {
+            // Остання перевірка, і єдина, що чогось варта: та, що в Checkout,
+            // могла застаріти, поки людина заповнювала форму. Тут рядки складу
+            // вже під блокуванням, тож між перевіркою й списанням ніхто не
+            // встигне забрати той самий товар.
+            $short = self::unavailable($rows, true);
+            if ($short) throw new RuntimeException(
+                'Товару вже не вистачає: ' . self::unavailableLine($short));
+
             $parentId = DB::insert('orders', $head + ['parent_id' => null, 'seq' => 0]);
 
             // 1) кожна позиція дістає магазин-виконавця
