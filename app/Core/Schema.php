@@ -7,7 +7,7 @@ declare(strict_types=1);
  */
 class Schema
 {
-    public const VERSION = 23;
+    public const VERSION = 24;
 
     /** Оновлення існуючої бази до поточної версії без втрати даних */
     public static function upgrade(): void
@@ -184,6 +184,29 @@ class Schema
                         'recipients' => $to, 'template' => Notify::DEFAULT_TEMPLATES[$event] ?? '',
                     ]);
                 }
+            }
+        }
+        if ($ver < 24) {
+            // Покупець нарешті дізнається, що з його замовленням: досі всі
+            // сповіщення йшли лише персоналу.
+            foreach (array_keys(Notify::CHANNELS) as $channel) {
+                if (DB::row('SELECT id FROM notification_rules WHERE event = ? AND channel = ?',
+                    ['order_customer', $channel])) continue;
+                DB::insert('notification_rules', [
+                    'event' => 'order_customer', 'channel' => $channel,
+                    'enabled' => $channel === 'viber' ? 0 : 1,
+                    'recipients' => 'customer',
+                    'template' => Notify::DEFAULT_TEMPLATES['order_customer'],
+                ]);
+            }
+            // Форма в адмінці приймала лише групи персоналу, тож будь-яке
+            // збереження правил мовчки перекидало адресні події на адмінів —
+            // і покупець переставав отримувати те, що адресовано тільки йому.
+            // Тепер форма їх не чіпає (Notify::isCustomerEvent), а тут
+            // виправляємо вже зіпсоване.
+            foreach (Notify::EVENTS as $event => $label) {
+                if (!Notify::isCustomerEvent($event)) continue;
+                DB::query('UPDATE notification_rules SET recipients = ? WHERE event = ?', ['customer', $event]);
             }
         }
         Settings::set('schema_version', (string)self::VERSION);

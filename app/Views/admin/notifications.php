@@ -27,7 +27,9 @@
 
 «Продавці магазину» — тільки ті, хто веде саме ту точку, якої стосується подія. Для замовлень це найточніший варіант: продавець не отримує чужих сповіщень.
 
-«Адміни + продавці» — і ті, і ті. Беріть для важливого, де потрібен подвійний контроль.">Кому</th>
+«Адміни + продавці» — і ті, і ті. Беріть для важливого, де потрібен подвійний контроль.
+
+«Покупцю» вибрати не можна: так позначені події, адресовані одній конкретній людині — тій, чиє це замовлення чи очікування товару. Розсилати таке персоналу немає сенсу, а всім покупцям — тим паче.">Кому</th>
           <th data-help-title="Колонка «Текст повідомлення»"
               data-help="Що саме прийде людині. Слова у фігурних дужках підставляються автоматично: {number} стане номером замовлення, {total} — сумою.
 
@@ -41,11 +43,18 @@
               <label class="toggle"><input type="checkbox" name="rule[<?= (int)$r['id'] ?>][enabled]" <?= $r['enabled'] ? 'checked' : '' ?>><span class="tr"></span></label>
             </td>
             <td>
-              <select name="rule[<?= (int)$r['id'] ?>][recipients]">
-                <option value="admins" <?= $r['recipients'] === 'admins' ? 'selected' : '' ?>>Лише адміни</option>
-                <option value="sellers" <?= $r['recipients'] === 'sellers' ? 'selected' : '' ?>>Продавці магазину</option>
-                <option value="admins_sellers" <?= $r['recipients'] === 'admins_sellers' ? 'selected' : '' ?>>Адміни + продавці</option>
-              </select>
+              <?php if (Notify::isCustomerEvent($event)): ?>
+                <?php /* Одержувач тут не вибір, а суть події: вона адресована одній
+                         конкретній людині — тій, чиє це замовлення чи очікування. */ ?>
+                <b>Покупцю</b>
+                <div class="dim">Тому, кого подія стосується</div>
+              <?php else: ?>
+                <select name="rule[<?= (int)$r['id'] ?>][recipients]">
+                  <option value="admins" <?= $r['recipients'] === 'admins' ? 'selected' : '' ?>>Лише адміни</option>
+                  <option value="sellers" <?= $r['recipients'] === 'sellers' ? 'selected' : '' ?>>Продавці магазину</option>
+                  <option value="admins_sellers" <?= $r['recipients'] === 'admins_sellers' ? 'selected' : '' ?>>Адміни + продавці</option>
+                </select>
+              <?php endif; ?>
             </td>
             <td><textarea name="rule[<?= (int)$r['id'] ?>][template]" rows="2" style="min-width:260px"><?= e($r['template']) ?></textarea></td>
           </tr>

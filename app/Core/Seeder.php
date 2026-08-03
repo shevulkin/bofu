@@ -183,11 +183,18 @@ class Seeder
         DB::insert('settings', ['key' => 'viber_bot_token', 'value' => '']);
 
         // --- правила нотифікацій ---
+        // Кому й чи вмикати — з Notify::DEFAULT_RULES, тими самими значеннями,
+        // що їх проставляють міграції. Інакше подія працює або лише на нових
+        // базах, або лише на оновлених, і різницю помічають нескоро.
         foreach (Notify::EVENTS as $event => $label) {
-            foreach (['telegram', 'viber', 'email', 'push'] as $channel) {
+            [$to, $on] = Notify::DEFAULT_RULES[$event] ?? ['admins_sellers', false];
+            foreach (array_keys(Notify::CHANNELS) as $channel) {
                 DB::insert('notification_rules', [
-                    'event' => $event, 'channel' => $channel, 'enabled' => $event === 'order_new' ? 1 : 0,
-                    'recipients' => 'admins_sellers', 'template' => Notify::DEFAULT_TEMPLATES[$event] ?? '',
+                    'event' => $event, 'channel' => $channel,
+                    // viber вимкнений навіть у ввімкнених подіях: канал є не в
+                    // кожного магазину, а зайвий шум дратує
+                    'enabled' => ($on && $channel !== 'viber') ? 1 : 0,
+                    'recipients' => $to, 'template' => Notify::DEFAULT_TEMPLATES[$event] ?? '',
                 ]);
             }
         }

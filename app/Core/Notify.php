@@ -11,11 +11,37 @@ class Notify
     public const EVENTS = [
         'order_new'      => 'Нове замовлення',
         'order_status'   => 'Зміна статусу замовлення',
+        'order_customer' => 'Покупцю: рух його замовлення',
         'user_new'       => 'Новий користувач',
         'stock_low'      => 'Закінчується товар',
         'stock_wanted'   => 'Просять повідомити про наявність',
         'stock_back'     => 'Товар знову в наявності',
     ];
+
+    /**
+     * Типове правило події: [кому, чи вмикати одразу]. Одне джерело і для
+     * першої установки (Seeder), і для міграцій — інакше нова подія працює
+     * лише на оновлених базах або лише на нових, і різницю помічають нескоро.
+     *
+     * 'customer' — не група, а адресат: подія стосується однієї конкретної
+     * людини й іде через Notify::toCustomer()/toUser(). Такі події адмін не
+     * може перевести на себе — див. isCustomerEvent().
+     */
+    public const DEFAULT_RULES = [
+        'order_new'      => ['admins_sellers', true],
+        'order_status'   => ['admins_sellers', false],
+        'order_customer' => ['customer', true],
+        'user_new'       => ['admins_sellers', false],
+        'stock_low'      => ['admins_sellers', false],
+        'stock_wanted'   => ['sellers', true],
+        'stock_back'     => ['customer', true],
+    ];
+
+    /** Подія адресована покупцю, а не персоналу: одержувача міняти нема сенсу */
+    public static function isCustomerEvent(string $event): bool
+    {
+        return (self::DEFAULT_RULES[$event][0] ?? '') === 'customer';
+    }
 
     public const DEFAULT_TEMPLATES = [
         // Порядок рядків — це порядок питань, які ставить собі продавець: чи моє
@@ -31,6 +57,10 @@ class Notify
         'order_new'    => "🛒 Нове замовлення {number}\nМагазин: {store}\n{items}\n{shortage}\nСума: {total} грн\n"
                         . "Доставка: {delivery}\n{address}\n{phone}\nКлієнт: {name}",
         'order_status' => "📦 Замовлення {number}: статус змінено на «{status}»",
+        // Покупцю. Він не знає слова «підзамовлення» й не має його вчити: коли
+        // рухається лише частина, {part} називає магазин і перелічує саме її
+        // товари, а коли ціле замовлення — обидва рядки порожні й зникають.
+        'order_customer' => "📦 Замовлення {number} — {status}\n{part}\n{items}\nСума: {total} грн",
         'user_new'     => "👤 Новий користувач: {name} ({email})",
         'stock_low'    => "⚠️ Товар «{product}» закінчується: залишилось {qty} шт. ({store})",
         // Це не побажання клієнта, а сигнал попиту: {waiting} відповідає на
@@ -85,6 +115,28 @@ class Notify
             $tpl = $rule['template'] ?: (self::DEFAULT_TEMPLATES[$event] ?? '');
             try { self::send($channel, $user, self::interpolate($tpl, $vars), $vars); }
             catch (Throwable $e) { self::log("send fail $channel u$userId: " . $e->getMessage()); }
+        }
+    }
+
+    /**
+     * Покупцю про його замовлення.
+     *
+     * Зареєстрованому — усіма каналами, які він лишив собі в кабінеті. Гостю —
+     * лише на пошту, вказану в замовленні: акаунта, а отже й вибору каналів,
+     * у нього немає, і нічого, крім цієї адреси, ми про нього не знаємо.
+     * Пошти теж немає — замовлення лишається тільки на телефоні, і це
+     * нормальний шлях: подзвонять.
+     */
+    public static function toCustomer(?int $userId, ?string $email, string $event, array $vars): void
+    {
+        if ($userId) { self::toUser($userId, $event, $vars); return; }
+        if (!$email || !Settings::bool('notify_all_enabled', true)) return;
+        if (!self::channelEnabled('email')) return;
+        foreach (DB::all('SELECT * FROM notification_rules WHERE event = ? AND channel = ? AND enabled = 1',
+                 [$event, 'email']) as $rule) {
+            $tpl = $rule['template'] ?: (self::DEFAULT_TEMPLATES[$event] ?? '');
+            try { self::email(['email' => $email], self::interpolate($tpl, $vars), $vars); }
+            catch (Throwable $e) { self::log("send fail email guest ($event): " . $e->getMessage()); }
         }
     }
 
