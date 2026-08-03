@@ -32,6 +32,51 @@ class Catalog
         return $best;
     }
 
+    /**
+     * Чим банер обманює покупця — або null, якщо обіцянка збігається з цінами.
+     *
+     * Відсоток у банері нічого не рахує: у layouts/main.php він просто
+     * дописується в текст смужки. Тому «−15%» угорі сайту й реальні ціни легко
+     * розходяться — акцію забули створити, звузили до однієї категорії або вона
+     * просто скінчилась, а смужка й далі обіцяє знижку.
+     *
+     * Дивимось рівно те, що бачить звичайний відвідувач каталогу: акції,
+     * прив'язані до магазину, у загальний каталог не потрапляють (promoPercent),
+     * тож обіцянку банера вони не виконують.
+     *
+     * $promos дозволяє передати готовий список замість запиту в базу — інакше
+     * кеш activePromotions() не дав би перевірити більше одного розкладу за запуск.
+     */
+    public static function bannerWarning(?array $promos = null): ?string
+    {
+        if (!Settings::bool('sale_banner_active')) return null;
+
+        $pct = (float)Settings::get('sale_banner_percent', '0');
+        // Порожнє поле Settings::get віддає як '0', і банер малює «−0%» —
+        // це та сама обіцянка ні про що, лише помітити її ще важче
+        if ($pct <= 0) return 'Банер увімкнено, але відсоток не заданий — покупець бачить «−0%».';
+
+        $whole = 0.0;  // акція на весь каталог
+        $part  = 0.0;  // лише на категорію чи окремий товар
+        foreach ($promos ?? self::activePromotions() as $p) {
+            if ($p['store_id']) continue;
+            $v = (float)$p['percent'];
+            if ($p['category_id'] || $p['product_id']) $part = max($part, $v);
+            else $whole = max($whole, $v);
+        }
+        if ($whole >= $pct) return null;
+
+        $say = static fn(float $v): string => rtrim(rtrim(number_format($v, 2, ',', ''), '0'), ',');
+        if ($part >= $pct) {
+            return 'Банер обіцяє −' . $say($pct) . '% на всьому сайті, але така знижка діє лише на частину каталогу.';
+        }
+        $best = max($whole, $part);
+        if ($best <= 0) {
+            return 'Банер обіцяє −' . $say($pct) . '%, але жодної акції зараз немає — покупець бачить оголошення й повну ціну.';
+        }
+        return 'Банер обіцяє −' . $say($pct) . '%, а найбільша знижка зараз — ' . $say($best) . '%.';
+    }
+
     /** Базова ціна з урахуванням перевизначення по магазину та варіанта */
     public static function rawPrice(array $product, ?array $variant = null, ?int $storeId = null): ?float
     {

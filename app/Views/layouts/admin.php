@@ -92,6 +92,15 @@
         <a href="<?= e(url('/admin/settings')) ?>" style="color:inherit;text-decoration:underline">Налаштуваннях</a>.
       </div></div>
     <?php endif; ?>
+    <?php /* Банер обіцяє знижку, якої немає. Показуємо на кожній сторінці, а не лише
+             в «Акціях»: інакше про обман дізнається той, хто вже й так туди зайшов
+             його виправляти. Тільки тим, хто має право це змінити. */ ?>
+    <?php if (Auth::can('promos.manage') && ($banner_warn = Catalog::bannerWarning())): ?>
+      <div class="flash" style="padding:0;margin:0 0 16px"><div class="flash-error">
+        ⚠️ <?= e($banner_warn) ?>
+        <a href="<?= e(url('/admin/promos')) ?>" style="color:inherit;text-decoration:underline">Виправити</a>.
+      </div></div>
+    <?php endif; ?>
     <?php if ($msg = flash('success')): ?><div class="flash" style="padding:0;margin:0 0 16px"><div class="flash-success"><?= e($msg) ?></div></div><?php endif; ?>
     <?php if ($msg = flash('error')): ?><div class="flash" style="padding:0;margin:0 0 16px"><div class="flash-error"><?= e($msg) ?></div></div><?php endif; ?>
     <?php
