@@ -47,6 +47,7 @@
         ['Каталог', [
             ['/admin/products', 'Товари', true],
             ['/admin/products/bulk', 'Масове редагування', true],
+            ['/admin/stock-requests', 'Очікують товар', true],
             ['/admin/categories', 'Категорії', Auth::can('catalog.manage')],
             ['/admin/attributes', 'Характеристики', Auth::can('catalog.manage')],
         ]],
