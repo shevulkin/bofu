@@ -7,6 +7,11 @@
   $selOffice = $sel['np_office'] ?? '';
   $selAddress = $sel['address'] ?? '';
   $canSave = !empty($auth_user);
+  // «2 товари» читається як конкретна річ, «Ваше замовлення» — як абстракція
+  $units = array_sum(array_map(fn($r) => (int)$r['qty'], $rows));
+  $goods = $units . ' ' . ($units % 10 === 1 && $units % 100 !== 11 ? 'товар'
+        : (in_array($units % 10, [2, 3, 4], true) && !in_array($units % 100, [12, 13, 14], true) ? 'товари' : 'товарів'));
+  $saved = fn(array $t) => 'ви заощадили ' . price_fmt($t['discount']);
 ?>
 <section class="section" style="padding-top:44px">
   <div class="container co-wrap">
@@ -116,14 +121,16 @@
       </div><!-- /крок 2 -->
 
       <div class="co-step">
-        <h3 class="co-step-h"><span class="co-num">3</span>Побажання</h3>
+        <h3 class="co-step-h"><span class="co-num">3</span>Побажання <span class="dim" style="font-size:14px;font-family:var(--sans)">— необовʼязково</span></h3>
         <div class="field"><label>Коментар до замовлення</label>
           <textarea name="comment" rows="3" placeholder="Необовʼязково: зручний час дзвінка, побажання до пакування"></textarea></div>
       </div>
       </div><!-- /ліва колонка -->
 
       <aside class="co-sum">
-        <h3 class="co-sum-h">Ваше замовлення</h3>
+       <details id="coFold" open>
+        <summary class="co-sum-h">Ваше замовлення <span class="dim" style="font-size:14px">· <?= e($goods) ?></span>
+          <b class="co-fold-total" id="foldTotal"><?= e(price_fmt($totals['total'])) ?></b></summary>
         <div class="co-items">
           <?php foreach ($rows as $r): $cut = Promo::cut((float)($r['sum'] ?? 0), $promo); ?>
             <div class="co-item" data-key="<?= e($r['key']) ?>">
@@ -142,14 +149,17 @@
           <?php endforeach; ?>
         </div>
 
-        <div class="field" style="margin-bottom:16px">
+        <p style="margin:0 0 14px"<?= $promo ? ' hidden' : '' ?> id="promoToggleRow">
+          <button type="button" class="co-promo-link" id="promoToggle">Маю промокод</button>
+        </p>
+        <div class="field" id="promoBox" style="margin-bottom:16px<?= $promo ? '' : ';display:none' ?>">
           <label>Промокод</label>
           <div class="co-promo">
             <input type="text" name="promo_code" id="promoInput" value="<?= e($promo['code'] ?? '') ?>" autocomplete="off" spellcheck="false">
             <button class="btn btn-line" type="button" id="promoBtn"><?= $promo ? 'Прибрати' : 'Застосувати' ?></button>
           </div>
           <p class="field-hint<?= $promo ? ' is-ok' : '' ?>" id="promoHint">
-            <?= $promo ? e('✓ ' . Promo::label($promo) . ' — мінус ' . price_fmt($totals['discount'])) : '' ?>
+            <?= $promo ? e('✓ Код ' . $promo['code'] . ' діє — ' . $saved($totals)) : '' ?>
           </p>
         </div>
 
@@ -162,16 +172,20 @@
           <div class="row grand"><span>До сплати:</span><span id="sumTotal"><?= e(price_fmt($totals['total'])) ?></span></div>
         </div>
 
-        <p class="dim" style="margin:16px 0 18px;font-size:13px">Оплата при отриманні або за домовленістю —
-          продавець зв'яжеться з вами для підтвердження.</p>
+        <ul class="co-trust">
+          <li>Оплата при отриманні або за домовленістю</li>
+          <li>Продавець зателефонує, щоб підтвердити замовлення</li>
+          <li>Нічого не спишеться зараз — це не оплата</li>
+        </ul>
         <button class="btn btn-gold co-submit" type="submit" style="width:100%">Підтвердити замовлення</button>
         <p class="dim" style="margin:14px 0 0;font-size:12.5px">
           <a href="<?= e(url('/cart')) ?>">← Повернутись до кошика</a></p>
+       </details>
       </aside>
 
       <!-- телефон: сума й кнопка завжди під рукою, без гортання через усю форму -->
       <div class="co-bar">
-        <div class="co-bar-total"><span>До сплати</span><b id="barTotal"><?= e(price_fmt($totals['total'])) ?></b></div>
+        <div class="co-bar-total"><span><?= e($goods) ?> · до сплати</span><b id="barTotal"><?= e(price_fmt($totals['total'])) ?></b></div>
         <button class="btn btn-gold" type="submit">Підтвердити</button>
       </div>
     </form>
@@ -264,7 +278,9 @@
         promoBtn.disabled = false;
         promoBtn.textContent = d.ok ? 'Прибрати' : 'Застосувати';
         promoHint.className = 'field-hint' + (d.ok ? ' is-ok' : (d.empty ? '' : ' is-bad'));
-        promoHint.textContent = d.ok ? '✓ ' + d.label + ' — мінус ' + d.discount
+        // «заощадили», а не «мінус»: те саме число, але як здобуток, а не як
+        // бухгалтерська операція — і воно доречніше саме в мить рішення
+        promoHint.textContent = d.ok ? '✓ Код ' + d.code + ' діє — ви заощадили ' + d.discount
           : (d.empty ? '' : '✕ Такий промокод не діє — перевірте написання або строк дії');
         // ціни позицій: стара лишається закресленою, щоб знижку було видно
         document.querySelectorAll('.co-item').forEach(function(el){
@@ -279,8 +295,10 @@
         });
         document.getElementById('sumSubtotal').textContent = d.subtotal;
         document.getElementById('sumTotal').textContent = d.total;
-        var bar = document.getElementById('barTotal');
-        if (bar) bar.textContent = d.total;
+        ['barTotal', 'foldTotal'].forEach(function(id){
+          var el = document.getElementById(id);
+          if (el) el.textContent = d.total;
+        });
         document.getElementById('sumDiscountRow').style.display = d.ok ? '' : 'none';
         document.getElementById('sumDiscountLabel').textContent = (d.label || 'Знижка') + ':';
         document.getElementById('sumDiscount').textContent = '−' + d.discount;
@@ -290,6 +308,26 @@
         promoHint.textContent = 'Не вдалося перевірити код — спробуйте ще раз';
       });
   }
+  // На телефоні картка згорнута: у розгорнутому стані вона відсувала першу
+  // клітинку форми майже на екран. Атрибут open лишається в розмітці, тож без
+  // JS усе видно як було.
+  var fold = document.getElementById('coFold');
+  if (fold) {
+    var narrow = window.matchMedia('(max-width:1000px)');
+    // стежимо за шириною, а не питаємо один раз: поворот телефона й зміна
+    // розміру вікна мають повертати картку у відповідний стан
+    var syncFold = function(){ narrow.matches ? fold.removeAttribute('open') : fold.setAttribute('open', ''); };
+    syncFold();
+    window.addEventListener('load', syncFold);
+    narrow.addEventListener ? narrow.addEventListener('change', syncFold) : narrow.addListener(syncFold);
+  }
+
+  var promoToggle = document.getElementById('promoToggle');
+  if (promoToggle) promoToggle.addEventListener('click', function(){
+    document.getElementById('promoToggleRow').hidden = true;
+    document.getElementById('promoBox').style.display = '';
+    promoInput.focus();
+  });
   if (promoBtn) {
     promoBtn.addEventListener('click', function(){
       // «Прибрати» — це та сама перевірка з порожнім кодом
@@ -307,6 +345,34 @@
       promoHint.textContent = 'Натисніть «Застосувати», щоб перевірити код';
     });
   }
+
+  // Пройдений крок позначаємо галкою: людині видно, скільки лишилось, і
+  // незакритий крок помітний одразу, а не після відмови форми на кнопці.
+  var steps = document.querySelectorAll('.co-step');
+  function stepDone(i){
+    var d = document.querySelector('#deliveryChips input:checked');
+    var v = d ? d.value : 'np';
+    if (i === 0) {
+      if (v === 'np') return !!(document.getElementById('npCity').value.trim() && document.getElementById('npOffice').value.trim());
+      if (v === 'pickup') return !!(document.getElementById('pickupStore') || {}).value;
+      return !!document.getElementById('otherAddress').value.trim();
+    }
+    if (i === 1) {
+      return nameInput.value.trim().length >= 2 && phoneInput.value.replace(/\D/g, '').length >= 9;
+    }
+    return null;                       // третій крок необовʼязковий — його не «закривають»
+  }
+  function refreshSteps(){
+    steps.forEach(function(st, i){
+      var num = st.querySelector('.co-num'), done = stepDone(i);
+      if (done === null) return;
+      num.classList.toggle('is-done', done);
+      num.textContent = done ? '✓' : String(i + 1);
+    });
+  }
+  document.getElementById('checkoutForm').addEventListener('input', refreshSteps);
+  document.getElementById('checkoutForm').addEventListener('click', function(){ setTimeout(refreshSteps, 0) });
+  refreshSteps();
 
   // галка розсилки має сенс лише коли вказано email
   var em = document.getElementById('orderEmail'), nlRow = document.getElementById('newsletterRow');

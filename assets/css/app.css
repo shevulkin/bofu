@@ -1,7 +1,9 @@
 /* ============ Beekeeper of Ukraine — дизайн-система ============ */
 :root{
   --bg:#141110; --bg2:#1a1611; --bg3:#241d15;
-  --text:#f6ecd9; --muted:#cbb98f; --dim:#8a7a5c;
+  /* --dim був #8a7a5c: 4.3:1 на картках, тобто нижче порогу читабельності для
+     дрібного тексту (потрібно 4.5). Пояснення й підказки саме ним і набрані. */
+  --text:#f6ecd9; --muted:#cbb98f; --dim:#9a8a6b;
   --gold:#f0b429; --gold2:#f4d35e;
   --line:#3a2e1c; --line2:#4a3a22;
   --danger:#c83c32; --danger2:#e0685e; --ok:#7fb069;
@@ -203,6 +205,10 @@ input:disabled,select:disabled,textarea:disabled{opacity:.45;cursor:not-allowed}
 .co-note{font-size:13px;color:var(--dim);line-height:1.45;margin:-10px 0 16px}
 .co-sum{background:var(--bg2);border:1px solid var(--line);border-radius:4px;padding:24px;position:sticky;top:88px}
 .co-sum-h{font-family:var(--serif);font-size:21px;font-weight:600;margin:0 0 18px}
+/* На столі картка розгорнута завжди, тому заголовок не має поводитись як кнопка */
+#coFold > summary{list-style:none;cursor:default}
+#coFold > summary::-webkit-details-marker{display:none}
+.co-fold-total{display:none}
 .co-items{display:flex;flex-direction:column;gap:14px;max-height:290px;overflow-y:auto;margin-bottom:18px}
 .co-item{display:flex;gap:12px;align-items:center}
 .co-item img{width:52px;height:52px;flex:none;border-radius:3px;object-fit:cover;border:1px solid var(--line)}
@@ -214,11 +220,36 @@ input:disabled,select:disabled,textarea:disabled{opacity:.45;cursor:not-allowed}
 .co-promo{display:flex;gap:8px}
 .co-promo input{text-transform:uppercase}
 .co-promo .btn{flex:none;padding:11px 16px}
+/* Порожнє поле промокоду на видноті працює проти нас: воно натякає, що десь є
+   знижка, якої в людини немає, і вона йде шукати код замість купувати. Тому
+   поле сховане за посиланням і розгорнуте лише тоді, коли код уже діє. */
+.co-promo-link{background:none;border:0;padding:0;color:var(--gold);font-size:13.5px;cursor:pointer;
+  font-family:inherit;border-bottom:1px dashed var(--line2)}
+.co-promo-link:hover{color:var(--gold2)}
+/* Крок, який уже заповнено. Закритий «гештальт» помітно легше лишити позаду. */
+.co-num.is-done{background:var(--gold);border-color:var(--gold);color:var(--bg)}
+/* Обіцянки біля кнопки — найсильніший аргумент на сторінці, тож не найблідішим
+   текстом, як було. */
+.co-trust{list-style:none;margin:16px 0 18px;display:flex;flex-direction:column;gap:7px}
+.co-trust li{font-size:13px;color:var(--muted);padding-left:20px;position:relative;line-height:1.35}
+.co-trust li::before{content:'✓';position:absolute;left:0;color:var(--gold);font-weight:700}
 .co-bar{display:none}
 @media (max-width:1000px){
   .co-grid{grid-template-columns:1fr}
-  .co-sum{position:static}
+  /* Спершу — що саме купуємо, і лише потім робота із заповненням. Знизу картка
+     опинялась на 1400-му пікселі: людина заповнювала всю форму, так і не
+     побачивши свого замовлення. */
+  .co-sum{position:static;order:-1}
   .co-submit{display:none}
+  /* палець — не курсор: 44 px мінімум */
+  .chip{min-height:44px;display:inline-flex;align-items:center}
+  /* Згорнута картка: зверху видно головне — що купуємо і скільки коштує, —
+     а деталі за одним дотиком. Розгорнутою вона відсувала форму на 900 px. */
+  #coFold > summary{cursor:pointer;display:flex;align-items:center;gap:8px;margin:0}
+  #coFold[open] > summary{margin-bottom:18px}
+  #coFold > summary::after{content:'▾';color:var(--gold);font-size:14px;transition:transform .15s}
+  #coFold[open] > summary::after{transform:rotate(180deg)}
+  .co-fold-total{display:block;margin-left:auto;color:var(--gold);font-family:var(--sans);font-size:17px;order:9}
   .co-wrap{padding-bottom:92px}
   .co-bar{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:120;gap:16px;align-items:center;
     padding:12px 16px;background:rgba(26,22,17,.97);backdrop-filter:blur(10px);
