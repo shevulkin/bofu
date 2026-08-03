@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 namespace Controllers;
 
-use DB, View, Cart, Csrf, Auth, Catalog, OrderFlow, Settings, AuthTokens, Newsletter, RateLimit;
+use DB, View, Cart, Csrf, Auth, Catalog, OrderFlow, Settings, AuthTokens, Newsletter, RateLimit, Addresses;
 
 class Checkout
 {
@@ -27,11 +27,16 @@ class Checkout
         $u = Auth::user();
         $email = $u && !str_ends_with((string)$u['email'], '.local') ? (string)$u['email'] : '';
 
+        // Адреса підставляється, отримувач — ні: див. коментар у Addresses
+        $addresses = Addresses::forUser(Auth::id());
+
         View::show('cart/checkout', [
             'rows' => $rows,
             'totals' => Cart::total(null, self::promo()),
             'stores' => $stores, 'missing' => $missing,
             'promo' => self::promo(),
+            'addresses' => $addresses,
+            'sel' => $addresses[0] ?? null,   // основна (Addresses::forUser сортує її першою)
             'np_enabled' => Settings::get('np_api_key') !== null && Settings::get('np_api_key') !== '',
             'pre' => ['name' => $u['name'] ?? '', 'phone' => $u['phone'] ?? '', 'email' => $email],
             'subscribed' => Newsletter::isSubscribed($email ?: null),
@@ -108,6 +113,26 @@ class Checkout
             'subtotal' => $totals['subtotal'], 'discount' => $totals['discount'], 'total' => $totals['total'],
             'created_at' => now(),
         ], Cart::detailed($storeId), $storeId);
+
+        // Адресу зберігаємо лише за явною галкою і лише залогіненим: гостю
+        // її нікуди прив'язати. Самовивіз не зберігаємо — це адреса магазину.
+        if (Auth::id() && $delivery !== 'pickup') {
+            $addrId = (int)($_POST['address_id'] ?? 0);
+            if (!empty($_POST['save_address'])) {
+                // id не передаємо навмисно: правка збереженої адреси — дія кабінету.
+                // Тут зміна відділення дає нову адресу, а незмінена просто не
+                // дублюється (dedupe в Addresses::save) і піднімається в списку.
+                Addresses::save(Auth::id(), [
+                    'delivery' => $delivery,
+                    'city' => $_POST['city'] ?? '',
+                    'city_ref' => $_POST['city_ref'] ?? '',
+                    'np_office' => $_POST['np_office'] ?? '',
+                    'address' => $_POST['address'] ?? '',
+                ]);
+            } elseif ($addrId) {
+                Addresses::touch(Auth::id(), $addrId);
+            }
+        }
 
         // Розсилка — лише за явною галкою і лише коли вказано email
         if ($email) {

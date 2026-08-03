@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 namespace Controllers;
 
-use DB, View, Auth, Csrf, AuthTokens, Telegram, Viber, Newsletter, Notify;
+use DB, View, Auth, Csrf, AuthTokens, Telegram, Viber, Newsletter, Notify, Addresses, Settings;
 
 class Profile
 {
@@ -19,6 +19,9 @@ class Profile
                 Notify::savePrefs($u, (array)($_POST['n'] ?? []));
                 flash('success', 'Налаштування сповіщень збережено');
                 redirect('/profile');
+            }
+            if (str_starts_with((string)($_POST['_action'] ?? ''), 'address_')) {
+                self::address((string)$_POST['_action']);
             }
             // normPhoneAny, а не normPhone: закордонний покупець оформлює замовлення
             // з номером +49… (Checkout), і гейт у App.php такий номер пропускає —
@@ -44,6 +47,9 @@ class Profile
         $fresh = DB::row('SELECT * FROM users WHERE id = ?', [$u['id']]);
         View::show('account/profile', [
             'u' => $fresh,
+            'addresses' => Addresses::forUser((int)$u['id']),
+            'addr_limit' => Addresses::LIMIT,
+            'np_enabled' => (string)Settings::get('np_api_key', '') !== '',
             'mail_email' => Newsletter::normEmail((string)$fresh['email']),
             'subscribed' => Newsletter::isSubscribed(Newsletter::normEmail((string)$fresh['email'])),
             'tg_ready' => Telegram::configured(),
@@ -55,6 +61,37 @@ class Profile
             'notify_channels' => Notify::CHANNELS,
             'page_title' => 'Мій профіль — ' . cfg('app_name'),
         ]);
+    }
+
+    /**
+     * Адреси доставки в кабінеті: зберегти (нову або правку), зробити основною,
+     * видалити. Права не перевіряємо тут — Addresses працює лише з рядками
+     * власника, тож чужий id у POST нічого не дає.
+     */
+    private static function address(string $action): never
+    {
+        $id = (int)($_POST['id'] ?? 0);
+        if ($action === 'address_delete') {
+            Addresses::remove(Auth::id(), $id);
+            flash('success', 'Адресу видалено');
+        } elseif ($action === 'address_default') {
+            Addresses::setDefault(Auth::id(), $id);
+            flash('success', 'Основну адресу змінено');
+        } else {
+            $saved = Addresses::save(Auth::id(), [
+                'delivery' => $_POST['delivery'] ?? 'np',
+                'label' => $_POST['label'] ?? '',
+                'city' => $_POST['city'] ?? '',
+                'city_ref' => $_POST['city_ref'] ?? '',
+                'np_office' => $_POST['np_office'] ?? '',
+                'address' => $_POST['address'] ?? '',
+            ], $id);
+            if ($saved) flash('success', 'Адресу збережено');
+            elseif (count(Addresses::forUser(Auth::id())) >= Addresses::LIMIT) {
+                flash('error', 'Збережено вже ' . Addresses::LIMIT . ' адрес — видаліть непотрібні');
+            } else flash('error', 'Заповніть адресу: для Нової Пошти — місто, для іншої доставки — саму адресу');
+        }
+        redirect('/profile');
     }
 
     /** Видає токен і посилання на бота для підключення Telegram */
