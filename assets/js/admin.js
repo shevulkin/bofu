@@ -166,6 +166,120 @@
     if (note && saved === '') note.textContent = 'Усі зміни збережено';
   });
 
+  // Режим підказок. «?» угорі вмикає його, далі клік по будь-якому полі з
+  // data-help пояснює, що це поле робить. Розмітці досить двох речей:
+  // кнопки з [data-help-toggle] і атрибутів data-help на полях.
+  //
+  // У режимі підказок клік лише пояснює й нічого не робить — інакше питання
+  // «а що робить ця кнопка?» відповідалося б її натисканням.
+  var helpToggle = document.querySelector('[data-help-toggle]');
+  // Кнопка живе в спільному layout, тож трапляє й на сторінки, де підказок ще
+  // немає. Там її просто прибираємо: «?», що нічого не пояснює, дратує більше,
+  // ніж його відсутність.
+  if (helpToggle && !document.querySelector('[data-help]')) {
+    helpToggle.parentNode.removeChild(helpToggle);
+    var emptyBar = document.querySelector('.help-bar');
+    if (emptyBar) emptyBar.parentNode.removeChild(emptyBar);
+    helpToggle = null;
+  }
+  if (helpToggle) {
+    var pop = null;
+
+    // Місце кнопки — поруч із заголовком сторінки (.admin-head розсовує їх по
+    // краях сам). Заголовок малює кожна сторінка окремо, тому переносимо звідси,
+    // а не дублюємо розмітку в двох десятках шаблонів.
+    var headEl = document.querySelector('.admin-head');
+    var barEl = document.querySelector('.help-bar');
+    if (headEl) {
+      headEl.appendChild(helpToggle);
+      if (barEl) headEl.parentNode.insertBefore(barEl, headEl.nextSibling);
+    }
+    helpToggle.hidden = false;
+
+    function helpOn() { return document.body.classList.contains('help-on'); }
+
+    function closePop() { if (pop) { pop.parentNode.removeChild(pop); pop = null; } }
+
+    var idleTitle = helpToggle.getAttribute('title') || 'Підказки';
+
+    function setMode(on) {
+      document.body.classList.toggle('help-on', on);
+      helpToggle.classList.toggle('is-on', on);
+      helpToggle.setAttribute('aria-pressed', on ? 'true' : 'false');
+      // Підпис міняється разом зі станом: у режимі підказок кнопка вже не
+      // «показати довідку», а єдиний очевидний вихід із нього
+      helpToggle.setAttribute('title', on ? 'Вимкнути підказки (Esc)' : idleTitle);
+      helpToggle.setAttribute('aria-label', on ? 'Вимкнути підказки' : 'Показати підказки');
+      if (!on) closePop();
+    }
+
+    function showPop(host) {
+      closePop();
+      pop = document.createElement('div');
+      pop.className = 'help-pop';
+      var title = host.getAttribute('data-help-title');
+      if (title) {
+        var h = document.createElement('span');
+        h.className = 'help-pop-title';
+        h.textContent = title;
+        pop.appendChild(h);
+      }
+      pop.appendChild(document.createTextNode(host.getAttribute('data-help')));
+      document.body.appendChild(pop);
+
+      // під полем, але не за краєм екрана — інакше підказка до правої колонки
+      // з'їжджає за межі сторінки й читати її нічим
+      var r = host.getBoundingClientRect();
+      var docEl = document.documentElement;
+      // Ширину ріжемо саме по clientWidth: у CSS довелося б писати 100vw, а він
+      // враховує смугу прокрутки, і на вузькому екрані підказка вилазила б за край
+      pop.style.maxWidth = (docEl.clientWidth - 28) + 'px';
+      var maxLeft = window.pageXOffset + docEl.clientWidth - pop.offsetWidth - 14;
+      var left = Math.max(window.pageXOffset + 14, Math.min(r.left + window.pageXOffset, maxLeft));
+      var top = r.bottom + window.pageYOffset + 8;
+      // не влазить донизу — показуємо над полем
+      if (r.bottom + pop.offsetHeight + 20 > docEl.clientHeight && r.top > pop.offsetHeight + 20) {
+        top = r.top + window.pageYOffset - pop.offsetHeight - 8;
+      }
+      pop.style.left = left + 'px';
+      pop.style.top = top + 'px';
+    }
+
+    helpToggle.addEventListener('click', function (e) {
+      e.preventDefault();
+      setMode(!helpOn());
+    });
+
+    // Гасимо дію ДО того, як вона станеться: focus, нативний список у <select>
+    // і галка в чекбоксі народжуються на mousedown, а не на click
+    document.addEventListener('mousedown', function (e) {
+      if (!helpOn() || !e.target.closest) return;
+      if (e.target.closest('[data-help-toggle]') || e.target.closest('.help-pop')) return;
+      if (e.target.closest('[data-help]')) e.preventDefault();
+    }, true);
+
+    document.addEventListener('click', function (e) {
+      if (!helpOn() || !e.target.closest) return;
+      if (e.target.closest('[data-help-toggle]') || e.target.closest('.help-pop')) return;
+      var host = e.target.closest('[data-help]');
+      if (host) {
+        e.preventDefault();
+        e.stopPropagation();
+        showPop(host);
+        return;
+      }
+      closePop(); // клік мимо — ховаємо підказку, але з режиму не виходимо
+    }, true);
+
+    // Форма не має зберегтися від того, що в неї тицьнули з питанням
+    document.addEventListener('submit', function (e) { if (helpOn()) e.preventDefault(); }, true);
+
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && helpOn()) setMode(false);
+    });
+    window.addEventListener('resize', closePop);
+  }
+
   function urlB64(s) {
     var pad = '='.repeat((4 - s.length % 4) % 4);
     var b64 = (s + pad).replace(/-/g, '+').replace(/_/g, '/');

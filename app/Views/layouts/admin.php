@@ -94,6 +94,21 @@
     <?php endif; ?>
     <?php if ($msg = flash('success')): ?><div class="flash" style="padding:0;margin:0 0 16px"><div class="flash-success"><?= e($msg) ?></div></div><?php endif; ?>
     <?php if ($msg = flash('error')): ?><div class="flash" style="padding:0;margin:0 0 16px"><div class="flash-error"><?= e($msg) ?></div></div><?php endif; ?>
+    <?php
+    /**
+     * Кнопка підказок — одна на всю адмінку, а не в кожному шаблоні.
+     * Прихована доти, доки скрипт не побачить на сторінці бодай одне поле з
+     * data-help: кнопка, яка нічого не пояснює, гірша за її відсутність.
+     * Скрипт же переносить її у .admin-head поруч із заголовком сторінки.
+     */
+    ?>
+    <button type="button" class="help-btn" data-help-toggle aria-pressed="false" hidden
+            title="Підказки: увімкніть і клацніть на будь-яке поле" aria-label="Показати підказки">?</button>
+    <p class="help-bar">
+      Клацніть на поле, колонку чи кнопку — пояснимо, що воно робить.
+      Поки що нічого не зберігається й не видаляється.
+      <b>Щоб вийти — натисніть жовту «?» вгорі або клавішу Esc.</b>
+    </p>
     <?= $content ?>
   </main>
 </div>
