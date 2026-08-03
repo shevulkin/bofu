@@ -8,119 +8,162 @@
   $selAddress = $sel['address'] ?? '';
   $canSave = !empty($auth_user);
 ?>
-<section class="section" style="padding-top:48px">
-  <div class="container narrow">
+<section class="section" style="padding-top:44px">
+  <div class="container co-wrap">
     <div class="kicker">Оформлення</div>
-    <h2>Дані для доставки</h2>
-    <form method="post" action="<?= e(url('/checkout/submit')) ?>" style="margin-top:30px" id="checkoutForm">
+    <h2>Замовлення</h2>
+    <form method="post" action="<?= e(url('/checkout/submit')) ?>" class="co-grid" id="checkoutForm">
       <?= Csrf::field() ?>
       <div aria-hidden="true" style="position:absolute;left:-9999px;top:-9999px;height:0;overflow:hidden">
         <label>Не заповнюйте це поле<input type="text" name="website" tabindex="-1" autocomplete="off"></label>
       </div>
 
-      <?php if ($pre['name'] !== '' || $pre['phone'] !== ''): ?>
-        <!-- Отримувача не підставляємо мовчки: посилку часто відправляють іншій
-             людині, а Нова Пошта видає її лише тому, чиї дані в накладній -->
-        <label class="checkbox" id="meRow" style="margin-bottom:14px">
-          <input type="checkbox" id="meRecipient">
-          <span>Я отримувач — підставити моє ім'я і телефон</span>
-        </label>
-      <?php endif; ?>
+      <div>
+      <div class="co-step">
+        <h3 class="co-step-h"><span class="co-num">1</span>Доставка</h3>
 
-      <div class="form-grid">
-        <div class="field"><label>Отримувач *</label><input type="text" name="name" id="ordName" value="" required placeholder="Ім'я та прізвище"></div>
-        <div class="field"><label>Телефон отримувача *</label><input type="tel" name="phone" id="ordPhone" value="" required placeholder="+380 __ ___ ____"></div>
-        <div class="field"><label>Email <span class="dim">(необовʼязково)</span></label><input type="email" name="email" id="orderEmail" value="<?= e($pre['email']) ?>" placeholder="для підтвердження замовлення"></div>
-      </div>
-
-      <label class="checkbox" id="newsletterRow" style="align-items:flex-start;margin-bottom:18px;<?= $pre['email'] === '' ? 'display:none' : '' ?>">
-        <input type="checkbox" name="newsletter" value="1" style="margin-top:3px"<?= $subscribed ? ' checked' : '' ?>>
-        <span>Хочу отримувати новини та акції на цей email. Відписатись можна будь-коли — посиланням у листі або в профілі.</span>
-      </label>
-
-      <?php if ($addresses): ?>
-        <div class="field">
-          <label>Мої адреси</label>
-          <div class="variants" id="addrChips">
-            <?php foreach ($addresses as $a): ?>
-              <label class="chip<?= $sel && (int)$sel['id'] === (int)$a['id'] ? ' active' : '' ?>">
-                <input type="radio" name="address_id" value="<?= (int)$a['id'] ?>" hidden
-                       <?= $sel && (int)$sel['id'] === (int)$a['id'] ? 'checked' : '' ?>
-                       data-delivery="<?= e($a['delivery']) ?>" data-city="<?= e($a['city']) ?>"
-                       data-ref="<?= e($a['city_ref']) ?>" data-office="<?= e($a['np_office']) ?>"
-                       data-address="<?= e($a['address']) ?>">
-                <?= e(Addresses::title($a)) ?>
-              </label>
-            <?php endforeach; ?>
-            <label class="chip"><input type="radio" name="address_id" value="" hidden>+ Інша адреса</label>
+        <?php if ($addresses): ?>
+          <div class="field">
+            <label>Мої адреси</label>
+            <div class="variants" id="addrChips">
+              <?php foreach ($addresses as $a): ?>
+                <label class="chip<?= $sel && (int)$sel['id'] === (int)$a['id'] ? ' active' : '' ?>">
+                  <input type="radio" name="address_id" value="<?= (int)$a['id'] ?>" hidden
+                         <?= $sel && (int)$sel['id'] === (int)$a['id'] ? 'checked' : '' ?>
+                         data-delivery="<?= e($a['delivery']) ?>" data-city="<?= e($a['city']) ?>"
+                         data-ref="<?= e($a['city_ref']) ?>" data-office="<?= e($a['np_office']) ?>"
+                         data-address="<?= e($a['address']) ?>">
+                  <?= e(Addresses::title($a)) ?>
+                </label>
+              <?php endforeach; ?>
+              <label class="chip"><input type="radio" name="address_id" value="" hidden>+ Інша адреса</label>
+            </div>
+            <p class="dim" style="margin:8px 0 0;font-size:13px">Адреси зберігаються без отримувача — його вказуєте щоразу.
+              Керувати списком: <a href="<?= e(url('/profile')) ?>">у профілі</a>.</p>
           </div>
-          <p class="dim" style="margin:8px 0 0">Адреси зберігаються без отримувача — його вказуєте щоразу.
-            Керувати списком: <a href="<?= e(url('/profile')) ?>">у профілі</a>.</p>
-        </div>
-      <?php endif; ?>
-
-      <div class="field">
-        <label>Спосіб доставки</label>
-        <div class="variants" id="deliveryChips">
-          <label class="chip<?= $selDelivery === 'np' ? ' active' : '' ?>"><input type="radio" name="delivery" value="np"<?= $selDelivery === 'np' ? ' checked' : '' ?> hidden>Нова Пошта</label>
-          <label class="chip"><input type="radio" name="delivery" value="pickup" hidden>Самовивіз з магазину</label>
-          <label class="chip<?= $selDelivery === 'other' ? ' active' : '' ?>"><input type="radio" name="delivery" value="other"<?= $selDelivery === 'other' ? ' checked' : '' ?> hidden>Інше (узгодимо)</label>
-        </div>
-      </div>
-
-      <div id="npFields"<?= $selDelivery === 'np' ? '' : ' style="display:none"' ?>>
-        <div class="form-grid">
-          <?php /* autocomplete="new-password" — єдине, що глушить автопідстановку адрес
-                    у Chrome: "off" він для адресних полів свідомо ігнорує і накриває наш
-                    список своїм. Ім'я поля теж не "city" — інакше евристика впізнає його
-                    за назвою. data-* — те саме для менеджерів паролів. */ ?>
-          <div class="field"><label>Місто</label><input type="text" name="np_city" id="npCity" value="<?= e($selCity) ?>" placeholder="Почніть вводити місто…" autocomplete="new-password" data-lpignore="true" data-1p-ignore data-form-type="other" spellcheck="false"></div>
-          <div class="field"><label>Відділення / поштомат</label><input type="text" name="np_office" id="npOffice" value="<?= e($selOffice) ?>" placeholder="Номер, вулиця або «поштомат»" autocomplete="new-password" data-lpignore="true" data-1p-ignore data-form-type="other" spellcheck="false"></div>
-        </div>
-        <input type="hidden" name="city_ref" id="npCityRef" value="<?= e($selRef) ?>">
-      </div>
-
-      <div id="pickupFields" style="display:none">
-        <div class="field"><label>Магазин</label>
-          <select name="store_id" id="pickupStore">
-            <option value="">— оберіть магазин —</option>
-            <?php foreach ($stores as $s): $sid = (int)$s['id']; $miss = $missing[$sid] ?? []; ?>
-              <option value="<?= $sid ?>" data-missing="<?= e(implode(', ', $miss)) ?>">
-                <?= e($s['name'] . ($s['city'] ? ', ' . $s['city'] : '') . ($s['address'] ? ', ' . $s['address'] : '')) ?>
-                <?= $miss ? ' — немає частини позицій' : ' — все є в наявності' ?>
-              </option>
-            <?php endforeach; ?>
-          </select>
-          <p class="dim" id="pickupNote" style="margin:8px 0 0"></p>
-        </div>
-      </div>
-
-      <div id="otherFields"<?= $selDelivery === 'other' ? '' : ' style="display:none"' ?>>
-        <div class="field"><label>Адреса / побажання</label><input type="text" name="address" id="otherAddress" value="<?= e($selAddress) ?>" placeholder="Опишіть, як вам зручно отримати"></div>
-      </div>
-
-      <?php if ($canSave): ?>
-        <label class="checkbox" id="saveAddrRow" style="margin-bottom:18px<?= $selDelivery === 'pickup' ? ';display:none' : '' ?>">
-          <input type="checkbox" name="save_address" value="1" checked>
-          <span>Запамʼятати цю адресу — наступного разу не доведеться вводити</span>
-        </label>
-      <?php endif; ?>
-
-      <div class="field"><label>Коментар</label><textarea name="comment" rows="3" placeholder="Необов'язково"></textarea></div>
-
-      <div class="form-grid">
-        <div class="field"><label>Промокод</label><input type="text" name="promo_code" value="<?= e($promo['code'] ?? '') ?>" placeholder="Напр. MED10"></div>
-      </div>
-
-      <div class="totals" style="max-width:100%;margin:10px 0 26px">
-        <div class="row"><span class="muted">Товари:</span><span><?= e(price_fmt($totals['subtotal'])) ?></span></div>
-        <?php if ($totals['discount'] > 0): ?>
-          <div class="row"><span class="muted">Знижка (<?= e($promo['code']) ?>):</span><span>−<?= e(price_fmt($totals['discount'])) ?></span></div>
         <?php endif; ?>
-        <div class="row grand"><span>До сплати:</span><span><?= e(price_fmt($totals['total'])) ?></span></div>
+
+        <div class="field">
+          <label>Спосіб доставки</label>
+          <div class="variants" id="deliveryChips">
+            <label class="chip<?= $selDelivery === 'np' ? ' active' : '' ?>"><input type="radio" name="delivery" value="np"<?= $selDelivery === 'np' ? ' checked' : '' ?> hidden>Нова Пошта</label>
+            <label class="chip"><input type="radio" name="delivery" value="pickup" hidden>Самовивіз з магазину</label>
+            <label class="chip<?= $selDelivery === 'other' ? ' active' : '' ?>"><input type="radio" name="delivery" value="other"<?= $selDelivery === 'other' ? ' checked' : '' ?> hidden>Інше (узгодимо)</label>
+          </div>
+        </div>
+
+        <div id="npFields"<?= $selDelivery === 'np' ? '' : ' style="display:none"' ?>>
+          <div class="form-grid">
+            <?php /* autocomplete="new-password" — єдине, що глушить автопідстановку адрес
+                      у Chrome: "off" він для адресних полів свідомо ігнорує і накриває наш
+                      список своїм. Ім'я поля теж не "city" — інакше евристика впізнає його
+                      за назвою. data-* — те саме для менеджерів паролів. */ ?>
+            <div class="field"><label>Місто</label><input type="text" name="np_city" id="npCity" value="<?= e($selCity) ?>" placeholder="Почніть вводити місто…" autocomplete="new-password" data-lpignore="true" data-1p-ignore data-form-type="other" spellcheck="false"></div>
+            <div class="field"><label>Відділення / поштомат</label><input type="text" name="np_office" id="npOffice" value="<?= e($selOffice) ?>" placeholder="Номер, вулиця або «поштомат»" autocomplete="new-password" data-lpignore="true" data-1p-ignore data-form-type="other" spellcheck="false"></div>
+          </div>
+          <input type="hidden" name="city_ref" id="npCityRef" value="<?= e($selRef) ?>">
+        </div>
+
+        <div id="pickupFields" style="display:none">
+          <div class="field"><label>Магазин</label>
+            <select name="store_id" id="pickupStore">
+              <option value="">— оберіть магазин —</option>
+              <?php foreach ($stores as $s): $sid = (int)$s['id']; $miss = $missing[$sid] ?? []; ?>
+                <option value="<?= $sid ?>" data-missing="<?= e(implode(', ', $miss)) ?>">
+                  <?= e($s['name'] . ($s['city'] ? ', ' . $s['city'] : '') . ($s['address'] ? ', ' . $s['address'] : '')) ?>
+                  <?= $miss ? ' — немає частини позицій' : ' — все є в наявності' ?>
+                </option>
+              <?php endforeach; ?>
+            </select>
+            <p class="dim" id="pickupNote" style="margin:8px 0 0"></p>
+          </div>
+        </div>
+
+        <div id="otherFields"<?= $selDelivery === 'other' ? '' : ' style="display:none"' ?>>
+          <div class="field"><label>Адреса / побажання</label><input type="text" name="address" id="otherAddress" value="<?= e($selAddress) ?>" placeholder="Опишіть, як вам зручно отримати"></div>
+        </div>
+
+        <?php if ($canSave): ?>
+          <label class="checkbox" id="saveAddrRow" style="margin-bottom:18px<?= $selDelivery === 'pickup' ? ';display:none' : '' ?>">
+            <input type="checkbox" name="save_address" value="1" checked>
+            <span>Запамʼятати цю адресу — наступного разу не доведеться вводити</span>
+          </label>
+        <?php endif; ?>
+      </div><!-- /крок 1 -->
+
+      <div class="co-step">
+        <h3 class="co-step-h"><span class="co-num">2</span>Отримувач</h3>
+        <p class="co-note">Нова Пошта видає посилку лише тому, чиї імʼя й телефон вказані в накладній.
+          Якщо забираєте самі — поставте галку, і дані підставляться з профілю.</p>
+
+        <?php if ($pre['name'] !== '' || $pre['phone'] !== ''): ?>
+          <label class="checkbox" id="meRow" style="margin-bottom:16px">
+            <input type="checkbox" id="meRecipient">
+            <span>Я отримувач</span>
+          </label>
+        <?php endif; ?>
+
+        <div class="form-grid">
+          <div class="field"><label>Отримувач *</label><input type="text" name="name" id="ordName" value="" required placeholder="Ім'я та прізвище"></div>
+          <div class="field"><label>Телефон отримувача *</label><input type="tel" name="phone" id="ordPhone" value="" required placeholder="+380 __ ___ ____"></div>
+        </div>
+        <div class="field"><label>Email <span class="dim">(необовʼязково)</span></label><input type="email" name="email" id="orderEmail" value="<?= e($pre['email']) ?>" placeholder="надішлемо підтвердження замовлення"></div>
+
+        <label class="checkbox" id="newsletterRow" style="align-items:flex-start;margin-bottom:18px;<?= $pre['email'] === '' ? 'display:none' : '' ?>">
+          <input type="checkbox" name="newsletter" value="1" style="margin-top:3px"<?= $subscribed ? ' checked' : '' ?>>
+          <span>Хочу отримувати новини та акції на цей email. Відписатись можна будь-коли — посиланням у листі або в профілі.</span>
+        </label>
+      </div><!-- /крок 2 -->
+
+      <div class="co-step">
+        <h3 class="co-step-h"><span class="co-num">3</span>Побажання</h3>
+        <div class="field"><label>Коментар до замовлення</label>
+          <textarea name="comment" rows="3" placeholder="Необовʼязково: зручний час дзвінка, побажання до пакування"></textarea></div>
       </div>
-      <p class="dim" style="margin-bottom:18px">Оплата при отриманні або за домовленістю — продавець зв'яжеться з вами для підтвердження.</p>
-      <button class="btn btn-gold" type="submit" style="width:100%">Підтвердити замовлення</button>
+      </div><!-- /ліва колонка -->
+
+      <aside class="co-sum">
+        <h3 class="co-sum-h">Ваше замовлення</h3>
+        <div class="co-items">
+          <?php foreach ($rows as $r): ?>
+            <div class="co-item">
+              <img src="<?= e(asset($r['photo'])) ?>" alt="" loading="lazy">
+              <div style="min-width:0">
+                <div class="co-item-name"><?= e($r['product']['name']) ?></div>
+                <div class="dim">
+                  <?= $r['variant'] ? e($r['variant']['name']) . ' · ' : '' ?><?= (int)$r['qty'] ?> × <?= e(price_fmt($r['price'])) ?>
+                </div>
+              </div>
+              <div class="co-item-sum"><?= e(price_fmt($r['sum'])) ?></div>
+            </div>
+          <?php endforeach; ?>
+        </div>
+
+        <div class="field" style="margin-bottom:16px">
+          <label>Промокод</label>
+          <input type="text" name="promo_code" value="<?= e($promo['code'] ?? '') ?>" placeholder="Напр. MED10" autocomplete="off">
+        </div>
+
+        <div class="totals">
+          <div class="row"><span class="muted">Товари:</span><span><?= e(price_fmt($totals['subtotal'])) ?></span></div>
+          <?php if ($totals['discount'] > 0): ?>
+            <div class="row"><span class="muted">Знижка (<?= e($promo['code']) ?>):</span><span>−<?= e(price_fmt($totals['discount'])) ?></span></div>
+          <?php endif; ?>
+          <div class="row grand"><span>До сплати:</span><span><?= e(price_fmt($totals['total'])) ?></span></div>
+        </div>
+
+        <p class="dim" style="margin:16px 0 18px;font-size:13px">Оплата при отриманні або за домовленістю —
+          продавець зв'яжеться з вами для підтвердження.</p>
+        <button class="btn btn-gold co-submit" type="submit" style="width:100%">Підтвердити замовлення</button>
+        <p class="dim" style="margin:14px 0 0;font-size:12.5px">
+          <a href="<?= e(url('/cart')) ?>">← Повернутись до кошика</a></p>
+      </aside>
+
+      <!-- телефон: сума й кнопка завжди під рукою, без гортання через усю форму -->
+      <div class="co-bar">
+        <div class="co-bar-total"><span>До сплати</span><b><?= e(price_fmt($totals['total'])) ?></b></div>
+        <button class="btn btn-gold" type="submit">Підтвердити</button>
+      </div>
     </form>
   </div>
 </section>

@@ -191,6 +191,44 @@ input:disabled,select:disabled,textarea:disabled{opacity:.45;cursor:not-allowed}
 .np-drop div:hover,.np-drop div.is-active{background:var(--bg2);color:var(--gold2)}
 .np-drop .np-note,.np-drop .np-note:hover{color:var(--dim);cursor:default;background:none}
 
+/* ---------- оформлення замовлення ---------- */
+/* Дві колонки: кроки ліворуч, картка замовлення праворуч і завжди на очах.
+   На вузькому екрані все стає в один стовпчик, а кнопка переїжджає в нижню
+   панель — інакше до неї треба гортати через усю форму. */
+.co-grid{display:grid;grid-template-columns:minmax(0,1fr) 372px;gap:28px;align-items:start;margin-top:28px}
+.co-step{background:var(--bg2);border:1px solid var(--line);border-radius:4px;padding:26px 26px 8px;margin-bottom:18px}
+.co-step-h{display:flex;align-items:center;gap:13px;font-family:var(--serif);font-size:23px;font-weight:600;margin:0 0 18px}
+.co-num{width:30px;height:30px;flex:none;border-radius:50%;border:1px solid var(--gold);color:var(--gold);
+  display:flex;align-items:center;justify-content:center;font-family:var(--sans);font-size:13px;font-weight:800}
+.co-note{font-size:13px;color:var(--dim);line-height:1.45;margin:-10px 0 16px}
+.co-sum{background:var(--bg2);border:1px solid var(--line);border-radius:4px;padding:24px;position:sticky;top:88px}
+.co-sum-h{font-family:var(--serif);font-size:21px;font-weight:600;margin:0 0 18px}
+.co-items{display:flex;flex-direction:column;gap:14px;max-height:290px;overflow-y:auto;margin-bottom:18px}
+.co-item{display:flex;gap:12px;align-items:center}
+.co-item img{width:52px;height:52px;flex:none;border-radius:3px;object-fit:cover;border:1px solid var(--line)}
+.co-item-name{font-size:14px;font-weight:600;line-height:1.3}
+.co-item .dim{font-size:12.5px}
+.co-item-sum{margin-left:auto;font-size:14px;white-space:nowrap;font-weight:700}
+.co-sum .totals{margin:0;max-width:none}
+.co-bar{display:none}
+@media (max-width:1000px){
+  .co-grid{grid-template-columns:1fr}
+  .co-sum{position:static}
+  .co-submit{display:none}
+  .co-wrap{padding-bottom:92px}
+  .co-bar{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:120;gap:16px;align-items:center;
+    padding:12px 16px;background:rgba(26,22,17,.97);backdrop-filter:blur(10px);
+    border-top:1px solid var(--line2);box-shadow:0 -8px 26px rgba(0,0,0,.5)}
+  .co-bar .btn{flex:1;white-space:nowrap}
+  .co-bar-total{line-height:1.15}
+  .co-bar-total span{display:block;font-size:11.5px;color:var(--dim);letter-spacing:.08em;text-transform:uppercase}
+  .co-bar-total b{font-size:19px;color:var(--gold)}
+  .to-top{bottom:100px}
+}
+/* Два поля поруч мають сенс на столі, а на телефоні перетворюються на дві
+   вузькі колонки, куди не влазить ані номер, ані назва відділення. */
+@media (max-width:760px){ .form-grid{grid-template-columns:1fr} }
+
 /* ---------- список користувачів: вкладки, пошук, сторінки ---------- */
 .users-bar{display:flex;gap:16px;align-items:center;justify-content:space-between;flex-wrap:wrap;padding:14px 18px}
 .users-tabs{display:flex;gap:8px;flex-wrap:wrap}
