@@ -12,14 +12,25 @@ class Checkout
         if (!Cart::items()) redirect('/cart');
         $rows = Cart::detailed();
         $stores = Catalog::stores();
-        // чого бракує в кожному магазині для самовивозу (з урахуванням варіанта)
+        // Чого бракує в кожному магазині для самовивозу (з урахуванням варіанта).
+        // Разом із тим, де цю позицію можна забрати натомість: людині, що вже
+        // обрала самовивіз, сусідня точка майже завжди краща за очікування.
         $missing = [];
         foreach ($stores as $s) {
             $sid = (int)$s['id'];
             foreach ($rows as $r) {
-                if ((int)($r['stock'][$sid] ?? 0) < $r['qty']) {
-                    $missing[$sid][] = $r['product']['name'] . ($r['variant'] ? ' — ' . $r['variant']['name'] : '');
+                if ((int)($r['stock'][$sid] ?? 0) >= $r['qty']) continue;
+                $title = $r['product']['name'] . ($r['variant'] ? ' — ' . $r['variant']['name'] : '');
+                $alt = [];
+                foreach ($stores as $o) {
+                    $oid = (int)$o['id'];
+                    if ($oid !== $sid && (int)($r['stock'][$oid] ?? 0) >= $r['qty']) {
+                        $alt[] = $o['city'] ?: $o['name'];
+                    }
                 }
+                $missing[$sid][] = $alt
+                    ? $title . (count($alt) > 1 ? ' — є в інших точках: ' : ' — є в іншій точці: ') . implode(', ', $alt)
+                    : $title . ' — немає в жодній точці';
             }
         }
         // Дані залогіненого покупця підставляємо самі: email приходить з Google,

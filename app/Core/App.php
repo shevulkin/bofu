@@ -127,6 +127,12 @@ class App
         if ($path === '/checkout/promo' && $method === 'POST') { RateLimit::guard('promo', 40, 3600, null, true); Controllers\Checkout::applyPromo(); }
         if (preg_match('~^/order/success/([a-f0-9]{32})$~', $path, $m)) { Controllers\Checkout::success($m[1]); }
         if ($path === '/orders') { Controllers\Checkout::myOrders(); }
+        // «повідомте, коли зʼявиться» — з лімітом: кнопка відкрита будь-кому,
+        // хто увійшов, а запити дешеві й ідуть у чергу, яку читає продавець
+        if ($path === '/stock/watch' && $method === 'POST') {
+            RateLimit::guard('stock_watch', 30, 3600);
+            Controllers\Shop::watch();
+        }
 
         // --- розсилка ---
         if (preg_match('~^/unsubscribe/([a-f0-9]{32})$~', $path, $m)) { Controllers\NewsletterController::unsubscribe($m[1]); }
@@ -163,6 +169,7 @@ class App
             '/admin/products'           => [$A.'Products', 'index', 'products.view'],
             '/admin/products/new'       => [$A.'Products', 'create', 'products.manage'],
             '/admin/products/bulk'      => [$A.'Products', 'bulk', 'products.view'],
+            '/admin/stock-requests'     => [$A.'StockRequests', 'index', 'products.view'],
             '/admin/categories'         => [$A.'Categories', 'index', 'catalog.manage'],
             '/admin/attributes'         => [$A.'Attributes', 'index', 'catalog.manage'],
             '/admin/stores'             => [$A.'Stores', 'index', 'stores.manage'],

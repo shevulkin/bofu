@@ -32,6 +32,8 @@ class Notifications
                 'order_status' => '{number} {status}',
                 'user_new' => '{name} {email}',
                 'stock_low' => '{product} {qty} {store}',
+                'stock_wanted' => '{product} {waiting} {store}',
+                'stock_back' => '{product} {where} {url}',
             ],
             'page_title' => 'Сповіщення — адмінка',
         ], 'layouts/admin');

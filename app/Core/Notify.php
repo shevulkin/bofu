@@ -13,6 +13,8 @@ class Notify
         'order_status'   => 'Зміна статусу замовлення',
         'user_new'       => 'Новий користувач',
         'stock_low'      => 'Закінчується товар',
+        'stock_wanted'   => 'Просять повідомити про наявність',
+        'stock_back'     => 'Товар знову в наявності',
     ];
 
     public const DEFAULT_TEMPLATES = [
@@ -31,6 +33,13 @@ class Notify
         'order_status' => "📦 Замовлення {number}: статус змінено на «{status}»",
         'user_new'     => "👤 Новий користувач: {name} ({email})",
         'stock_low'    => "⚠️ Товар «{product}» закінчується: залишилось {qty} шт. ({store})",
+        // Це не побажання клієнта, а сигнал попиту: {waiting} відповідає на
+        // питання «чи варто заради цього ставати за станок»
+        'stock_wanted' => "🔔 Просять повідомити про наявність: «{product}»\n"
+                        . "Уже чекають: {waiting}\nЗапит із точки: {store}",
+        // {url} приходить уже з підписом або порожній: на локальній машині
+        // абсолютної адреси немає, і рядок має зникнути, а не світити «Замовити:»
+        'stock_back'   => "✅ «{product}» знову в наявності!\n{where}\n{url}",
     ];
 
     /** Головна точка виклику: Notify::fire('order_new', ['number'=>..., ...], $storeId) */
@@ -56,6 +65,26 @@ class Notify
                 try { self::send($rule['channel'], $user, $text, $vars); }
                 catch (Throwable $e) { self::log("send fail {$rule['channel']} u{$user['id']}: " . $e->getMessage()); }
             }
+        }
+    }
+
+    /**
+     * Те саме, але одній конкретній людині: подія стосується її особисто
+     * («ваш товар зʼявився»), тож розкладка по групах отримувачів тут ні до чого.
+     * Шаблони, глобальні перемикачі й особисті галки в кабінеті — усе як завжди.
+     */
+    public static function toUser(int $userId, string $event, array $vars): void
+    {
+        if (!Settings::bool('notify_all_enabled', true)) return;
+        $user = DB::row('SELECT * FROM users WHERE id = ? AND active = 1', [$userId]);
+        if (!$user) return;
+        foreach (DB::all('SELECT * FROM notification_rules WHERE event = ? AND enabled = 1', [$event]) as $rule) {
+            $channel = (string)$rule['channel'];
+            if (!self::channelEnabled($channel)) continue;
+            if (!self::wants($userId, $event, $channel)) continue;
+            $tpl = $rule['template'] ?: (self::DEFAULT_TEMPLATES[$event] ?? '');
+            try { self::send($channel, $user, self::interpolate($tpl, $vars), $vars); }
+            catch (Throwable $e) { self::log("send fail $channel u$userId: " . $e->getMessage()); }
         }
     }
 
@@ -111,6 +140,11 @@ class Notify
     /** Чи входить користувач у групу отримувачів правила */
     public static function inGroup(int $userId, string $mode): bool
     {
+        // 'customer' — не група, а сам адресат: подія стосується конкретної
+        // людини (їй чекався товар), і розсилати її «всім покупцям» безглуздо.
+        // Тут відповідаємо true, щоб подія показалась у кабінеті кожному, хто
+        // може її отримати; кому саме слати, вирішує toUser().
+        if ($mode === 'customer') return true;
         $roles = Auth::roles($userId);
         $isAdmin = in_array(Roles::ADMIN, $roles, true);
         $isSeller = in_array(Roles::SELLER, $roles, true);
@@ -208,6 +242,12 @@ class Notify
         // Ролі беремо з user_roles — тобто ті, що людина МАЄ. Обрана робоча роль тут
         // ні до чого: адмін, який зараз дивиться очима покупця, має й далі
         // отримувати сповіщення про замовлення.
+        //
+        // Режиму 'customer' тут навмисно немає, і додавати його НЕ треба: такі
+        // події адресні («ваш товар зʼявився»), їх шле Notify::toUser() одній
+        // людині. Гілка «всі покупці» перетворила б це на масову розсилку по
+        // всій базі. inGroup() відповідає для 'customer' true лише для того,
+        // щоб подія зʼявилась у кабінеті — на добір отримувачів це не впливає.
         $users = [];
         if (in_array($mode, ['admins', 'admins_sellers'], true)) {
             $users = DB::all(

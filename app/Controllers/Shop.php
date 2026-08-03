@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 namespace Controllers;
 
-use DB, View, Catalog, Content, Attrs;
+use DB, View, Catalog, Content, Attrs, Auth, Csrf, StockWatch;
 
 class Shop
 {
@@ -105,6 +105,44 @@ class Shop
             'page_title' => $p['name'] . ' — ' . cfg('app_name'),
             'meta_description' => $p['short_desc'] ?? '',
             'jsonld_product' => true,
+            // чи ця людина вже чекає обраний варіант — щоб не пропонувати вдруге
+            'watching' => StockWatch::isWaiting((int)$p['id'], $first['id'] ?? null, Auth::id()),
         ]);
+    }
+
+    /**
+     * «Повідомте, коли зʼявиться».
+     *
+     * Тільки для тих, хто увійшов: канали сповіщень людина обирає в кабінеті,
+     * а в гостя кабінету немає. Гостю кажемо це прямо й відправляємо на вхід —
+     * мовчазна відмова виглядала б як поламана кнопка.
+     */
+    public static function watch(): never
+    {
+        Csrf::verify();
+        $back = safe_back($_POST['back'] ?? null, '/shop');
+        if (!Auth::check()) {
+            flash('error', 'Увійдіть, щоб ми могли вас сповістити — у кабінеті ви оберете, куди саме писати.');
+            redirect($back);
+        }
+        $pid = (int)($_POST['product_id'] ?? 0);
+        $vid = (int)($_POST['variant_id'] ?? 0) ?: null;
+        $sid = (int)($_POST['store_id'] ?? 0) ?: null;
+
+        $p = DB::row('SELECT id FROM products WHERE id = ? AND active = 1', [$pid]);
+        if (!$p) { flash('error', 'Товар не знайдено.'); redirect($back); }
+        // Варіант мусить належати цьому товару: інакше в чергу очікувань
+        // потрапила б чужа позиція, і продавець виробляв би не те
+        if ($vid !== null && !DB::row('SELECT 1 FROM product_variants WHERE id = ? AND product_id = ?', [$vid, $pid])) {
+            $vid = null;
+        }
+        if ($sid !== null && !DB::row('SELECT 1 FROM stores WHERE id = ? AND active = 1', [$sid])) {
+            $sid = null;
+        }
+
+        flash('success', StockWatch::add($pid, $vid, $sid, (int)Auth::id())
+            ? 'Добре — напишемо, щойно зʼявиться. Куди саме писати, можна змінити в кабінеті.'
+            : 'Ви вже в черзі на цю позицію — повідомимо, щойно вона зʼявиться.');
+        redirect($back);
     }
 }

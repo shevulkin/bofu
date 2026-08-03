@@ -386,5 +386,10 @@ class Products
             if ($exists) DB::update('store_stock', ['qty' => (int)$qty], 'id = ?', [$exists['id']]);
             else DB::insert('store_stock', ['product_id' => $productId, 'store_id' => $sid, 'variant_id' => $variantId, 'qty' => (int)$qty]);
         }
+        // Товар міг щойно зʼявитись — тим, хто його чекав, час дізнатись.
+        // Ставимо саме тут: це єдине місце, через яке проходить і збереження
+        // картки, і масове редагування. StockWatch сам перевірить, чи є що
+        // повідомляти, тож зайвого виклику не буде.
+        if ($canStock) StockWatch::fulfil($productId, $variantId);
     }
 }

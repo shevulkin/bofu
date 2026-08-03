@@ -7,7 +7,7 @@ declare(strict_types=1);
  */
 class Schema
 {
-    public const VERSION = 22;
+    public const VERSION = 23;
 
     /** Оновлення існуючої бази до поточної версії без втрати даних */
     public static function upgrade(): void
@@ -167,6 +167,24 @@ class Schema
                 "🛒 Нове замовлення {number}\nМагазин: {store}\n{items}\nСума: {total} грн\n"
                 . "Доставка: {delivery}\n{address}\n{phone}\nКлієнт: {name}",
             ]);
+        }
+        if ($ver < 23) {
+            self::createAll(); // stock_requests
+            // Правила для двох нових подій. Продавцю про попит пишемо одразу,
+            // покупцю про наявність — теж: обидві новини нікому не потрібні
+            // через тиждень, тож вимкненими за замовчуванням їх робити нема сенсу.
+            foreach (['stock_wanted' => 'sellers', 'stock_back' => 'customer'] as $event => $to) {
+                foreach (array_keys(Notify::CHANNELS) as $channel) {
+                    if (DB::row('SELECT id FROM notification_rules WHERE event = ? AND channel = ?', [$event, $channel])) continue;
+                    DB::insert('notification_rules', [
+                        'event' => $event, 'channel' => $channel,
+                        // viber вимкнений так само, як його заводила міграція 2:
+                        // канал є не в кожного магазину, а зайвий шум дратує
+                        'enabled' => $channel === 'viber' ? 0 : 1,
+                        'recipients' => $to, 'template' => Notify::DEFAULT_TEMPLATES[$event] ?? '',
+                    ]);
+                }
+            }
         }
         Settings::set('schema_version', (string)self::VERSION);
     }
@@ -416,6 +434,19 @@ class Schema
                 'role' => 'str null', // роль, у якій діяли
                 'message' => 'text null', 'created_at' => 'ts',
             ],
+            /**
+             * «Повідомте, коли зʼявиться». Запит завжди належить акаунту: канали
+             * сповіщень людина обирає в кабінеті, а в гостя кабінету немає.
+             *
+             * store_id — не адреса доставки, а побажання: звідки людині зручно
+             * забрати. Повідомляємо однаково про будь-яку точку, бо чекати
+             * конкретну — майже завжди довше, ніж треба.
+             */
+            'stock_requests' => [
+                'id' => 'id', 'product_id' => 'int', 'variant_id' => 'int null',
+                'store_id' => 'int null', 'user_id' => 'int',
+                'created_at' => 'ts', 'notified_at' => 'ts null',
+            ],
             'diplomas' => [
                 'id' => 'id', 'number' => 'str unique', 'student' => 'str', 'course' => 'str null',
                 'issued_at' => 'str null', 'active' => 'bool default 1',
@@ -497,6 +528,7 @@ class Schema
             'user_notify_prefs' => ['user_id'],
             'user_addresses' => ['user_id'],
             'promo_uses' => ['promo_id', 'user_id', 'phone'],
+            'stock_requests' => ['product_id', 'user_id', 'notified_at'],
         ];
         foreach ($idx as $table => $columns) {
             foreach ($columns as $col) {

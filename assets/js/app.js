@@ -132,6 +132,13 @@
       });
       var mto = document.getElementById('madeToOrder');
       if (mto) mto.style.display = any ? 'none' : '';
+      // «Повідомити, коли зʼявиться» має сенс лише для варіанта, якого немає;
+      // тримаємо в прихованому полі саме обраний, інакше в чергу очікувань
+      // потрапив би той, що стояв на сторінці при завантаженні
+      var watch = document.getElementById('watchBox');
+      if (watch) watch.style.display = any ? 'none' : '';
+      var wv = document.getElementById('watchVariant');
+      if (wv) wv.value = v.id;
     }
 
     if (axisRows.length) {

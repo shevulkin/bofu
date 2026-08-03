@@ -86,6 +86,23 @@
           <?php endif; ?>
         </div>
 
+        <?php /* Немає ніде — єдине місце, де людині нема що робити з цією
+                 сторінкою. Даємо їй причину не йти назовсім. */ ?>
+        <div id="watchBox" style="margin-top:14px<?= $anyStock ? ';display:none' : '' ?>">
+          <?php if ($watching): ?>
+            <p class="dim" id="watchDone" style="margin:0">🔔 Ви в черзі — напишемо, щойно зʼявиться.
+              Куди саме писати — <a href="<?= e(url('/profile')) ?>">у кабінеті</a>.</p>
+          <?php else: ?>
+            <form method="post" action="<?= e(url('/stock/watch')) ?>" style="margin:0">
+              <?= Csrf::field() ?>
+              <input type="hidden" name="product_id" value="<?= (int)$p['id'] ?>">
+              <input type="hidden" name="variant_id" id="watchVariant" value="<?= $variants ? (int)$variants[0]['id'] : '' ?>">
+              <input type="hidden" name="back" value="<?= e(request_path()) ?>">
+              <button class="btn btn-line btn-sm" type="submit">🔔 Повідомити, коли зʼявиться</button>
+            </form>
+          <?php endif; ?>
+        </div>
+
         <?php if ($attrs): ?>
           <h2 style="font-size:22px;margin-top:34px">Характеристики</h2>
           <table class="specs">
