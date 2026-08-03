@@ -61,15 +61,45 @@
     <div><label>Код</label><input type="text" name="code" required placeholder="MED10" style="text-transform:uppercase"></div>
     <div style="width:110px"><label>Знижка, %</label><input type="number" step="0.5" name="percent" required></div>
     <div><label>Діє до</label><input type="date" name="expires_at"></div>
+    <div style="width:150px"><label>Всього використань</label>
+      <input type="number" min="1" name="max_uses" placeholder="без обмежень"></div>
+    <div style="width:150px"><label>На одну людину</label>
+      <input type="number" min="1" name="per_user_limit" placeholder="без обмежень"></div>
+    <div style="width:170px"><label>Стеля знижки, %</label>
+      <input type="number" step="0.5" min="0" name="max_total_percent" placeholder="без стелі"></div>
+    <label class="toggle" style="margin-bottom:10px">
+      <input type="checkbox" name="stackable" checked><span class="tr"></span> Сумується з акціями</label>
     <button class="btn btn-gold btn-sm" type="submit">+ Додати</button>
   </form>
+  <p class="dim" style="margin:12px 0 0;font-size:13px">
+    Порожнє поле — без обмежень. <b>Всього 1</b> — код для однієї людини: хто перший скористався, для решти він уже не діє.
+    <b>На одну людину 1</b> — код для всіх, але кожен використає його один раз.
+    Обидва порожні — кодом можна користуватись при кожній покупці.
+    <br>
+    <b>Сумується з акціями</b> вимкнено — код не діє на товари, які вже продаються зі знижкою.
+    <b>Стеля</b> обмежує сумарну знижку на товар: акція 20% + код 15% зі стелею 25% дадуть 25%, а не 35%.
+  </p>
   <table class="tbl" style="margin-top:18px">
-    <tr><th>Код</th><th>Знижка</th><th>Діє до</th><th></th></tr>
-    <?php foreach ($codes as $c): ?>
+    <tr><th>Код</th><th class="num">Знижка</th><th>Діє до</th><th>Обмеження</th><th class="num">Використано</th><th></th></tr>
+    <?php foreach ($codes as $c): $max = (int)$c['max_uses']; $per = (int)$c['per_user_limit']; $used = (int)($c['used'] ?? 0); ?>
       <tr>
         <td><b><?= e($c['code']) ?></b></td>
-        <td>−<?= e($c['percent']) ?>%</td>
+        <td class="num">−<?= e($c['percent']) ?>%</td>
         <td class="dim"><?= e($c['expires_at'] ?: 'безстроково') ?></td>
+        <td class="muted">
+          <?= $max > 0 ? ($max === 1 ? 'одноразовий' : 'всього ' . $max) : 'без обмежень' ?>
+          <?= $per > 0 ? ' · ' . ($per === 1 ? 'по разу на людину' : 'по ' . $per . ' на людину') : '' ?>
+          <div class="dim" style="font-size:12px">
+            <?= Promo::stacks($c) ? 'сумується з акціями' : 'не сумується з акціями' ?>
+            <?= $c['max_total_percent'] !== null && $c['max_total_percent'] !== ''
+                  ? ' · стеля ' . rtrim(rtrim(number_format((float)$c['max_total_percent'], 2, ',', ''), '0'), ',') . '%'
+                  : '' ?>
+          </div>
+        </td>
+        <td class="num<?= $max > 0 && $used >= $max ? ' dim' : '' ?>">
+          <?= $used ?><?= $max > 0 ? ' з ' . $max : '' ?>
+          <?= $max > 0 && $used >= $max ? '<div class="dim" style="font-size:12px">вичерпано</div>' : '' ?>
+        </td>
         <td>
           <form method="post" action="<?= e(url('/admin/promos')) ?>"><?= Csrf::field() ?>
             <input type="hidden" name="_action" value="del_code"><input type="hidden" name="id" value="<?= (int)$c['id'] ?>">

@@ -132,7 +132,7 @@
         <summary class="co-sum-h">Ваше замовлення <span class="dim" style="font-size:14px">· <?= e($goods) ?></span>
           <b class="co-fold-total" id="foldTotal"><?= e(price_fmt($totals['total'])) ?></b></summary>
         <div class="co-items">
-          <?php foreach ($rows as $r): $cut = Promo::cut((float)($r['sum'] ?? 0), $promo); ?>
+          <?php foreach ($rows as $r): $cut = Promo::cut((float)($r['sum'] ?? 0), $promo, Promo::ownPercent($r)); ?>
             <div class="co-item" data-key="<?= e($r['key']) ?>">
               <img src="<?= e(asset($r['photo'])) ?>" alt="" loading="lazy">
               <div style="min-width:0">
@@ -158,8 +158,10 @@
             <input type="text" name="promo_code" id="promoInput" value="<?= e($promo['code'] ?? '') ?>" autocomplete="off" spellcheck="false">
             <button class="btn btn-line" type="button" id="promoBtn"><?= $promo ? 'Прибрати' : 'Застосувати' ?></button>
           </div>
+          <?php $promoNote = Promo::note($promo, $rows); ?>
           <p class="field-hint<?= $promo ? ' is-ok' : '' ?>" id="promoHint">
-            <?= $promo ? e('✓ Код ' . $promo['code'] . ' діє — ' . $saved($totals)) : '' ?>
+            <?= $promo ? e('✓ Код ' . $promo['code'] . ' діє — ' . $saved($totals)
+                           . ($promoNote !== '' ? '. ' . $promoNote : '')) : '' ?>
           </p>
         </div>
 
@@ -272,7 +274,10 @@
     promoBtn.disabled = true;
     promoHint.className = 'field-hint';
     promoHint.textContent = 'Перевіряємо…';
-    var body = new URLSearchParams({_csrf: '<?= e(Csrf::token()) ?>', promo_code: code});
+    // телефон потрібен для коду «один раз на людину»: гостя ми впізнаємо лише
+    // за номером, тож без нього ліміт перевірився б аж при підтвердженні
+    var body = new URLSearchParams({_csrf: '<?= e(Csrf::token()) ?>', promo_code: code,
+      phone: (phoneInput && phoneInput.value) || ''});
     fetch('<?= e(url('/checkout/promo')) ?>', {method: 'POST', body: body, credentials: 'same-origin'})
       .then(function(r){ return r.json() }).then(function(d){
         promoBtn.disabled = false;
@@ -280,8 +285,10 @@
         promoHint.className = 'field-hint' + (d.ok ? ' is-ok' : (d.empty ? '' : ' is-bad'));
         // «заощадили», а не «мінус»: те саме число, але як здобуток, а не як
         // бухгалтерська операція — і воно доречніше саме в мить рішення
-        promoHint.textContent = d.ok ? '✓ Код ' + d.code + ' діє — ви заощадили ' + d.discount
-          : (d.empty ? '' : '✕ Такий промокод не діє — перевірте написання або строк дії');
+        // причину пише сервер: «вже використаний» і «такого немає» — різні речі
+        promoHint.textContent = d.ok
+          ? '✓ Код ' + d.code + ' діє — ви заощадили ' + d.discount + (d.note ? '. ' + d.note : '')
+          : (d.empty ? '' : '✕ ' + (d.error || 'Такий промокод не діє'));
         // ціни позицій: стара лишається закресленою, щоб знижку було видно
         document.querySelectorAll('.co-item').forEach(function(el){
           var it = d.items[el.dataset.key];

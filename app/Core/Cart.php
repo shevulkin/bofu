@@ -102,7 +102,9 @@ class Cart
         foreach (self::detailed($storeId) as $r) {
             $sum = (float)($r['sum'] ?? 0);
             $subtotal += $sum;
-            $discount += Promo::cut($sum, $promoCode);
+            // знижка позиції враховує ту, що на ній уже є: код може не
+            // сумуватися з акцією або мати стелю сумарного відсотка
+            $discount += Promo::cut($sum, $promoCode, Promo::ownPercent($r));
         }
         return ['subtotal' => $subtotal, 'discount' => $discount, 'total' => max(0, $subtotal - $discount)];
     }
