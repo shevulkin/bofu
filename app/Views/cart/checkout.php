@@ -74,13 +74,13 @@
             <select name="store_id" id="pickupStore">
               <option value="">— оберіть магазин —</option>
               <?php foreach ($stores as $s): $sid = (int)$s['id']; $miss = $missing[$sid] ?? []; ?>
-                <option value="<?= $sid ?>" data-missing="<?= e(implode(', ', $miss)) ?>">
+                <option value="<?= $sid ?>" data-missing="<?= e(implode("\n", $miss)) ?>">
                   <?= e($s['name'] . ($s['city'] ? ', ' . $s['city'] : '') . ($s['address'] ? ', ' . $s['address'] : '')) ?>
                   <?= $miss ? ' — немає частини позицій' : ' — все є в наявності' ?>
                 </option>
               <?php endforeach; ?>
             </select>
-            <p class="dim" id="pickupNote" style="margin:8px 0 0"></p>
+            <p class="dim" id="pickupNote" style="margin:8px 0 0;white-space:pre-line"></p>
           </div>
         </div>
 
@@ -395,7 +395,10 @@
     store.addEventListener('change', function () {
       var opt = store.options[store.selectedIndex];
       var miss = opt ? (opt.dataset.missing || '') : '';
-      note.textContent = miss ? 'У цьому магазині зараз немає: ' + miss + '. Замовлення приймемо — узгодимо строки.' : '';
+      // рядком на позицію: поруч із кожною видно, де її можна забрати натомість
+      note.textContent = miss
+        ? 'У цьому магазині зараз немає:\n' + miss + '\nЗамовлення приймемо й так — узгодимо строки.'
+        : '';
     });
   }
 })();
