@@ -123,6 +123,8 @@ class App
         // стороння сторінка не може записати покупцеві промокод у сесію
         if ($path === '/checkout' && $method !== 'POST') { Controllers\Checkout::form(); }
         if ($path === '/checkout' . '/submit' && $method === 'POST') { Controllers\Checkout::submit(); }
+        // промокод — коротка комбінація літер, тобто його можна підбирати; з лімітом
+        if ($path === '/checkout/promo' && $method === 'POST') { RateLimit::guard('promo', 40, 3600, null, true); Controllers\Checkout::applyPromo(); }
         if (preg_match('~^/order/success/([a-f0-9]{32})$~', $path, $m)) { Controllers\Checkout::success($m[1]); }
         if ($path === '/orders') { Controllers\Checkout::myOrders(); }
 
