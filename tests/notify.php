@@ -32,6 +32,7 @@ final class NotifyTest
             $this->testUserCannotTurnOnWhatAdminClosed();
             $this->testAdminSwitchesWin();
             $this->testGroups();
+            $this->testOrderMessage();
         } finally {
             $this->tearDown();
         }
@@ -152,6 +153,75 @@ final class NotifyTest
         $this->ok('адмін входить у admins_sellers', Notify::inGroup($this->admin, 'admins_sellers'));
         $this->ok('покупець не входить', !Notify::inGroup($this->customer, 'admins_sellers'));
         $this->ok('покупцю нема чого налаштовувати', Notify::optionsFor($this->user($this->customer)) === []);
+    }
+
+    /**
+     * Повідомлення про замовлення. Адреса доставки — те, заради чого продавець
+     * і відкриває сповіщення; а самовивіз адреси не має, і порожнього рядка
+     * замість неї бути не повинно.
+     */
+    private function testOrderMessage(): void
+    {
+        $this->group('повідомлення про замовлення');
+        $np = ['delivery' => 'np', 'city' => 'Київ', 'np_office' => 'Відділення №5', 'address' => null];
+        $other = ['delivery' => 'other', 'city' => 'Ніжин', 'np_office' => null, 'address' => 'вул. Шевченка, 1'];
+        $pickup = ['delivery' => 'pickup', 'city' => 'Київ', 'np_office' => 'Відділення №5', 'address' => null];
+
+        $this->ok('Нова Пошта: місто й відділення',
+            OrderFlow::deliveryAddress($np) === 'Київ, Відділення №5');
+        $this->ok('інша доставка: місто й вулиця',
+            OrderFlow::deliveryAddress($other) === 'Ніжин, вул. Шевченка, 1');
+        $this->ok('самовивіз адреси не має', OrderFlow::deliveryAddress($pickup) === '');
+
+        $vars = ['number' => 'BOFU-1', 'name' => 'Марія', 'phone' => '+380500000000',
+                 'delivery' => 'Нова Пошта', 'address' => OrderFlow::deliveryAddress($np),
+                 'items' => "• Мед липовий, 0.5 л × 2\n• Прополіс × 1",
+                 'total' => '600.00', 'store' => 'Магазин №1'];
+        $text = Notify::interpolate(Notify::DEFAULT_TEMPLATES['order_new'], $vars);
+        $this->ok('адреса в повідомленні є', str_contains($text, 'Київ, Відділення №5'));
+        $this->ok('видно, що замовили', str_contains($text, '• Мед липовий, 0.5 л × 2'));
+        $this->ok('телефон окремим рядком', str_contains($text, "\n+380500000000"));
+        $this->ok('телефон стоїть перед імʼям',
+            strpos($text, '+380500000000') < strpos($text, 'Клієнт: Марія'));
+        $this->ok('порожніх рядків немає', !str_contains($text, "\n\n"));
+
+        $text = Notify::interpolate(Notify::DEFAULT_TEMPLATES['order_new'],
+            ['address' => '', 'items' => ''] + $vars);
+        $this->ok('без адреси й позицій рядки зникають, а не порожніють',
+            !str_contains($text, "\n\n"));
+        $this->ok('решта полів на місці', str_contains($text, 'Доставка: Нова Пошта')
+            && str_contains($text, 'Клієнт: Марія'));
+
+        $this->testItemsSummary();
+    }
+
+    /** Список позицій: варіант у назві, кількість завжди, довге замовлення обрізане */
+    private function testItemsSummary(): void
+    {
+        $orderId = DB::insert('orders', [
+            'number' => 'BOFU-TEST-' . bin2hex(random_bytes(3)), 'name' => 'Тест', 'phone' => '+380500000001',
+            'delivery' => 'np', 'total' => 0, 'created_at' => now(),
+        ]);
+        try {
+            DB::insert('order_items', ['order_id' => $orderId, 'title' => 'Мед липовий',
+                'variant_name' => '0.5 л', 'price' => 300, 'qty' => 2, 'sum' => 600]);
+            DB::insert('order_items', ['order_id' => $orderId, 'title' => 'Прополіс',
+                'variant_name' => null, 'price' => 120, 'qty' => 1, 'sum' => 120]);
+            $this->ok('варіант у назві, кількість у кожного рядка',
+                OrderFlow::itemsSummary($orderId) === "• Мед липовий, 0.5 л × 2\n• Прополіс × 1");
+
+            for ($i = 0; $i < 3; $i++) {
+                DB::insert('order_items', ['order_id' => $orderId, 'title' => 'Свічка ' . $i,
+                    'variant_name' => null, 'price' => 50, 'qty' => 1, 'sum' => 50]);
+            }
+            $short = OrderFlow::itemsSummary($orderId, 2);
+            $this->ok('довге замовлення обрізане', substr_count($short, "\n") === 2);
+            $this->ok('і сказано, скільки лишилось', str_contains($short, '…та ще 3 поз.'));
+            $this->ok('порожнє замовлення дає порожній рядок', OrderFlow::itemsSummary(0) === '');
+        } finally {
+            DB::delete('order_items', 'order_id = ?', [$orderId]);
+            DB::delete('orders', 'id = ?', [$orderId]);
+        }
     }
 }
 

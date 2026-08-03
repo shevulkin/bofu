@@ -39,6 +39,20 @@ class OrderFlow
     public static function deliveryLabel(?string $delivery): string
     { return self::DELIVERY[$delivery] ?? (string)$delivery; }
 
+    /**
+     * Куди везти, одним рядком: «Київ, Відділення №5».
+     *
+     * Назви способу доставки тут немає — вона йде окремим полем, а тут лише
+     * адреса. Самовивіз повертає порожній рядок: адреси в нього немає, і
+     * вигадувати її не треба (порожній рядок шаблон приберає сам).
+     */
+    public static function deliveryAddress(array $o): string
+    {
+        $parts = ($o['delivery'] ?? '') === 'pickup' ? []
+            : [$o['city'] ?? '', $o['np_office'] ?? '', $o['address'] ?? ''];
+        return implode(', ', array_filter(array_map('trim', array_map('strval', $parts)), fn($p) => $p !== ''));
+    }
+
     // ------------------------------------------------------------------ читання
 
     public static function order(int $id): ?array
@@ -54,6 +68,27 @@ class OrderFlow
 
     public static function items(int $orderId): array
     { return DB::all('SELECT * FROM order_items WHERE order_id = ? ORDER BY id', [$orderId]); }
+
+    /**
+     * Що замовили — списком для сповіщення: «• Мед липовий, 0.5 л × 2».
+     *
+     * Довгі замовлення обрізаємо: у месенджері повідомлення однаково згорнеться,
+     * а продавцю з першого погляду треба зрозуміти, чи є в нього це на складі —
+     * решту він побачить в адмінці. Кількість показуємо завжди, навіть «× 1»:
+     * без неї рядок «× 2» серед інших читається як частина назви.
+     */
+    public static function itemsSummary(int $orderId, int $limit = 8): string
+    {
+        $items = self::items($orderId);
+        $lines = [];
+        foreach (array_slice($items, 0, $limit) as $i) {
+            $title = trim((string)$i['title']);
+            if (($i['variant_name'] ?? '') !== '') $title .= ', ' . $i['variant_name'];
+            $lines[] = '• ' . $title . ' × ' . (int)$i['qty'];
+        }
+        if (count($items) > $limit) $lines[] = '• …та ще ' . (count($items) - $limit) . ' поз.';
+        return implode("\n", $lines);
+    }
 
     /** Позиції всього замовлення (з усіх підзамовлень) — для списків і листів */
     public static function allItems(int $parentId): array
@@ -392,6 +427,8 @@ class OrderFlow
         Notify::fire('order_new', [
             'number' => $child['number'], 'name' => $child['name'], 'phone' => $child['phone'],
             'delivery' => self::deliveryLabel($child['delivery']),
+            'address' => self::deliveryAddress($child),
+            'items' => self::itemsSummary((int)$child['id']),
             'total' => number_format((float)$child['total'], 2, '.', ' '),
             'store' => $store,
         ], $child['store_id'] ? (int)$child['store_id'] : null);
