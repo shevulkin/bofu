@@ -42,6 +42,25 @@ class Viber
         self::api('send_message', $p);
     }
 
+    /**
+     * «Це справді ви?» перед входом у вже привʼязаний акаунт — навіщо, див.
+     * Telegram::askConfirm(). Viber не має окремих callback-ів: натиснута кнопка
+     * приходить звичайним повідомленням, текст якого — її ActionBody.
+     */
+    private static function askConfirm(string $viberId, array $row): void
+    {
+        $token = (string)$row['token'];
+        self::send($viberId, BotAuth::text('bot_confirm_login', BotAuth::loginFrom($row) + ['messenger' => 'Viber']), [
+            'Type' => 'keyboard', 'DefaultHeight' => false,
+            'Buttons' => [
+                ['ActionType' => 'reply', 'ActionBody' => 'ok:' . $token, 'Columns' => 3,
+                 'Text' => BotAuth::text('bot_confirm_btn'), 'TextSize' => 'regular'],
+                ['ActionType' => 'reply', 'ActionBody' => 'no:' . $token, 'Columns' => 3,
+                 'Text' => BotAuth::text('bot_decline_btn'), 'TextSize' => 'regular'],
+            ],
+        ]);
+    }
+
     /** Кнопка «поділитися номером» — у Viber це окремий тип дії */
     private static function askPhone(string $viberId): void
     {
@@ -126,6 +145,9 @@ class Viber
         $token = trim((string)($ev['context'] ?? ($type === 'message' ? ($ev['message']['text'] ?? '') : '')));
         if ($token === '') return;
 
+        // Відповідь на кнопки «це я» / «це не я» — теж звичайне повідомлення
+        if (preg_match('~^(ok|no):(\w+)$~', $token, $m)) { self::onConfirm((string)$viberId, $m[1], $m[2]); return; }
+
         $row = DB::row('SELECT * FROM auth_tokens WHERE token = ? AND used = 0 AND expires_at > ?', [$token, now()]);
         if (!$row) return;
 
@@ -135,10 +157,34 @@ class Viber
             DB::update('auth_tokens', ['used' => 1, 'chat_id' => $viberId], 'id = ?', [$row['id']]);
             self::send($viberId, BotAuth::text('bot_linked', ['messenger' => 'Viber']));
         } elseif ($row['purpose'] === 'viber_login') {
-            // контакт просимо завжди — пояснення в Telegram::processUpdates()
             DB::update('auth_tokens', ['chat_id' => $viberId], 'id = ?', [$row['id']]);
-            self::askPhone((string)$viberId);
+            // привʼязаний id підтверджує вхід кнопкою, решта — надсилає контакт;
+            // пояснення в BotAuth::linkedUser і Telegram::processUpdates()
+            if (BotAuth::linkedUser('viber_id', (string)$viberId)) {
+                self::askConfirm((string)$viberId, $row);
+            } else {
+                self::askPhone((string)$viberId);
+            }
         }
+    }
+
+    /** Натиснуто «це я» / «це не я» — звірку токена з чатом див. Telegram::onCallback() */
+    private static function onConfirm(string $viberId, string $answer, string $token): void
+    {
+        $row = DB::row('SELECT * FROM auth_tokens WHERE token = ? AND purpose = ? AND chat_id = ? AND used = 0 AND expires_at > ?',
+            [$token, 'viber_login', $viberId, now()]);
+        if (!$row) { self::send($viberId, BotAuth::text('bot_expired')); return; }
+
+        if ($answer === 'no') {
+            DB::update('auth_tokens', ['used' => 1], 'id = ?', [(int)$row['id']]);
+            self::send($viberId, BotAuth::text('bot_declined'));
+            return;
+        }
+
+        $known = BotAuth::linkedUser('viber_id', $viberId);
+        if (!$known) { self::askPhone($viberId); return; }
+        self::confirm((int)$row['id'], (int)$known['id'], $viberId,
+            (string)$known['name'], (string)$known['phone']);
     }
 
     /**

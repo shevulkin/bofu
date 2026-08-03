@@ -27,8 +27,17 @@ class Telegram
             CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 10,
         ]);
         $resp = curl_exec($ch);
+        $err = curl_error($ch);
         curl_close($ch);
         $json = json_decode((string)$resp, true);
+        // Відмову Bot API раніше ніхто не бачив: кнопка-посилання на сайт не
+        // надсилалась через «Wrong HTTP URL», а зовні це виглядало як просто
+        // відсутнє повідомлення. Тепер причина лишається в логах.
+        if ($err !== '' || !is_array($json) || !($json['ok'] ?? false)) {
+            @file_put_contents(BOFU_ROOT . '/storage/logs/telegram.log',
+                date('c') . ' ' . $method . ' ' . json_encode($params, JSON_UNESCAPED_UNICODE) . ' => '
+                . ($err !== '' ? 'CURL: ' . $err : substr((string)$resp, 0, 500)) . "\n", FILE_APPEND);
+        }
         return is_array($json) ? $json : [];
     }
 
@@ -39,12 +48,39 @@ class Telegram
         self::api('sendMessage', $p);
     }
 
-    /** Клавіатура з єдиною кнопкою «поділитися номером» */
+    /**
+     * Спитати «це справді ви?» перед входом у вже привʼязаний акаунт.
+     *
+     * Без цього досить було підсунути людині посилання t.me/<бот>?start=<токен>,
+     * створене у СВОЄМУ браузері: вона тисне START у своєму Telegram — і в чужому
+     * браузері відкривається її акаунт. Один дотик, жодного пароля. Тому останнє
+     * слово лишається за кнопкою в чаті, а не за натисканням /start.
+     */
+    private static function askConfirm(string $chatId, array $row): void
+    {
+        $token = (string)$row['token'];
+        self::send($chatId,
+            BotAuth::text('bot_confirm_login', BotAuth::loginFrom($row) + ['messenger' => 'Telegram']),
+            ['inline_keyboard' => [[
+                ['text' => BotAuth::text('bot_confirm_btn'), 'callback_data' => 'ok:' . $token],
+                ['text' => BotAuth::text('bot_decline_btn'), 'callback_data' => 'no:' . $token],
+            ]]]);
+    }
+
+    /**
+     * Клавіатура з єдиною кнопкою «поділитися номером».
+     *
+     * is_persistent, а не one_time_keyboard. На десктопі й у вебі Telegram не
+     * розгортає одноразову клавіатуру сам: вона ховається за іконкою біля поля
+     * вводу, і людина бачить прохання поділитися номером «кнопкою нижче», а
+     * кнопки нема — вхід глухне. Постійна клавіатура показується одразу.
+     * Прибираємо її все одно ми самі, у sayDone.
+     */
     private static function askPhone(string $chatId): void
     {
         self::send($chatId, BotAuth::text('bot_ask_phone'), [
             'keyboard' => [[['text' => BotAuth::text('bot_ask_phone_btn'), 'request_contact' => true]]],
-            'resize_keyboard' => true, 'one_time_keyboard' => true,
+            'resize_keyboard' => true, 'is_persistent' => true,
         ]);
     }
 
@@ -82,9 +118,11 @@ class Telegram
     {
         if (!self::configured()) return;
         $offset = (int)Settings::get('tg_updates_offset', '0');
-        $resp = self::api('getUpdates', ['offset' => $offset + 1, 'timeout' => 0, 'allowed_updates' => '["message"]']);
+        $resp = self::api('getUpdates',
+            ['offset' => $offset + 1, 'timeout' => 0, 'allowed_updates' => '["message","callback_query"]']);
         foreach (($resp['result'] ?? []) as $upd) {
             $offset = max($offset, (int)$upd['update_id']);
+            if (isset($upd['callback_query'])) { self::onCallback($upd['callback_query']); continue; }
             $msg = $upd['message'] ?? null;
             if (!$msg) continue;
             $chatId = (string)($msg['chat']['id'] ?? '');
@@ -107,18 +145,54 @@ class Telegram
                 DB::update('auth_tokens', ['used' => 1, 'chat_id' => $chatId], 'id = ?', [$row['id']]);
                 self::send($chatId, BotAuth::text('bot_linked', ['messenger' => 'Telegram']));
             } elseif ($row['purpose'] === 'tg_login') {
-                // Токен лишається невикористаним: вхід завершить контакт, а не /start.
-                //
-                // Контакт просимо ЗАВЖДИ, навіть коли номер в акаунті вже є.
-                // Записаний номер нічого не доводить: його міг вписати хто завгодно
-                // з клавіатури — і саме так зʼявився акаунт із чужим +340…, у який
-                // вхід через Telegram потрапляв замість справжнього. Підтверджує
-                // володіння номером лише контакт, надісланий самим месенджером.
                 DB::update('auth_tokens', ['chat_id' => $chatId], 'id = ?', [$row['id']]);
-                self::askPhone($chatId);
+                // Токен у будь-якому разі лишається невикористаним: вхід завершує
+                // не /start, а відповідь у чаті. Привʼязаному чату лишається
+                // підтвердити, що це він (askConfirm); решті — надіслати контакт,
+                // бо лише він доводить володіння номером: вписаний руками номер
+                // не доводить нічого, саме так зʼявився акаунт із чужим +340…
+                $known = BotAuth::linkedUser('tg_chat_id', $chatId);
+                if ($known) {
+                    self::askConfirm($chatId, $row);
+                } else {
+                    self::askPhone($chatId);
+                }
             }
         }
         Settings::set('tg_updates_offset', (string)$offset);
+    }
+
+    /**
+     * Відповідь на кнопки «це я» / «це не я».
+     *
+     * Токен беремо з callback_data, але звіряємо його з чатом: інакше той, кому
+     * дані кнопки не належать, міг би підтвердити чужий вхід, підклавши свій
+     * callback_data. Разом із перевіркою привʼязки це означає, що вхід завершує
+     * рівно той чат, який і почав його своїм /start.
+     */
+    private static function onCallback(array $cq): void
+    {
+        $chatId = (string)($cq['message']['chat']['id'] ?? '');
+        $data = (string)($cq['data'] ?? '');
+        // Telegram крутить годинник на кнопці, доки бот не відповість
+        self::api('answerCallbackQuery', ['callback_query_id' => (string)($cq['id'] ?? '')]);
+        if ($chatId === '' || !preg_match('~^(ok|no):(\w+)$~', $data, $m)) return;
+
+        $row = DB::row('SELECT * FROM auth_tokens WHERE token = ? AND purpose = ? AND chat_id = ? AND used = 0 AND expires_at > ?',
+            [$m[2], 'tg_login', $chatId, now()]);
+        if (!$row) { self::send($chatId, BotAuth::text('bot_expired')); return; }
+
+        if ($m[1] === 'no') {
+            // Токен гасимо: сторінка, що його чекає, більше нічого не дочекається
+            DB::update('auth_tokens', ['used' => 1], 'id = ?', [(int)$row['id']]);
+            self::send($chatId, BotAuth::text('bot_declined'));
+            return;
+        }
+
+        $known = BotAuth::linkedUser('tg_chat_id', $chatId);
+        if (!$known) { self::askPhone($chatId); return; }   // привʼязку зняли, доки думали
+        self::confirm((int)$row['id'], (int)$known['id'], $chatId,
+            (string)$known['name'], (string)$known['phone']);
     }
 
     /**

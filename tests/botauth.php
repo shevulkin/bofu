@@ -27,6 +27,9 @@ final class BotAuthTest
             $this->testFindByMessengerId();
             $this->testCreatesNew();
             $this->testInactiveGetsNothing();
+            $this->testLinkedUser();
+            $this->testLoginFrom();
+            $this->testSiteUrl();
             $this->testTexts();
         } finally {
             $this->tearDown();
@@ -137,6 +140,84 @@ final class BotAuthTest
         $phone = '+380670000944';
         $this->mkUser(['phone' => $phone, 'active' => 0]);
         $this->ok('входу не дано', BotAuth::resolveUser('tg_chat_id', 'tg-944', $phone, 'Хтось') === 0);
+    }
+
+    /**
+     * Привʼязаний месенджер пускає без контакту — на цьому тримається повторний
+     * вхід. Вимкнений акаунт мусить лишитись за бортом і тут теж, інакше
+     * «вимкнено» перестало б щось означати.
+     */
+    private function testLinkedUser(): void
+    {
+        $this->group('привʼязаний месенджер пускає без контакту');
+        $u = $this->mkUser(['tg_chat_id' => 'tg-linked-1', 'phone' => '+380670000977']);
+        $off = $this->mkUser(['viber_id' => 'vb-off-1', 'phone' => '+380670000988', 'active' => 0]);
+
+        $found = BotAuth::linkedUser('tg_chat_id', 'tg-linked-1');
+        $this->ok('знайшли акаунт за привʼязкою', (int)($found['id'] ?? 0) === $u);
+        $this->ok('незнайомий chat_id нічого не дає', BotAuth::linkedUser('tg_chat_id', 'tg-nobody') === null);
+        $this->ok('вимкнений акаунт не пускає', BotAuth::linkedUser('viber_id', 'vb-off-1') === null);
+        $this->ok('чуже поле не приймається', (function () {
+            try { BotAuth::linkedUser('email', 'x'); return false; }
+            catch (InvalidArgumentException $e) { return true; }
+        })());
+        unset($off);
+    }
+
+    /**
+     * «Звідки вхід» у підтвердженні. Головне тут — Edge і Opera не мають
+     * називатись Chrome, а Chrome — Safari: саме за цим рядком людина вирішує,
+     * її це спроба чи чужа.
+     */
+    private function testLoginFrom(): void
+    {
+        $this->group('звідки почався вхід');
+        $chrome = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36';
+        $edge = $chrome . ' Edg/120.0';
+        $iphone = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1 Version/17.0 Mobile/15E148 Safari/604.1';
+
+        $this->ok('Chrome на Windows', AuthTokens::device($chrome) === 'Chrome на Windows');
+        $this->ok('Edge не видає себе за Chrome', AuthTokens::device($edge) === 'Edge на Windows');
+        $this->ok('Safari на iPhone', AuthTokens::device($iphone) === 'Safari на iPhone');
+        $this->ok('порожній User-Agent нічого не вигадує', AuthTokens::device('') === null);
+
+        $vars = BotAuth::loginFrom(['agent' => 'Firefox на Linux', 'ip' => '203.0.113.7']);
+        $this->ok('підстановки беруться з токена',
+            $vars === ['device' => 'Firefox на Linux', 'ip' => '203.0.113.7']);
+        $this->ok('невідоме показуємо як невідоме',
+            BotAuth::loginFrom([]) === ['device' => 'невідомий пристрій', 'ip' => '—']);
+
+        $text = BotAuth::text('bot_confirm_login', $vars + ['messenger' => 'Telegram']);
+        $this->ok('у тексті підтвердження видно пристрій і IP',
+            str_contains($text, 'Firefox на Linux') && str_contains($text, '203.0.113.7'));
+        $this->ok('незаповнених плейсхолдерів не лишилось', !str_contains($text, '{'));
+    }
+
+    /**
+     * Кнопка-посилання на сайт: локальна адреса Telegram-ом відхиляється
+     * («Wrong HTTP URL») разом з усім повідомленням, тож такої кнопки не має
+     * бути взагалі.
+     */
+    private function testSiteUrl(): void
+    {
+        $this->group('адреса сайту для кнопки в боті');
+        $this->savedSettings['bot_site_url'] = (string)Settings::get('bot_site_url', '');
+        Settings::set('bot_site_url', '');
+        $host = $_SERVER['HTTP_HOST'] ?? null;
+
+        $_SERVER['HTTP_HOST'] = 'localhost';
+        $this->ok('localhost кнопки не дає', BotAuth::siteUrl() === '');
+        $_SERVER['HTTP_HOST'] = '127.0.0.1:8080';
+        $this->ok('петля теж ні', BotAuth::siteUrl() === '');
+        $_SERVER['HTTP_HOST'] = 'shop.example.com';
+        $this->ok('справжній домен дає адресу', str_starts_with(BotAuth::siteUrl(), 'http://shop.example.com'));
+
+        Settings::set('bot_site_url', 'https://bofu.com.ua/');
+        $_SERVER['HTTP_HOST'] = 'localhost';
+        $this->ok('поле в налаштуваннях головніше за автовизначення',
+            BotAuth::siteUrl() === 'https://bofu.com.ua');
+
+        if ($host === null) unset($_SERVER['HTTP_HOST']); else $_SERVER['HTTP_HOST'] = $host;
     }
 
     private function testTexts(): void
