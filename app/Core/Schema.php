@@ -7,7 +7,7 @@ declare(strict_types=1);
  */
 class Schema
 {
-    public const VERSION = 17;
+    public const VERSION = 18;
 
     /** Оновлення існуючої бази до поточної версії без втрати даних */
     public static function upgrade(): void
@@ -122,6 +122,10 @@ class Schema
             // із чужим номером усе одно не мав на нього права.
             self::dedupePhones();
             self::createAll();
+        }
+        if ($ver < 18) {
+            // збережені адреси доставки покупця
+            self::createAll(); // user_addresses
         }
         Settings::set('schema_version', (string)self::VERSION);
     }
@@ -325,6 +329,17 @@ class Schema
                 'subtotal' => 'num default 0', 'discount' => 'num default 0', 'total' => 'num default 0',
                 'created_at' => 'ts',
             ],
+            // Адреси доставки, збережені покупцем. Отримувача не зберігаємо навмисно —
+            // його вказують у кожному замовленні окремо (див. Addresses).
+            'user_addresses' => [
+                'id' => 'id', 'user_id' => 'int',
+                'label' => 'str null',              // «Дім», «Робота» — необовʼязкова мітка
+                'delivery' => "str default 'np'",   // np|other; самовивіз адреси не потребує
+                'city' => 'str null', 'city_ref' => 'str null', 'np_office' => 'str null',
+                'address' => 'str null',
+                'is_default' => 'bool default 0',
+                'used_at' => 'str null', 'created_at' => 'ts',
+            ],
             'order_items' => [
                 'id' => 'id', 'order_id' => 'int', 'product_id' => 'int null', 'variant_id' => 'int null',
                 'title' => 'str', 'variant_name' => 'str null', 'price' => 'num', 'qty' => 'int', 'sum' => 'num',
@@ -415,6 +430,7 @@ class Schema
             'seller_stores' => ['user_id', 'store_id'],
             'user_roles' => ['user_id', 'role'],
             'user_notify_prefs' => ['user_id'],
+            'user_addresses' => ['user_id'],
         ];
         foreach ($idx as $table => $columns) {
             foreach ($columns as $col) {
