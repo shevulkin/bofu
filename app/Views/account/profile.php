@@ -79,10 +79,12 @@
         <div class="form-grid">
           <div class="field"><label>Назва <span class="dim">(необовʼязково)</span></label>
             <input type="text" name="label" id="addrLabel" placeholder="Дім, Робота, Мамі"></div>
+          <?php /* autocomplete="new-password" і назва не "city" — інакше Chrome накриває
+                    наш список власною підстановкою адрес (див. checkout) */ ?>
           <div class="field addr-np"><label>Місто</label>
-            <input type="text" name="city" id="npCity" placeholder="Почніть вводити місто…" autocomplete="off"></div>
+            <input type="text" name="np_city" id="npCity" placeholder="Почніть вводити місто…" autocomplete="new-password" data-lpignore="true" data-1p-ignore data-form-type="other" spellcheck="false"></div>
           <div class="field addr-np"><label>Відділення / поштомат</label>
-            <input type="text" name="np_office" id="npOffice" placeholder="Номер, вулиця або «поштомат»" autocomplete="off"></div>
+            <input type="text" name="np_office" id="npOffice" placeholder="Номер, вулиця або «поштомат»" autocomplete="new-password" data-lpignore="true" data-1p-ignore data-form-type="other" spellcheck="false"></div>
         </div>
         <div class="field addr-other" style="display:none"><label>Адреса</label>
           <input type="text" name="address" id="addrAddress" placeholder="Місто, вулиця, будинок — як вам зручно отримати"></div>
