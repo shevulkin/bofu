@@ -777,8 +777,6 @@ body.help-on [data-help] *{pointer-events:none}
 .notify-row .checkbox{align-items:flex-start;margin:0;font-size:13.5px}
 /* канал не налаштований — галку лишаємо робочою, але видно, що зараз не дійде */
 .notify-row .checkbox.is-off{opacity:.65}
-/* перелік подій — довідка під галкою, тому з відступом під текст, а не під бокс */
-.notify-what{font-size:12.5px;margin:4px 0 0 30px}
 
 /* ---------- мініатюра товару біля заголовка ---------- */
 .prod-title{display:flex;align-items:center;gap:14px;min-width:0}
