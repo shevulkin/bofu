@@ -113,21 +113,27 @@ class Catalog
             . ' ORDER BY own DESC, sort, name');
     }
 
-    /** Бренд товару як рядок довідника (кешовано на запит) */
-    public static function brand(array $product): ?array
+    /** Бренди товару (кешовано на запит). Свій — першим: із нього починається відповідь «чий це товар» */
+    public static function brandsOf(array $product): array
     {
         static $cache = [];
-        $id = (int)($product['brand_id'] ?? 0);
-        if (!$id) return null;
-        if (!array_key_exists($id, $cache)) {
-            $cache[$id] = DB::row('SELECT * FROM brands WHERE id = ?', [$id]) ?: null;
-        }
-        return $cache[$id];
+        $pid = (int)($product['id'] ?? 0);
+        if (!$pid) return [];
+        return $cache[$pid] ??= DB::all(
+            'SELECT b.* FROM product_brands pb JOIN brands b ON b.id = pb.brand_id
+             WHERE pb.product_id = ? ORDER BY b.own DESC, b.sort, b.name', [$pid]);
     }
 
-    public static function brandName(array $product): string
+    /** Один рядок довідника за id — для сторінок, де товару ще немає */
+    public static function brand(int $id): ?array
     {
-        return (string)(self::brand($product)['name'] ?? '');
+        return $id ? (DB::row('SELECT * FROM brands WHERE id = ?', [$id]) ?: null) : null;
+    }
+
+    /** «Beekeeper of Ukraine, Медоїжка» — для характеристик і розмітки */
+    public static function brandNames(array $product): array
+    {
+        return array_map(fn($b) => (string)$b['name'], self::brandsOf($product));
     }
 
     /**
@@ -141,10 +147,17 @@ class Catalog
         return $set !== '' ? $set : (string)cfg('app_name');
     }
 
-    /** Чи це наш власний товар — саме за брендом, а не за категорією чи наявністю */
+    /** Чи є серед брендів товару наш */
     public static function isOwnBrand(array $product): bool
     {
-        return !empty(self::brand($product)['own']);
+        foreach (self::brandsOf($product) as $b) if (!empty($b['own'])) return true;
+        return false;
+    }
+
+    /** Бренди-партнери — усі, крім нашого */
+    public static function partnerBrands(array $product): array
+    {
+        return array_values(array_filter(self::brandsOf($product), fn($b) => empty($b['own'])));
     }
 
     /**
@@ -156,17 +169,20 @@ class Catalog
      */
     public static function madeToOrderNote(array $product): string
     {
-        return self::isOwnBrand($product)
-            ? 'Виготовимо під замовлення — ми виробник 🍯'
-            : 'Виготовляється на замовлення — привеземо для вас';
+        if (!self::isOwnBrand($product)) return 'Виготовляється на замовлення — привеземо для вас';
+        $partners = self::partnerBrands($product);
+        if (!$partners) return 'Виготовимо під замовлення — ми виробник 🍯';
+        // Спільне виробництво: назвати партнера чесніше, ніж і замовчати його,
+        // і привласнити чужу роботу словом «ми виробник».
+        $names = implode(' і ', array_map(fn($b) => '«' . $b['name'] . '»', $partners));
+        return 'Виготовляємо разом із ' . $names . ' — під замовлення 🍯';
     }
 
     /** Те саме коротко — там, де напис доклеюється до іншого рядка */
     public static function madeToOrderShort(array $product): string
     {
-        return self::isOwnBrand($product)
-            ? 'виготовимо під замовлення'
-            : 'виготовляється на замовлення';
+        if (!self::isOwnBrand($product)) return 'виготовляється на замовлення';
+        return self::partnerBrands($product) ? 'виготовляємо спільно' : 'виготовимо під замовлення';
     }
 
     /** Чи має товар активні варіанти (кешовано на запит) */
@@ -283,6 +299,14 @@ class Catalog
         if (!empty($f['store_id'])) {
             $where[] = self::IN_STOCK_EXISTS;
             $params[] = (int)$f['store_id'];
+        }
+        // Бренд: приймаємо і slug (посилання з картки товару), і id (адмінка).
+        // EXISTS, а не JOIN, — товар під двома брендами не має задвоюватись.
+        if (!empty($f['brand'])) {
+            $where[] = 'EXISTS (SELECT 1 FROM product_brands pb JOIN brands b ON b.id = pb.brand_id
+                                 WHERE pb.product_id = p.id AND (b.slug = ? OR b.id = ?))';
+            $params[] = (string)$f['brand'];
+            $params[] = (int)$f['brand'];
         }
         if (!empty($f['attr']) && is_array($f['attr'])) {
             foreach ($f['attr'] as $slug => $values) {

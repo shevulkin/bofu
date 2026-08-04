@@ -2,7 +2,7 @@
   <div class="container">
     <div class="kicker">Магазин</div>
     <div class="section-head">
-      <h2><?= e($current_cat['name'] ?? 'Всі товари') ?></h2>
+      <h2><?= $brand ? e($brand['name']) : e($current_cat['name'] ?? 'Всі товари') ?></h2>
       <div style="display:flex;gap:16px;align-items:center">
         <span class="dim"><?= count($products) ?> позицій</span>
         <button type="button" class="btn btn-line btn-sm" id="filtersToggle">Фільтри <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" style="margin-left:4px;vertical-align:-1px"><path d="M3 5l5 6 5-6"/></svg></button>
@@ -14,6 +14,12 @@
       </div>
     </div>
 
+    <?php /* прийшли з картки товару по бренду — показуємо це й даємо вийти */ ?>
+    <?php if ($brand): ?>
+      <p class="dim" style="margin:0 0 18px">Товари бренду <b><?= e($brand['name']) ?></b>
+        · <a href="<?= e(url('/shop')) ?>">показати всі</a></p>
+    <?php endif; ?>
+
     <div class="cat-chips">
       <a class="chip <?= !$current_cat ? 'active' : '' ?>" href="<?= e(url('/shop')) ?>">Усі</a>
       <?php foreach ($categories as $c): ?>
@@ -24,6 +30,8 @@
     <?php $hasActiveFilters = $filters['q'] !== '' || $filters['min'] !== '' || $filters['max'] !== '' || !empty($filters['store_id']) || $filters['sort'] !== '' || array_filter($filters['attr']); ?>
     <form class="filters" id="filtersPanel" method="get" action="<?= e(url('/shop')) ?>" style="<?= $hasActiveFilters ? '' : 'display:none' ?>">
       <?php if ($current_cat): ?><input type="hidden" name="cat" value="<?= e($current_cat['slug']) ?>"><?php endif; ?>
+      <?php /* бренд не має губитись, коли всередині нього щось шукають */ ?>
+      <?php if ($brand): ?><input type="hidden" name="brand" value="<?= e($brand['slug']) ?>"><?php endif; ?>
       <div class="filters-row">
         <div><label>Пошук</label><input type="text" name="q" value="<?= e($filters['q']) ?>" placeholder="Назва, опис, артикул…"></div>
         <div><label>Ціна від</label><input type="number" name="min" value="<?= e($filters['min']) ?>" min="0" step="1"></div>

@@ -70,12 +70,12 @@ class Seeder
             }
             $pid = DB::insert('products', [
                 'category_id' => $catIds[$cat], 'name' => $name, 'slug' => slugify($name),
-                'brand_id' => $own ? $ownBrandId : null,
                 'short_desc' => $desc, 'description' => $desc,
                 'base_price' => $price, 'type' => $type, 'active' => 1, 'featured' => $featured,
                 'made_to_order' => 1, 'image' => $photos[0] ?? null,
                 'created_at' => now(), 'updated_at' => now(),
             ]);
+            if ($own) DB::insert('product_brands', ['product_id' => $pid, 'brand_id' => $ownBrandId]);
             foreach ($photos as $i => $path) {
                 $abs = BOFU_ROOT . '/assets/' . $path;
                 $size = @getimagesize($abs);

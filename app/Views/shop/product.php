@@ -111,14 +111,21 @@
           <?php endif; ?>
         </div>
 
-        <?php $brandName = Catalog::brandName($p); ?>
-        <?php if ($attrs || $brandName !== ''): ?>
+        <?php $prodBrands = Catalog::brandsOf($p); ?>
+        <?php if ($attrs || $prodBrands): ?>
           <h2 style="font-size:22px;margin-top:34px">Характеристики</h2>
           <table class="specs">
             <?php /* Бренд першим рядком: «чий це товар» — питання, яке виникає
-                     раніше за вагу й обʼєм, надто коли позиція не наша. */ ?>
-            <?php if ($brandName !== ''): ?>
-              <tr><td>Бренд</td><td><?= e($brandName) ?></td></tr>
+                     раніше за вагу й обʼєм, надто коли позиція не наша.
+                     Посиланням — щоб з нього можна було піти до решти товарів
+                     цього виробника, як і з будь-якої іншої характеристики. */ ?>
+            <?php if ($prodBrands): ?>
+              <tr>
+                <td><?= count($prodBrands) > 1 ? 'Бренди' : 'Бренд' ?></td>
+                <td><?php foreach ($prodBrands as $i => $b): ?><?= $i ? ', ' : '' ?><a
+                      href="<?= e(url('/shop?brand=' . $b['slug'])) ?>"
+                      title="Показати всі товари цього бренду"><?= e($b['name']) ?></a><?php endforeach; ?></td>
+              </tr>
             <?php endif; ?>
             <?php foreach ($attrs as $a): ?>
               <tr>

@@ -16,7 +16,10 @@ class Products
         $params = [];
         if ($q !== '') { $where[] = '(p.name LIKE ? OR p.sku LIKE ?)'; $params[] = "%$q%"; $params[] = "%$q%"; }
         if ($cat) { $where[] = 'p.category_id = ?'; $params[] = $cat; }
-        if ($brand) { $where[] = 'p.brand_id = ?'; $params[] = $brand; }
+        if ($brand) {
+            $where[] = 'EXISTS (SELECT 1 FROM product_brands pb WHERE pb.product_id = p.id AND pb.brand_id = ?)';
+            $params[] = $brand;
+        }
         $products = DB::all(
             'SELECT p.*, c.name AS cat_name FROM products p LEFT JOIN categories c ON c.id = p.category_id
              WHERE ' . implode(' AND ', $where) . ' ORDER BY p.id DESC', $params);
@@ -28,7 +31,7 @@ class Products
             'products' => $products, 'categories' => Catalog::categories(),
             'stores' => Catalog::stores(), 'stocks' => Catalog::stockTotals(), 'variant_count' => $variantCount,
             'q' => $q, 'cat' => $cat,
-            'brand' => $brand ? Catalog::brand(['brand_id' => $brand]) : null,
+            'brand' => Catalog::brand($brand),
             'page_title' => 'Товари — адмінка',
         ], 'layouts/admin');
     }
@@ -98,7 +101,6 @@ class Products
                 'category_id' => (int)($_POST['category_id'] ?? 0),
                 'name' => $name, 'slug' => $slug,
                 'sku' => trim($_POST['sku'] ?? '') ?: null,
-                'brand_id' => (int)($_POST['brand_id'] ?? 0) ?: null,
                 'short_desc' => trim($_POST['short_desc'] ?? '') ?: null,
                 'description' => trim($_POST['description'] ?? '') ?: null,
                 'base_price' => $_POST['base_price'] === '' ? null : (float)$_POST['base_price'],
@@ -109,6 +111,7 @@ class Products
                 'low_stock_threshold' => ($_POST['low_stock_threshold'] ?? '') === '' ? null : (int)$_POST['low_stock_threshold'],
                 'created_at' => now(), 'updated_at' => now(),
             ]);
+            self::syncBrands($id, (array)($_POST['brand_ids'] ?? []));
             flash('success', 'Товар створено — додайте фото, атрибути та ціни');
             redirect('/admin/products/' . $id);
         }
@@ -271,7 +274,6 @@ class Products
                 'name' => trim($_POST['name'] ?? $p['name']),
                 'category_id' => (int)($_POST['category_id'] ?? $p['category_id']),
                 'sku' => trim($_POST['sku'] ?? '') ?: null,
-                'brand_id' => (int)($_POST['brand_id'] ?? 0) ?: null,
                 'short_desc' => trim($_POST['short_desc'] ?? '') ?: null,
                 'description' => trim($_POST['description'] ?? '') ?: null,
                 'base_price' => ($_POST['base_price'] ?? '') === '' ? null : (float)$_POST['base_price'],
@@ -283,6 +285,7 @@ class Products
                 'low_stock_threshold' => ($_POST['low_stock_threshold'] ?? '') === '' ? null : (int)$_POST['low_stock_threshold'],
                 'updated_at' => now(),
             ], 'id = ?', [$id]);
+            self::syncBrands($id, (array)($_POST['brand_ids'] ?? []));
 
             // Варіанти: назви з характеристик не чіпаємо — вони збираються автоматично
             $withOptions = Attrs::variantOptionsFor($id);
@@ -396,5 +399,19 @@ class Products
         // картки, і масове редагування. StockWatch сам перевірить, чи є що
         // повідомляти, тож зайвого виклику не буде.
         if ($canStock) StockWatch::fulfil($productId, $variantId);
+    }
+
+    /**
+     * Бренди товару: приймаємо лише ті id, що справді є в довіднику, —
+     * інакше підробленою формою можна було б звʼязати товар із чим завгодно.
+     */
+    private static function syncBrands(int $productId, array $ids): void
+    {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $ids))));
+        DB::delete('product_brands', 'product_id = ?', [$productId]);
+        foreach ($ids as $bid) {
+            if (!DB::row('SELECT id FROM brands WHERE id = ?', [$bid])) continue;
+            DB::insert('product_brands', ['product_id' => $productId, 'brand_id' => $bid]);
+        }
     }
 }
