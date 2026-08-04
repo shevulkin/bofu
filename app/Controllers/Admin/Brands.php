@@ -34,7 +34,7 @@ class Brands
     private static function counts(): array
     {
         $out = [];
-        foreach (DB::all('SELECT brand_id, COUNT(*) AS n FROM products WHERE brand_id IS NOT NULL GROUP BY brand_id') as $r) {
+        foreach (DB::all('SELECT brand_id, COUNT(*) AS n FROM product_brands GROUP BY brand_id') as $r) {
             $out[(int)$r['brand_id']] = (int)$r['n'];
         }
         return $out;
@@ -88,7 +88,7 @@ class Brands
     private static function delete(int $id): void
     {
         if (!$id) return;
-        $used = (int)DB::val('SELECT COUNT(*) FROM products WHERE brand_id = ?', [$id]);
+        $used = (int)DB::val('SELECT COUNT(*) FROM product_brands WHERE brand_id = ?', [$id]);
         if ($used) {
             flash('error', 'Бренд не видалено: на ньому ' . $used . ' товар(ів). '
                 . 'Спершу перепідпишіть їх або зніміть галку «Активний».');

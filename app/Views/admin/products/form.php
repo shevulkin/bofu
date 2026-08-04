@@ -67,27 +67,41 @@ $roEdit = $canEdit ? '' : 'disabled';
 
 Поле необовʼязкове. Якщо ведете склад у таблиці чи 1С, ставте тут той самий код, що й там.">
         <label>Артикул</label><input type="text" name="sku" value="<?= e($p['sku'] ?? '') ?>" <?= $roEdit ?>></div>
-      <div class="field" data-help-title="Бренд (чий товар)"
+      <?php
+      $prodBrands = $p ? Catalog::brandsOf($p) : [];
+      $chosenBrands = array_map(fn($b) => (int)$b['id'], $prodBrands);
+      // неактивний бренд лишається у списку, поки він призначений цьому товару:
+      // інакше вибір мовчки злетів би при найближчому збереженні
+      $brandList = Catalog::brands(true);
+      foreach ($prodBrands as $b) {
+          if (!$b['active']) $brandList[] = $b;
+      }
+      ?>
+      <div class="field" style="min-width:260px" data-help-title="Бренди (чий товар)"
            data-help="Хто виробник цієї позиції. Список ведеться в розділі «Каталог → Бренди».
 
-Товар бренду, позначеного там як «наш», показує покупцю «Виготовимо під замовлення — ми виробник». Для решти напис нейтральний: «Виготовляється на замовлення — привеземо для вас».
+Брендів може бути кілька — це і є спільне виробництво. Позначте свій і партнерів: товар знайдеться в пошуку за кожним із них, а покупець побачить «Виготовляємо разом із «Медоїжка»».
 
-Це твердження про походження товару, тому вгадувати його сайт не буде: порожній бренд означає «не наше».
+Лише свій бренд — «Виготовимо під замовлення, ми виробник». Лише чужий або жодного — «Виготовляється на замовлення, привеземо для вас».
 
-Бренд також показується покупцю в характеристиках і йде в розмітку для Google.">
-        <label>Бренд</label>
-        <select name="brand_id" <?= $roEdit ?>>
-          <option value="">— не вказано —</option>
-          <?php foreach (Catalog::brands(true) as $b): ?>
-            <option value="<?= (int)$b['id'] ?>" <?= (int)($p['brand_id'] ?? 0) === (int)$b['id'] ? 'selected' : '' ?>>
-              <?= e($b['name']) ?><?= $b['own'] ? ' — наш' : '' ?></option>
+Це твердження про походження товару, тому вгадувати його сайт не буде: порожньо означає «не наше».
+
+Бренди також показуються покупцю в характеристиках і йдуть у розмітку для Google.">
+        <label>Бренди</label>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <?php foreach ($brandList as $b): ?>
+            <label class="checkbox" style="margin:0">
+              <input type="checkbox" name="brand_ids[]" value="<?= (int)$b['id'] ?>"
+                     <?= in_array((int)$b['id'], $chosenBrands, true) ? 'checked' : '' ?> <?= $roEdit ?>>
+              <span><?= e($b['name']) ?><?php if ($b['own']): ?> <span class="dim">— наш</span><?php endif; ?><?php
+                if (!$b['active']): ?> <span class="dim">— неактивний</span><?php endif; ?></span>
+            </label>
           <?php endforeach; ?>
-          <?php /* бренд міг стати неактивним уже після того, як його призначили —
-                   не даємо вибору мовчки злетіти при найближчому збереженні */ ?>
-          <?php $cur = Catalog::brand($p ?? []); if ($cur && !$cur['active']): ?>
-            <option value="<?= (int)$cur['id'] ?>" selected><?= e($cur['name']) ?> — неактивний</option>
+          <?php if (!$brandList): ?>
+            <span class="dim">Список порожній — <a href="<?= e(url('/admin/brands')) ?>">додайте бренди</a>.</span>
           <?php endif; ?>
-        </select></div>
+        </div>
+      </div>
       <div class="field" data-help-title="Тип"
            data-help="Що це за позиція: звичайний Товар, Послуга, Відео чи Курс.
 

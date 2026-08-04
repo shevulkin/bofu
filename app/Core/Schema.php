@@ -7,7 +7,7 @@ declare(strict_types=1);
  */
 class Schema
 {
-    public const VERSION = 27;
+    public const VERSION = 28;
 
     /** Оновлення існуючої бази до поточної версії без втрати даних */
     public static function upgrade(): void
@@ -258,6 +258,20 @@ class Schema
                 DB::query('UPDATE products SET brand_id = ? WHERE brand = ?', [$id, $name]);
             }
         }
+        if ($ver < 28) {
+            // Спільне виробництво: воскопрес роблять разом, і покупець має
+            // знайти його і за нашим брендом, і за брендом партнера. Один
+            // brand_id цього не вміє, а склеєна назва «A & B» не бренд:
+            // за пошуком «Медоїжка» такий товар не знайдеться взагалі.
+            self::createAll(); // product_brands
+            foreach (DB::all('SELECT id, brand_id FROM products WHERE brand_id IS NOT NULL') as $p) {
+                $exists = DB::row('SELECT id FROM product_brands WHERE product_id = ? AND brand_id = ?',
+                    [(int)$p['id'], (int)$p['brand_id']]);
+                if (!$exists) {
+                    DB::insert('product_brands', ['product_id' => (int)$p['id'], 'brand_id' => (int)$p['brand_id']]);
+                }
+            }
+        }
         Settings::set('schema_version', (string)self::VERSION);
     }
 
@@ -381,6 +395,12 @@ class Schema
                 'id' => 'id', 'name' => 'str', 'slug' => 'str unique',
                 'own' => 'bool default 0', 'active' => 'bool default 1', 'sort' => 'int default 0',
             ],
+            // Брендів у товару може бути кілька: спільне виробництво — це не
+            // окремий бренд «A & B», а той самий товар під обома. Тоді пошук
+            // по будь-якому з них його знаходить, а не половина покупців.
+            'product_brands' => [
+                'id' => 'id', 'product_id' => 'int', 'brand_id' => 'int',
+            ],
             'stores' => [
                 'id' => 'id', 'name' => 'str', 'slug' => 'str unique', 'city' => 'str null',
                 'address' => 'str null', 'phone' => 'str null', 'active' => 'bool default 1', 'sort' => 'int default 0',
@@ -398,8 +418,10 @@ class Schema
             'products' => [
                 'id' => 'id', 'category_id' => 'int', 'name' => 'str', 'slug' => 'str unique',
                 'sku' => 'str null',
-                'brand_id' => 'int null',  // чий товар — довідник brands
-                'brand' => 'str null',     // застаріле текстове поле; лишилось до міграції 27, не читається
+                // застарілі поля бренду: до міграції 28 бренд був один, до 27 — текстом.
+                // Не читаються; чий товар — тепер product_brands.
+                'brand_id' => 'int null',
+                'brand' => 'str null',
                 'short_desc' => 'text null', 'description' => 'text null',
                 'base_price' => 'num null', // null => "За запитом"
                 'old_price' => 'num null',
@@ -596,6 +618,7 @@ class Schema
             'product_variants' => ['product_id'],
             'product_images' => ['product_id'],
             'product_attrs' => ['product_id', 'attribute_id'],
+            'product_brands' => ['product_id', 'brand_id'],
             'attribute_values' => ['attribute_id'],
             'attribute_categories' => ['attribute_id', 'category_id'],
             'variant_options' => ['variant_id', 'attribute_id'],

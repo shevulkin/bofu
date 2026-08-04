@@ -22,8 +22,12 @@ class Shop
             'store_id' => (int)($_GET['store'] ?? 0) ?: null,
             'sort' => $_GET['sort'] ?? '',
             'attr' => (array)($_GET['attr'] ?? []),
+            'brand' => trim((string)($_GET['brand'] ?? '')),
         ];
         $products = Catalog::search($filters);
+        // назва бренду для заголовка: людина прийшла сюди з картки товару
+        $brand = $filters['brand'] === '' ? null
+            : DB::row('SELECT * FROM brands WHERE slug = ? OR id = ?', [$filters['brand'], (int)$filters['brand']]);
 
         // Обрані товари інших категорій (як у дизайні)
         $other = DB::all('SELECT * FROM products WHERE active = 1 AND featured = 1' .
@@ -35,6 +39,7 @@ class Shop
             'products' => $products,
             'other_products' => $other,
             'filters' => $filters,
+            'brand' => $brand,
             'stores' => Catalog::stores(),
             'attr_options' => Catalog::filterableAttrs($current['id'] ?? null),
             'page_title' => ($current ? $current['name'] . ' — ' : '') . 'Магазин — ' . cfg('app_name'),

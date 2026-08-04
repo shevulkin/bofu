@@ -22,8 +22,9 @@
     'name' => $p['name'], 'description' => $p['short_desc'] ?? '',
     // бренд Google показує в картці товару; без нього позицію легше сплутати з чужою.
     // Порожній не віддаємо: array_filter нижче прибирає його разом із null
-    'brand' => Catalog::brandName($p) !== ''
-        ? ['@type' => 'Brand', 'name' => Catalog::brandName($p)] : null,
+    // кілька брендів (спільне виробництво) віддаємо масивом — schema.org це дозволяє
+    'brand' => ($bs = array_map(fn($n) => ['@type' => 'Brand', 'name' => $n], Catalog::brandNames($p)))
+        ? (count($bs) === 1 ? $bs[0] : $bs) : null,
     // усі фото товару: головне першим — Google показує їх у картці товару
     'image' => array_map(fn($i) => asset($i['path']), $images ?? [['path' => Catalog::photo($p)]]),
     'offers' => ['@type' => 'Offer', 'priceCurrency' => 'UAH', 'price' => $price ?? 0,
