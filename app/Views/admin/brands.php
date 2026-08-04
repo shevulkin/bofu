@@ -12,13 +12,6 @@
 
 Назви не повторюються: якщо бренд уже є в списку, додати другий такий самий сайт не дасть.">
     <label>Назва</label><input type="text" name="name" required></div>
-  <label class="checkbox" style="margin-bottom:10px" data-help-title="Наш бренд"
-         data-help="Позначає ваше власне виробництво.
-
-Лише товари цього бренду отримують напис «ми виробник». Це твердження про походження товару, тому сайт ніколи не ставить його сам — тільки за цією галкою.
-
-Наш бренд може бути лише один: коли ставите галку іншому, з попереднього вона знімається.">
-    <input type="checkbox" name="own" value="1"> Наш бренд</label>
   <button class="btn btn-gold btn-sm" type="submit">+ Додати</button>
 </form>
 
@@ -29,11 +22,10 @@
   <?= Csrf::field() ?><input type="hidden" name="_action" value="save">
   <table class="tbl">
     <tr>
-      <th>Назва</th>
-      <th class="col-mid" data-help-title="Колонка «Наш»"
-          data-help="Ваше власне виробництво. Лише ці товари сайт підписує «ми виробник».
+      <th data-help-title="Колонка «Назва»"
+          data-help="Як бренд називається. Покупець бачить цю назву в характеристиках товару.
 
-Наш бренд може бути лише один — галка переїжджає, а не додається.">Наш</th>
+Позначка «наш» стоїть на вашому власному виробництві — лише його товари сайт підписує «ми виробник». Такий бренд може бути тільки один; щоб перенести позначку, натисніть «Зробити нашим» у сусідньому бренді.">Назва</th>
       <th class="col-mid" data-help-title="Колонка «Активний»"
           data-help="Чи пропонувати бренд у картці товару.
 
@@ -45,19 +37,32 @@
     </tr>
     <?php foreach ($brands as $b): $n = (int)($counts[(int)$b['id']] ?? 0); ?>
       <tr>
-        <td><input type="text" name="brand[<?= (int)$b['id'] ?>][name]" value="<?= e($b['name']) ?>"></td>
-        <td class="col-mid"><input type="checkbox" name="brand[<?= (int)$b['id'] ?>][own]" <?= $b['own'] ? 'checked' : '' ?>></td>
+        <td>
+          <div style="display:flex;align-items:center;gap:10px">
+            <input type="text" name="brand[<?= (int)$b['id'] ?>][name]" value="<?= e($b['name']) ?>">
+            <?php /* ознака, а не галка: свій бренд один і міняється раз на все
+                     життя магазину — колонка під це витрачала місце дарма */ ?>
+            <?php if ($b['own']): ?><span class="status-pill st-new">наш</span><?php endif; ?>
+          </div>
+        </td>
         <td class="col-mid"><input type="checkbox" name="brand[<?= (int)$b['id'] ?>][active]" <?= $b['active'] ? 'checked' : '' ?>></td>
         <td class="col-mid">
           <?php if ($n): ?>
             <a href="<?= e(url('/admin/products?brand=' . (int)$b['id'])) ?>" title="Показати ці товари"><?= $n ?></a>
           <?php else: ?><span class="dim">0</span><?php endif; ?>
         </td>
-        <td class="col-mid">
+        <td class="col-mid" style="white-space:nowrap">
+          <?php /* «наш» переносимо окремою дією, а не галкою в масовому збереженні:
+                   це не правка рядка, а перепризначення на весь каталог */ ?>
+          <?php if (!$b['own']): ?>
+            <button class="btn btn-line btn-xs" type="submit" form="own<?= (int)$b['id'] ?>"
+                    title="Зробити цей бренд власним виробництвом">Зробити нашим</button>
+          <?php endif; ?>
           <?php /* видалення лише в порожнього: інакше товари лишились би без відповіді, чиї вони */ ?>
           <?php if (!$n): ?>
             <button class="btn btn-danger btn-xs" type="submit" form="del<?= (int)$b['id'] ?>">Видалити</button>
-          <?php else: ?><span class="dim" title="Спершу перепідпишіть товари">—</span><?php endif; ?>
+          <?php endif; ?>
+          <?php if ($b['own'] && $n): ?><span class="dim">—</span><?php endif; ?>
         </td>
       </tr>
     <?php endforeach; ?>
@@ -67,11 +72,19 @@
     <span class="admin-save-note"></span>
   </div>
 </form>
-<?php /* форми видалення поза таблицею: вкладені форми браузер не приймає */ ?>
-<?php foreach ($brands as $b): if (!empty($counts[(int)$b['id']])) continue; ?>
-  <form id="del<?= (int)$b['id'] ?>" method="post" action="<?= e(url('/admin/brands')) ?>" style="display:none">
-    <?= Csrf::field() ?><input type="hidden" name="_action" value="delete">
-    <input type="hidden" name="id" value="<?= (int)$b['id'] ?>">
-  </form>
+<?php /* форми дій поза таблицею: вкладені форми браузер не приймає */ ?>
+<?php foreach ($brands as $b): ?>
+  <?php if (empty($counts[(int)$b['id']])): ?>
+    <form id="del<?= (int)$b['id'] ?>" method="post" action="<?= e(url('/admin/brands')) ?>" style="display:none">
+      <?= Csrf::field() ?><input type="hidden" name="_action" value="delete">
+      <input type="hidden" name="id" value="<?= (int)$b['id'] ?>">
+    </form>
+  <?php endif; ?>
+  <?php if (!$b['own']): ?>
+    <form id="own<?= (int)$b['id'] ?>" method="post" action="<?= e(url('/admin/brands')) ?>" style="display:none">
+      <?= Csrf::field() ?><input type="hidden" name="_action" value="own">
+      <input type="hidden" name="id" value="<?= (int)$b['id'] ?>">
+    </form>
+  <?php endif; ?>
 <?php endforeach; ?>
 <?php endif; ?>
