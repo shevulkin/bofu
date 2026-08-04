@@ -98,8 +98,16 @@
       <form class="admin-card" method="post" action="<?= e(url('/profile')) ?>">
         <?= Csrf::field() ?><input type="hidden" name="_action" value="notify">
         <h2 class="h-serif" style="font-size:20px">Сповіщення</h2>
-        <p class="dim" style="margin-bottom:16px">Оберіть, куди вам надсилати. Показано лише те,
-          що ввімкнув адміністратор — решту він вимкнув для всіх.</p>
+        <?php
+        // Перелік подій один раз для всього блоку, а не під кожною галкою:
+        // канали здебільшого несуть те саме, і повторений тричі список
+        // читається як помилка верстки, а не як пояснення.
+        $notify_all_events = [];
+        foreach ($notify_options as $st) foreach ($st['events'] as $ev) $notify_all_events[$ev] = true;
+        ?>
+        <p class="dim" style="margin-bottom:16px">Оберіть, куди вам надсилати<?php
+          if ($notify_all_events): ?>: <?= e(implode(', ', array_keys($notify_all_events))) ?><?php
+          endif; ?>. Показано лише те, що ввімкнув адміністратор — решту він вимкнув для всіх.</p>
         <?php foreach ($notify_options as $ch => $st): ?>
           <div class="notify-row">
             <label class="checkbox<?= $st['ready'] ? '' : ' is-off' ?>"
@@ -108,8 +116,6 @@
               <span><b><?= e($notify_channels[$ch] ?? $ch) ?></b><?php
                 if (!$st['ready']): ?> <span class="dim">— <?= e($st['hint']) ?></span><?php endif; ?></span>
             </label>
-            <?php /* що саме сюди приходитиме — не вибір людини, а пояснення */ ?>
-            <div class="dim notify-what"><?= e(implode(', ', array_unique($st['events']))) ?></div>
           </div>
         <?php endforeach; ?>
         <button class="btn btn-gold" type="submit" style="margin-top:16px">💾 Зберегти сповіщення</button>
@@ -118,7 +124,8 @@
 
     <div class="admin-card">
       <h2 class="h-serif" style="font-size:20px">Месенджери для сповіщень і входу</h2>
-      <p class="dim" style="margin-bottom:16px">Підключіть месенджер — сюди приходитимуть сповіщення про замовлення та коди входу за номером телефону.</p>
+      <p class="dim" style="margin-bottom:16px">Підключіть месенджер — сюди приходитимуть коди входу за номером телефону,
+        а також сповіщення, якщо цей месенджер є у списку вище.</p>
       <div style="display:flex;flex-direction:column;gap:12px">
         <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
           <b style="min-width:90px">Telegram</b>
@@ -130,6 +137,9 @@
           <?php else: ?>
             <span class="dim">бот ще не налаштований адміністратором</span>
           <?php endif; ?>
+          <?php if (!isset($notify_options['telegram'])): ?>
+            <span class="dim">— лише коди входу, сповіщення в Telegram вимкнені</span>
+          <?php endif; ?>
         </div>
         <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
           <b style="min-width:90px">Viber</b>
@@ -140,6 +150,11 @@
             <span class="dim" id="viberLinkHint"></span>
           <?php else: ?>
             <span class="dim">запрацює після публікації сайту на хостингу</span>
+          <?php endif; ?>
+          <?php /* месенджер підключений, але сповіщень туди не буде — кажемо це
+                    тут, інакше людина підключає його заради них і чекає марно */ ?>
+          <?php if (!isset($notify_options['viber'])): ?>
+            <span class="dim">— лише коди входу, сповіщення в Viber вимкнені</span>
           <?php endif; ?>
         </div>
       </div>
