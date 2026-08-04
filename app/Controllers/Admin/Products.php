@@ -180,7 +180,7 @@ class Products
             foreach (DB::all('SELECT id FROM product_variants WHERE product_id = ?', [$id]) as $v) {
                 DB::delete('variant_options', 'variant_id = ?', [(int)$v['id']]);
             }
-            foreach (['product_images','product_variants','product_attrs','store_prices','store_stock'] as $t) DB::delete($t, 'product_id = ?', [$id]);
+            foreach (['product_images','product_variants','product_attrs','product_brands','store_prices','store_stock'] as $t) DB::delete($t, 'product_id = ?', [$id]);
             DB::delete('products', 'id = ?', [$id]);
             // видаляти файл лише якщо фото не прикріплене ще до якогось іншого товару/банера/галереї
             foreach (array_unique($paths) as $path) if (!Media::usage($path)) Images::delete($path);
