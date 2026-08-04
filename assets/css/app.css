@@ -173,8 +173,11 @@ label{display:block;font-size:12.5px;color:var(--muted);font-weight:600;letter-s
 input.is-bad,input.is-bad:focus{border-color:var(--danger)}
 .field{margin-bottom:18px}
 .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 22px}
-/* Одна колонка — там, де в полях довгі значення (ключі, токени, адреси) */
-.form-grid-1{grid-template-columns:1fr}
+/* Одна колонка — там, де в полях довгі значення (ключі, токени, адреси).
+   Зі стелею: найдовше, що сюди кладуть, — Google Client ID на 72 символи,
+   і поле в півтори тисячі пікселів під нього не потрібне. На вузькому екрані
+   minmax дає колонці стиснутись, а не вилізти за край. */
+.form-grid-1{grid-template-columns:minmax(0,720px)}
 /* Приховане значення з кнопкою «показати»: крапки захищають від погляду
    через плече, кнопка дає звірити ключ, не перезаписуючи його наосліп. */
 .field-secret{position:relative}
@@ -904,7 +907,7 @@ body.ce-on [data-ce].ce-just-saved{outline:2px solid var(--ok);outline-offset:3p
 /* ---------- список блоків контенту в адмінці ---------- */
 /* Поле з посиланням займає цілий рядок сітки: адреса на 60+ символів у пів
    колонки обрізається, і переконатись, що збережено саме те, неможливо. */
-.content-block .field:has(input[type=url]){grid-column:1/-1}
+.content-block .field:has(input[type=url]){grid-column:1/-1;max-width:720px}
 .content-block{padding:14px 0;border-top:1px solid var(--bg3)}
 .content-block:first-of-type{border-top:0;padding-top:0}
 .content-block-head{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;margin-bottom:10px}
