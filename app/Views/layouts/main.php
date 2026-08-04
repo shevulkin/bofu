@@ -51,5 +51,6 @@
 </div>
 <button class="to-top" id="toTop" aria-label="Догори">↑</button>
 <script src="<?= e(asset_v('js/app.js')) ?>" defer></script>
+<?php if (EditMode::active()) echo View::partial('partials/edit_bar'); ?>
 </body>
 </html>

@@ -28,12 +28,12 @@
         'tiktok' => '<svg viewBox="0 0 24 24" width="46" height="46"><path fill="#f6ecd9" d="M16.6 2h3.1c.2 1.9 1.4 3.6 3.3 4v3.1c-1.2 0-2.4-.4-3.4-1v6.9a6.9 6.9 0 1 1-6.9-6.9c.3 0 .7 0 1 .1v3.3a3.6 3.6 0 1 0 2.9 3.5V2z"/><path fill="#25F4EE" d="M16.6 2h1c.1 1 .5 1.9 1.2 2.7A5.6 5.6 0 0 1 16.6 2z" opacity=".9"/><path fill="#FE2C55" d="M13.7 8.3v1c-.3-.1-.7-.1-1-.1a6.9 6.9 0 0 0-4.9 11.7 6.9 6.9 0 0 1 5.9-11.7z" opacity=".85"/></svg>',
       ];
       $nets = [
-        ['Instagram', Content::title('social_instagram', '#'), 'Фото та сторіз із пасіки', $icons['instagram']],
-        ['YouTube', Content::title('social_youtube', '#'), 'Навчальні відео та огляди', $icons['youtube']],
-        ['TikTok', Content::title('social_tiktok', '#'), 'Короткі відео щодня', $icons['tiktok']],
+        ['Instagram', 'social_instagram', 'Фото та сторіз із пасіки', $icons['instagram']],
+        ['YouTube', 'social_youtube', 'Навчальні відео та огляди', $icons['youtube']],
+        ['TikTok', 'social_tiktok', 'Короткі відео щодня', $icons['tiktok']],
       ];
-      foreach ($nets as [$name, $link, $desc, $icon]): ?>
-        <a class="card" href="<?= e($link) ?>" target="_blank" rel="noopener" style="align-items:center;text-align:center;padding:40px 24px">
+      foreach ($nets as [$name, $ckey, $desc, $icon]): ?>
+        <a class="card" href="<?= e(Content::title($ckey, '#')) ?>" target="_blank" rel="noopener" style="align-items:center;text-align:center;padding:40px 24px"<?= edit_mark($ckey) ?>>
           <div style="height:48px;display:flex;align-items:center;justify-content:center"><?= $icon ?></div>
           <div class="card-title" style="margin-top:12px"><?= e($name) ?></div>
           <div class="card-desc" style="margin-top:6px"><?= e($desc) ?></div>

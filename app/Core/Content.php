@@ -31,6 +31,18 @@ class Content
         return $img !== '' ? $img : $default;
     }
 
+    /**
+     * Чи шлях указує на фото сайту. Приймаємо лише завантажене (`uploads/`) або
+     * вбудоване в дизайн (`img/`): шлях приходить із браузера, і без цієї
+     * перевірки в блок можна було б записати будь-що з диска.
+     */
+    public static function isSafeImagePath(string $path): bool
+    {
+        return $path !== ''
+            && (str_starts_with($path, 'uploads/') || str_starts_with($path, 'img/'))
+            && !str_contains($path, '..');
+    }
+
     public static function set(string $key, array $fields): void
     {
         $exists = DB::row(DB::driver()==='sqlite' ? 'SELECT 1 FROM content_blocks WHERE "key"=?' : 'SELECT 1 FROM content_blocks WHERE `key`=?', [$key]);

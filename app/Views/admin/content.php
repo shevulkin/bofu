@@ -1,30 +1,81 @@
+<?php
+/**
+ * Список усіх блоків сайту. Головний спосіб редагування — режим прямо на
+ * вітрині, тому запрошення туди стоїть найпершим: людині, яка шукає «де
+ * змінити той абзац під заголовком», список ключів не допоможе, а сторінка —
+ * так. Список лишається для тих випадків, коли треба пройтись по всьому
+ * одразу або дістати блок, якого зараз немає на екрані.
+ */
+$imageKeys = [];   // ключі з фото — приховані форми для них лежать унизу сторінки
+?>
 <div class="admin-head"><h1 class="h-serif">Контент сайту</h1></div>
-<p class="dim" style="margin-bottom:18px">Тут редагуються всі тексти й фото сайту. Зміни з'являються одразу після збереження.</p>
 
-<form method="post" action="<?= e(url('/admin/content')) ?>">
+<div class="admin-card" style="border-color:var(--gold);display:flex;gap:20px;align-items:center;flex-wrap:wrap">
+  <div style="flex:1;min-width:260px">
+    <h2 class="h-serif" style="margin-bottom:6px">Редагувати прямо на сайті</h2>
+    <p class="dim" style="font-size:13.5px;line-height:1.6">
+      Відкриється звичайний сайт, але кожен редагований блок буде обведено.
+      Натискаєте на потрібний текст чи фото — збоку відкривається поле саме для нього.
+      Так не треба вгадувати, який рядок у цьому списку відповідає якому місцю на сторінці.
+    </p>
+  </div>
+  <form method="post" action="<?= e(url('/edit/on')) ?>"><?= Csrf::field() ?>
+    <input type="hidden" name="back" value="/">
+    <button class="btn btn-gold" type="submit">✏️ Редагувати на сайті</button>
+  </form>
+</div>
+
+<p class="dim" style="margin-bottom:18px">Нижче — ті самі блоки списком. Зміни зʼявляються на сайті одразу після збереження.</p>
+
+<form method="post" action="<?= e(url('/admin/content')) ?>" id="contentForm">
   <?= Csrf::field() ?><input type="hidden" name="_action" value="save">
   <?php foreach ($groups as $groupName => $keys): ?>
     <div class="admin-card">
       <h2 class="h-serif"><?= e($groupName) ?></h2>
-      <?php foreach ($keys as $key): $b = $blocks[$key] ?? ['title' => '', 'body' => '']; ?>
-        <div class="form-grid">
-          <div class="field" data-help-title="<?= e($field_labels[$key] ?? $key) ?> — заголовок"
-               data-help="Верхній, помітний рядок цього блоку на сайті — те, що людина читає першим і найчастіше єдине, що встигає прочитати.
-
-Тримайте коротко: довгий заголовок ламає верстку на телефоні й перестає працювати як заголовок.
-
-Зміни зʼявляються на сайті одразу після збереження, без жодного підтвердження.">
-            <label><?= e($field_labels[$key] ?? ($key . ' — заголовок/значення')) ?></label>
-            <input type="text" name="block[<?= e($key) ?>][title]" value="<?= e($b['title'] ?? '') ?>">
+      <?php foreach ($keys as $key):
+        $fields = ContentSchema::fields($key);
+        // списки мають власні розділи внизу — тут показувати нічого
+        $editable = array_filter($fields, fn($f) => !in_array($f['type'], ContentSchema::JSON_TYPES, true));
+        if (!$editable) continue;
+        $b = $blocks[$key] ?? [];
+        $hasImage = ContentSchema::type($key, 'image') === 'image';
+        if ($hasImage) $imageKeys[$key] = ContentSchema::field($key, 'image')['label'] ?? 'Фото';
+      ?>
+        <div class="content-block">
+          <div class="content-block-head">
+            <b><?= e(ContentSchema::label($key)) ?></b>
+            <span class="dim"><?= e(ContentSchema::where($key)) ?></span>
           </div>
-          <div class="field" data-help-title="<?= e($field_labels[$key] ?? $key) ?> — текст"
-               data-help="Абзац під заголовком цього блоку.
-
-Переноси рядків зберігаються, тож можна писати кількома абзацами. Розмітка й посилання не підтримуються — це звичайний текст.
-
-Порожнє поле означає, що на сайті буде лише заголовок, без пояснення під ним.">
-            <label>текст</label>
-            <textarea name="block[<?= e($key) ?>][body]" rows="2"><?= e($b['body'] ?? '') ?></textarea>
+          <div class="form-grid">
+            <?php foreach ($editable as $name => $f): ?>
+              <?php if ($f['type'] === 'image'): ?>
+                <div class="field">
+                  <label><?= e($f['label']) ?></label>
+                  <?php $img = (string)($b['image'] ?? ''); ?>
+                  <img src="<?= e(asset($img !== '' ? $img : 'img/about-photo.webp')) ?>"
+                       style="width:120px;height:120px;object-fit:cover;border-radius:4px;border:1px solid var(--line)">
+                  <div style="margin-top:8px">
+                    <button class="btn btn-line btn-xs" type="button"
+                            onclick="var f=document.getElementById('setImg_<?= e($key) ?>');MediaPicker.open(function(p){f.querySelector('[name=media_path]').value=p;f.submit();})">Змінити фото</button>
+                  </div>
+                  <?php if (!empty($f['hint'])): ?><p class="field-hint"><?= e($f['hint']) ?></p><?php endif; ?>
+                </div>
+              <?php else: ?>
+                <div class="field"
+                     data-help-title="<?= e(ContentSchema::label($key) . ' — ' . $f['label']) ?>"
+                     data-help="<?= e(($f['hint'] ?? '') . "\n\n" . 'Де це на сайті: ' . ContentSchema::where($key)) ?>">
+                  <label><?= e($f['label']) ?></label>
+                  <?php if ($f['type'] === 'textarea' || $f['type'] === 'lines'): ?>
+                    <textarea name="block[<?= e($key) ?>][<?= e($name) ?>]" rows="<?= $f['type'] === 'lines' ? 3 : 4 ?>"><?= e($b[$name] ?? '') ?></textarea>
+                  <?php else: ?>
+                    <input type="<?= $f['type'] === 'url' ? 'url' : 'text' ?>"
+                           name="block[<?= e($key) ?>][<?= e($name) ?>]"
+                           value="<?= e($b[$name] ?? '') ?>"<?= $f['type'] === 'url' ? ' placeholder="https://"' : '' ?>>
+                  <?php endif; ?>
+                  <?php if (!empty($f['hint'])): ?><p class="field-hint"><?= e($f['hint']) ?></p><?php endif; ?>
+                </div>
+              <?php endif; ?>
+            <?php endforeach; ?>
           </div>
         </div>
       <?php endforeach; ?>
@@ -32,20 +83,16 @@
   <?php endforeach; ?>
 
   <div class="admin-card">
-    <h2 class="h-serif" data-help-title="Часті запитання (FAQ)"
-        data-help="Блок питань і відповідей на сайті.
-
-Пишіть сюди те, про що покупці справді питають по телефону: скільки йде доставка, як зберігати мед, чи є самовивіз. Кожне питання тут — це дзвінок, якого не буде.
-
-Формулюйте питання словами покупця, а не своїми: «Коли приїде замовлення?» краще за «Терміни виконання».
-
-Щоб додати нове — заповніть пару полів «+ Нове питання» внизу. Щоб прибрати наявне — очистіть його поле питання й збережіть.">
-      Часті запитання (FAQ)</h2>
+    <?php $faqDef = ContentSchema::field('faq', 'body'); ?>
+    <h2 class="h-serif" data-help-title="<?= e(ContentSchema::label('faq')) ?>"
+        data-help="<?= e($faqDef['hint'] . "\n\n" . 'Щоб прибрати питання — очистіть його поле й збережіть.') ?>">
+      <?= e(ContentSchema::label('faq')) ?></h2>
+    <p class="dim" style="margin-bottom:14px"><?= e(ContentSchema::where('faq')) ?></p>
     <div id="faqList">
       <?php foreach ($faq as $qa): ?>
         <div class="form-grid">
-          <div class="field"><label>Питання</label><input type="text" name="faq_q[]" value="<?= e($qa[0]) ?>"></div>
-          <div class="field"><label>Відповідь</label><textarea name="faq_a[]" rows="2"><?= e($qa[1]) ?></textarea></div>
+          <div class="field"><label>Питання</label><input type="text" name="faq_q[]" value="<?= e($qa[0] ?? '') ?>"></div>
+          <div class="field"><label>Відповідь</label><textarea name="faq_a[]" rows="2"><?= e($qa[1] ?? '') ?></textarea></div>
         </div>
       <?php endforeach; ?>
       <div class="form-grid">
@@ -60,45 +107,15 @@
   </div>
 </form>
 
-<div class="admin-card" style="margin-top:22px">
-  <h2 class="h-serif" data-help-title="Фото блоків"
-      data-help="Великі зображення головної сторінки й сторінки «Про мене».
-
-Головний банер — найперше, що бачить відвідувач. Беріть широке горизонтальне фото хорошої якості: воно розтягується на всю ширину екрана, і будь-яка зернистість там помітна.
-
-Фото змінюються окремо від текстів — у цього блоку своя кнопка, і «Зберегти всі тексти» вище на них не впливає.
-
-Самі файли лежать у Медіа-бібліотеці: там видно, де кожне фото використовується, і звідти їх не можна випадково видалити, поки вони стоять тут.">
-    Фото блоків (головний банер, «про мене»)</h2>
-  <div style="display:flex;gap:26px;flex-wrap:wrap">
-    <?php foreach (['hero' => 'Головний банер', 'about_teaser' => 'Фото «Хто я» (головна)', 'about_full' => 'Фото сторінки «Про мене»'] as $key => $label): ?>
-      <div style="text-align:center">
-        <?php $img = $blocks[$key]['image'] ?? ''; ?>
-        <img src="<?= e(asset($img ?: 'img/about-photo.webp')) ?>" style="width:150px;height:150px;object-fit:cover;border-radius:4px;border:1px solid var(--line)">
-        <div class="dim" style="margin:6px 0"><?= e($label) ?></div>
-        <form method="post" action="<?= e(url('/admin/content')) ?>" id="setImg_<?= $key ?>" style="display:none">
-          <?= Csrf::field() ?><input type="hidden" name="_action" value="set_image"><input type="hidden" name="key" value="<?= $key ?>"><input type="hidden" name="media_path" value="">
-        </form>
-        <button class="btn btn-line btn-xs" type="button" onclick="MediaPicker.open(function(p){var f=document.getElementById('setImg_<?= $key ?>');f.querySelector('[name=media_path]').value=p;f.submit();})">Змінити фото</button>
-      </div>
-    <?php endforeach; ?>
-  </div>
-</div>
-
 <div class="admin-card">
-  <h2 class="h-serif" data-help-title="Галерея"
-      data-help="Стрічка фотографій на сайті — пасіка, процес, продукція, люди.
-
-Це те, що переконує краще за будь-який текст: покупець бачить, що за медом стоїть справжнє господарство.
-
-Кожному фото можна дати підпис — він показується покупцю. Пишіть по суті: «Медозбір 2026», «Наші вулики навесні».
-
-Не заливайте сюди все підряд: десять хороших знімків працюють краще за сотню випадкових.">
-    Галерея</h2>
+  <?php $galDef = ContentSchema::field('gallery', 'body'); ?>
+  <h2 class="h-serif" data-help-title="<?= e(ContentSchema::label('gallery')) ?>"
+      data-help="<?= e($galDef['hint']) ?>"><?= e(ContentSchema::label('gallery')) ?></h2>
+  <p class="dim" style="margin-bottom:14px"><?= e(ContentSchema::where('gallery')) ?></p>
   <div class="img-grid">
     <?php foreach ($gallery as $i => $g): ?>
       <div class="img-cell">
-        <img src="<?= e(asset($g[1])) ?>" alt="">
+        <img src="<?= e(asset(Images::displayThumb($g[1]))) ?>" alt="">
         <span class="dim"><?= e($g[0]) ?></span>
         <form method="post" action="<?= e(url('/admin/content')) ?>"><?= Csrf::field() ?>
           <input type="hidden" name="_action" value="gallery_del"><input type="hidden" name="index" value="<?= $i ?>">
@@ -115,5 +132,13 @@
     </form>
     <span class="dim">Вибір із сайту або завантаження з ПК; фото стискається автоматично</span>
   </div>
-<?= View::partial('partials/media_picker') ?>
 </div>
+
+<?php /* форми зміни фото — поза формою текстів: вкладені <form> браузер не приймає */ ?>
+<?php foreach ($imageKeys as $key => $label): ?>
+  <form method="post" action="<?= e(url('/admin/content')) ?>" id="setImg_<?= e($key) ?>" style="display:none">
+    <?= Csrf::field() ?><input type="hidden" name="_action" value="set_image">
+    <input type="hidden" name="key" value="<?= e($key) ?>"><input type="hidden" name="media_path" value="">
+  </form>
+<?php endforeach; ?>
+<?= View::partial('partials/media_picker') ?>

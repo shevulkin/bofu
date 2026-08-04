@@ -110,6 +110,16 @@ function request_path(): string {
 
 function is_post(): bool { return ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST'; }
 
+/**
+ * Позначка редагованої зони в шаблоні вітрини. Пишеться прямо в тег:
+ * `<h1<?= edit_mark('hero_title', 'title') ?>>`. Поза режимом редагування
+ * не додає нічого. Подробиці — EditMode::mark().
+ */
+function edit_mark(string $key, ?string $field = null): string
+{
+    return EditMode::mark($key, $field);
+}
+
 function json_response($data, int $code = 200): never {
     http_response_code($code);
     header('Content-Type: application/json; charset=utf-8');

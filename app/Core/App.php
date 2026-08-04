@@ -104,6 +104,14 @@ class App
         if ($path === '/role/reset' && $method === 'POST') { Controllers\RoleController::reset(); }
         if ($path === '/role/store' && $method === 'POST') { Controllers\RoleController::store(); }
 
+        // режим редагування — теж поза адмінкою: правлять блоки на самій вітрині,
+        // і гейт /admin закрив би збереження саме там, де воно потрібне
+        if ($path === '/edit/on' && $method === 'POST') { Controllers\EditController::on(); }
+        if ($path === '/edit/off' && $method === 'POST') { Controllers\EditController::off(); }
+        if ($path === '/edit/blocks' && $method === 'GET') { Controllers\EditController::blocks(); }
+        if ($path === '/edit/block' && $method === 'GET') { Controllers\EditController::block(); }
+        if ($path === '/edit/save' && $method === 'POST') { Controllers\EditController::save(); }
+
         // --- вітрина ---
         if ($path === '/') { Controllers\Home::index(); }
         if ($path === '/shop') { Controllers\Shop::index(); }
