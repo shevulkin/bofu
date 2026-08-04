@@ -181,12 +181,31 @@ class Notify
     }
 
     /**
-     * Чи хоче людина цю подію цим каналом. Відсутність рядка = хоче:
-     * інакше ввімкнення нового каналу адміном мовчки нікому б не дійшло.
+     * Подія в рядку налаштувань, коли вибір стосується каналу цілком.
+     * Людина обирає СПОСІБ отримання, а не перелік подій: які саме події
+     * розсилати — рішення адміністратора, і дублювати його в кабінеті
+     * означало б давати покупцю налаштування, яких він не просив.
+     */
+    public const ANY_EVENT = '*';
+
+    /**
+     * Чи хоче людина отримувати сповіщення цим каналом. Відсутність рядка =
+     * хоче: інакше ввімкнення нового каналу адміном мовчки нікому б не дійшло.
+     */
+    public static function wantsChannel(int $userId, string $channel): bool
+    {
+        return self::prefs($userId)[self::ANY_EVENT . '|' . $channel] ?? true;
+    }
+
+    /**
+     * Чи хоче людина цю подію цим каналом. Подія лишається в сигнатурі, бо
+     * саме парами (подія, канал) розсилка й ходить, — але вирішує тепер лише
+     * канал. Старі рядки з конкретними подіями не читаються: saveChannels()
+     * прибирає їх при першому ж збереженні.
      */
     public static function wants(int $userId, string $event, string $channel): bool
     {
-        return self::prefs($userId)[$event . '|' . $channel] ?? true;
+        return self::wantsChannel($userId, $channel);
     }
 
     /** Чи входить користувач у групу отримувачів правила */
@@ -252,22 +271,53 @@ class Notify
     }
 
     /**
-     * Зберігає вибір. Приймаємо лише пари, які людині справді доступні, —
-     * інакше формою можна було б записати собі згоду на те, що адмін вимкнув.
+     * Способи отримання, доступні цій людині, — те, що показуємо в кабінеті.
+     * Канал потрапляє сюди, якщо ним справді може щось прийти: увімкнений
+     * глобально і хоч одне ввімкнене правило адресоване цій людині.
+     *
+     * Які саме події прийдуть — не її вибір, тож перелічуємо їх лише як
+     * пояснення («Нове замовлення, Товар знову в наявності»): інакше з двох
+     * галок «Email» і «Telegram» не видно, про що взагалі йдеться.
+     *
+     * @return array<string,array{on:bool,ready:bool,hint:string,events:string[]}>
      */
-    public static function savePrefs(array $user, array $checked): void
+    public static function channelsFor(array $user): array
     {
         $uid = (int)$user['id'];
-        $allowed = self::optionsFor($user);   // рахуємо ДО видалення, поки кеш ще чинний
+        $out = [];
+        foreach (self::optionsFor($user) as $event => $channels) {
+            foreach (array_keys($channels) as $channel) {
+                if (!isset($out[$channel])) {
+                    [$ready, $hint] = self::readiness($user, $channel);
+                    $out[$channel] = [
+                        'on' => self::wantsChannel($uid, $channel),
+                        'ready' => $ready, 'hint' => $hint, 'events' => [],
+                    ];
+                }
+                $out[$channel]['events'][] = self::EVENTS[$event] ?? $event;
+            }
+        }
+        // порядок як у CHANNELS — щоб не стрибав від того, які правила ввімкнені
+        return array_replace(array_intersect_key(self::CHANNELS, $out), $out);
+    }
+
+    /**
+     * Зберігає вибір способів. Приймаємо лише канали, які людині справді
+     * доступні, — інакше формою можна було б записати собі згоду на те, що
+     * адмін вимкнув. Рядки старого формату (вибір по кожній події) заразом
+     * прибираються: інакше подія, вимкнена колись, глушила б увімкнений канал.
+     */
+    public static function saveChannels(array $user, array $checked): void
+    {
+        $uid = (int)$user['id'];
+        $allowed = self::channelsFor($user);   // рахуємо ДО видалення, поки кеш ще чинний
         DB::delete('user_notify_prefs', 'user_id = ?', [$uid]);
         self::forgetPrefs($uid);
-        foreach ($allowed as $event => $channels) {
-            foreach (array_keys($channels) as $channel) {
-                if (empty($checked[$event][$channel])) {
-                    DB::insert('user_notify_prefs', [
-                        'user_id' => $uid, 'event' => $event, 'channel' => $channel, 'enabled' => 0,
-                    ]);
-                }
+        foreach (array_keys($allowed) as $channel) {
+            if (empty($checked[$channel])) {
+                DB::insert('user_notify_prefs', [
+                    'user_id' => $uid, 'event' => self::ANY_EVENT, 'channel' => $channel, 'enabled' => 0,
+                ]);
             }
         }
     }

@@ -16,7 +16,7 @@ class Profile
             Csrf::verify();
             // сповіщення зберігаються окремою формою — телефон тут не чіпаємо
             if (($_POST['_action'] ?? '') === 'notify') {
-                Notify::savePrefs($u, (array)($_POST['n'] ?? []));
+                Notify::saveChannels($u, (array)($_POST['ch'] ?? []));
                 flash('success', 'Налаштування сповіщень збережено');
                 redirect('/profile');
             }
@@ -56,8 +56,7 @@ class Profile
             'tg_bot' => Telegram::configured() ? Telegram::username() : '',
             'viber_ready' => Viber::configured(),
             'viber_uri' => Viber::configured() ? Viber::uri() : '',
-            'notify_options' => Notify::optionsFor($fresh),
-            'notify_events' => Notify::EVENTS,
+            'notify_options' => Notify::channelsFor($fresh),
             'notify_channels' => Notify::CHANNELS,
             'page_title' => 'Мій профіль — ' . cfg('app_name'),
         ]);
