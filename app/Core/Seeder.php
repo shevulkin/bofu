@@ -51,6 +51,13 @@ class Seeder
             ['queens', 'Неплідна бджоломатка', 'Молода матка до початку яйцекладки.', 450, 11, null, 0, [['Стан','Неплідна'],['Походження','Власна пасіка'],['Доставка','У кліточці, з супроводом']], []],
             ['services', 'Стекування меду', 'Професійна відкачка та стекування меду з рамок.', null, 999, null, 0, [['Формат','Виїзна послуга'],['Термін','За домовленістю'],['Оплата','Індивідуально']], []],
         ];
+        // Свій бренд заводимо одразу: без нього нема кому належати товарам
+        // власного виробництва, і напис «ми виробник» не зʼявився б ніде.
+        $ownBrandId = DB::insert('brands', [
+            'name' => Catalog::ownBrandName(), 'slug' => slugify(Catalog::ownBrandName()) ?: 'own',
+            'own' => 1, 'active' => 1, 'sort' => 0,
+        ]);
+
         foreach ($products as [$cat, $name, $desc, $price, $stock, $img, $featured, $specs, $variants]) {
             $type = $cat === 'films' ? 'video' : ($cat === 'services' ? 'service' : 'product');
             $photos = $img === null ? [] : (array)$img; // перше — головне, решта — додаткові
@@ -63,7 +70,7 @@ class Seeder
             }
             $pid = DB::insert('products', [
                 'category_id' => $catIds[$cat], 'name' => $name, 'slug' => slugify($name),
-                'brand' => $own ? Catalog::ownBrand() : null,
+                'brand_id' => $own ? $ownBrandId : null,
                 'short_desc' => $desc, 'description' => $desc,
                 'base_price' => $price, 'type' => $type, 'active' => 1, 'featured' => $featured,
                 'made_to_order' => 1, 'image' => $photos[0] ?? null,

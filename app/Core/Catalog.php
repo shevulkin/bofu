@@ -106,12 +106,36 @@ class Catalog
         return [$raw, $old];
     }
 
+    /** Довідник брендів: усі або лише активні */
+    public static function brands(bool $activeOnly = false): array
+    {
+        return DB::all('SELECT * FROM brands' . ($activeOnly ? ' WHERE active = 1' : '')
+            . ' ORDER BY own DESC, sort, name');
+    }
+
+    /** Бренд товару як рядок довідника (кешовано на запит) */
+    public static function brand(array $product): ?array
+    {
+        static $cache = [];
+        $id = (int)($product['brand_id'] ?? 0);
+        if (!$id) return null;
+        if (!array_key_exists($id, $cache)) {
+            $cache[$id] = DB::row('SELECT * FROM brands WHERE id = ?', [$id]) ?: null;
+        }
+        return $cache[$id];
+    }
+
+    public static function brandName(array $product): string
+    {
+        return (string)(self::brand($product)['name'] ?? '');
+    }
+
     /**
-     * Бренд самого магазину: ним підписані товари власного виробництва.
-     * Береться з налаштувань, а якщо там порожньо — з назви сайту, щоб
-     * працювало одразу після встановлення й без зайвого поля в адмінці.
+     * Назва бренду самого магазину — потрібна лише там, де рядок довідника ще
+     * не заведений: перша установка й міграція старого текстового поля.
+     * Далі «наше чи ні» вирішує прапорець own у самому бренді.
      */
-    public static function ownBrand(): string
+    public static function ownBrandName(): string
     {
         $set = trim((string)Settings::get('brand_own', ''));
         return $set !== '' ? $set : (string)cfg('app_name');
@@ -120,9 +144,7 @@ class Catalog
     /** Чи це наш власний товар — саме за брендом, а не за категорією чи наявністю */
     public static function isOwnBrand(array $product): bool
     {
-        $brand = trim((string)($product['brand'] ?? ''));
-        if ($brand === '') return false;
-        return mb_strtolower($brand) === mb_strtolower(self::ownBrand());
+        return !empty(self::brand($product)['own']);
     }
 
     /**
