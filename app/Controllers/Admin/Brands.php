@@ -18,6 +18,7 @@ class Brands
             $action = $_POST['_action'] ?? '';
             if ($action === 'add') self::add();
             if ($action === 'save') self::save();
+            if ($action === 'own') self::makeOwn((int)($_POST['id'] ?? 0));
             if ($action === 'delete') self::delete((int)($_POST['id'] ?? 0));
             redirect('/admin/brands');
         }
@@ -47,14 +48,15 @@ class Brands
         if (DB::row('SELECT id FROM brands WHERE name = ?', [$name])) {
             flash('error', 'Такий бренд уже є'); return;
         }
-        $id = DB::insert('brands', [
+        // «наш» тут не питаємо: це рішення про все виробництво, а не поле
+        // нового рядка. Для нього є окрема дія «Зробити нашим».
+        DB::insert('brands', [
             'name' => $name,
             'slug' => self::freeSlug($name),
-            'own' => !empty($_POST['own']) ? 1 : 0,
+            'own' => 0,
             'active' => 1,
             'sort' => (int)DB::val('SELECT COALESCE(MAX(sort),0)+1 FROM brands'),
         ]);
-        if (!empty($_POST['own'])) self::keepSingleOwn($id);
         flash('success', 'Бренд додано');
     }
 
@@ -73,12 +75,21 @@ class Brands
                 // створенні slug із хвостиком. Для незмінної назви freeSlug()
                 // повертає той самий рядок, тож зайвих правок не буде.
                 'slug' => self::freeSlug($name, $id),
-                'own' => !empty($b['own']) ? 1 : 0,
+                // own тут навмисно немає: у таблиці його вже не редагують, і
+                // запис нуля стер би позначку при кожному збереженні назв
                 'active' => !empty($b['active']) ? 1 : 0,
             ], 'id = ?', [$id]);
-            if (!empty($b['own'])) self::keepSingleOwn($id);
         }
         flash('success', 'Збережено');
+    }
+
+    /** Перенести позначку «наш» — вона одна на весь каталог */
+    private static function makeOwn(int $id): void
+    {
+        if (!$id || !DB::row('SELECT id FROM brands WHERE id = ?', [$id])) return;
+        DB::update('brands', ['own' => 1], 'id = ?', [$id]);
+        self::keepSingleOwn($id);
+        flash('success', 'Тепер «наш» — це ' . DB::val('SELECT name FROM brands WHERE id = ?', [$id]));
     }
 
     /**
