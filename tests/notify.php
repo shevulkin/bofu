@@ -34,6 +34,7 @@ final class NotifyTest
             $this->testLegacyPerEventRowsCleared();
             $this->testAdminSwitchesWin();
             $this->testGroups();
+            $this->testPushOfferedToStaffOnly();
             $this->testOrderMessage();
         } finally {
             $this->tearDown();
@@ -47,7 +48,9 @@ final class NotifyTest
     private function setUp(): void
     {
         foreach (self::KEYS as $k) $this->settings[$k] = Settings::get($k, null);
-        $this->rules = DB::all('SELECT id, enabled FROM notification_rules');
+        // recipients теж: перевірки міняють адресата правила, і без відновлення
+        // тест тихо переписав би робочі налаштування сповіщень
+        $this->rules = DB::all('SELECT id, enabled, recipients FROM notification_rules');
         foreach (self::KEYS as $k) Settings::set($k, '1');
 
         // лишаємо ввімкненим рівно одне правило: order_new через telegram
@@ -71,7 +74,8 @@ final class NotifyTest
             else Settings::set($k, $v);
         }
         foreach ($this->rules as $r) {
-            DB::update('notification_rules', ['enabled' => (int)$r['enabled']], 'id = ?', [$r['id']]);
+            DB::update('notification_rules',
+                ['enabled' => (int)$r['enabled'], 'recipients' => $r['recipients']], 'id = ?', [$r['id']]);
         }
         foreach ([$this->admin, $this->customer] as $id) {
             DB::delete('user_notify_prefs', 'user_id = ?', [$id]);
@@ -184,6 +188,31 @@ final class NotifyTest
         $this->ok('покупцю нема чого налаштовувати',
             Notify::optionsFor($this->user($this->customer)) === []
             && Notify::channelsFor($this->user($this->customer)) === []);
+    }
+
+    /**
+     * Push пропонуємо лише тим, хто може підписатися. Підписка живе в
+     * адмінпанелі, а Api::pushSubscribe() відповідає стороннім 403 — покупцю
+     * галка означала б обіцянку, якої нема кому виконати.
+     */
+    private function testPushOfferedToStaffOnly(): void
+    {
+        $this->group('«сповіщення в браузері» — лише персоналу');
+        $rule = DB::row("SELECT id FROM notification_rules WHERE event = 'order_customer' AND channel = 'push'");
+        if (!$rule) { echo "  — правила order_customer/push немає, пропускаємо\n"; return; }
+        DB::update('notification_rules', ['enabled' => 1, 'recipients' => 'customer'], 'id = ?', [$rule['id']]);
+
+        $this->ok('покупцю push не пропонується',
+            !isset(Notify::channelsFor($this->user($this->customer))['push']));
+        $this->ok('і в матриці подій його теж немає',
+            !isset(Notify::optionsFor($this->user($this->customer))['order_customer']['push']));
+
+        // те саме правило, але адресоване персоналу — адміну push доступний
+        DB::update('notification_rules', ['recipients' => 'admins_sellers'], 'id = ?', [$rule['id']]);
+        $this->ok('персоналу — доступний',
+            isset(Notify::channelsFor($this->user($this->admin))['push']));
+
+        DB::update('notification_rules', ['enabled' => 0], 'id = ?', [$rule['id']]);
     }
 
     /**
