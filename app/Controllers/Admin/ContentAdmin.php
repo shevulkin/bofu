@@ -3,103 +3,79 @@ declare(strict_types=1);
 
 namespace Controllers\Admin;
 
-use DB, View, Auth, Content, Images;
+use View, Auth, Content, ContentSave, ContentSchema, Images;
 
+/**
+ * Список усіх блоків сайту.
+ *
+ * Головний спосіб правити контент — режим редагування на самій вітрині
+ * (EditMode): там видно, який блок де стоїть. Ця сторінка лишається другим
+ * шляхом — коли треба пройтись по всьому одразу або знайти блок, якого зараз
+ * немає на екрані. Підписи, підказки й склад полів обидва шляхи беруть
+ * з одного реєстру ContentSchema.
+ */
 class ContentAdmin
 {
-    /** Групи блоків для зручного редагування */
-    private const GROUPS = [
-        'Головний екран' => ['hero_badge', 'hero_title', 'hero_text', 'hero_points'],
-        'Лічильники' => ['counter_graduates', 'counter_courses', 'counter_founded'],
-        'Про мене' => ['about_teaser_title', 'about_teaser', 'about_full'],
-        'Чому я' => ['why_1', 'why_2', 'why_3'],
-        'Курс' => ['course_1', 'course_1_link'],
-        'Заклик' => ['final_cta_title', 'final_cta_text'],
-        'Соцмережі' => ['social_instagram', 'social_youtube', 'social_tiktok'],
-    ];
-
-    /** Людські підписи для окремих ключів (замість технічної назви KEY) */
-    private const FIELD_LABELS = [
-        'social_instagram' => 'Посилання на Instagram (напр. https://www.instagram.com/ваш_акаунт/)',
-        'social_youtube' => 'Посилання на YouTube-канал',
-        'social_tiktok' => 'Посилання на TikTok (напр. https://www.tiktok.com/@ваш_акаунт)',
-    ];
-
     public static function index(): never
     {
         Auth::requireCap('content.manage');
         if (is_post()) {
             $action = $_POST['_action'] ?? 'save';
             if ($action === 'save') {
-                foreach ((array)($_POST['block'] ?? []) as $key => $b) {
-                    if (!preg_match('/^[a-z0-9_]+$/', (string)$key)) continue;
-                    Content::set((string)$key, [
-                        'title' => $b['title'] ?? null,
-                        'body' => $b['body'] ?? null,
-                    ]);
+                foreach ((array)($_POST['block'] ?? []) as $key => $fields) {
+                    if (!ContentSchema::has((string)$key) || !is_array($fields)) continue;
+                    ContentSave::text((string)$key, $fields);
                 }
-                // FAQ окремо (пари питання/відповідь)
+                // FAQ приходить двома паралельними масивами — форма зручніша,
+                // ніж вкладені імена полів; складаємо їх назад у пари
                 if (isset($_POST['faq_q'])) {
-                    $faq = [];
+                    $pairs = [];
                     foreach ((array)$_POST['faq_q'] as $i => $q) {
-                        $a = $_POST['faq_a'][$i] ?? '';
-                        if (trim($q) !== '' && trim($a) !== '') $faq[] = [trim($q), trim($a)];
+                        $pairs[] = [(string)$q, (string)($_POST['faq_a'][$i] ?? '')];
                     }
-                    Content::set('faq', ['body' => json_encode($faq, JSON_UNESCAPED_UNICODE)]);
+                    ContentSave::text('faq', ['body' => $pairs]);
                 }
                 flash('success', 'Контент збережено');
             }
             if ($action === 'set_image') {
-                $key = preg_match('/^[a-z0-9_]+$/', (string)($_POST['key'] ?? '')) ? $_POST['key'] : null;
-                $path = (string)($_POST['media_path'] ?? '');
-                if ($key && (str_starts_with($path, 'uploads/') || str_starts_with($path, 'img/')) && !str_contains($path, '..')) {
-                    $old = Content::get($key, 'image', '');
-                    Content::set($key, ['image' => $path]);
-                    self::cleanupOldImage($old, $path);
+                $key = (string)($_POST['key'] ?? '');
+                if (ContentSchema::type($key, 'image') === 'image'
+                    && ContentSave::image($key, (string)($_POST['media_path'] ?? ''))) {
                     flash('success', 'Фото оновлено');
+                } else {
+                    flash('error', 'Не вдалося змінити фото');
                 }
             }
-            if ($action === 'gallery_pick') {
-                $path = (string)($_POST['media_path'] ?? '');
-                $title = trim($_POST['title'] ?? '');
-                if ((str_starts_with($path, 'uploads/') || str_starts_with($path, 'img/')) && !str_contains($path, '..')) {
-                    $g = json_decode(Content::get('gallery', 'body', '[]'), true) ?: [];
-                    $g[] = [$title ?: 'Фото', $path];
-                    Content::set('gallery', ['body' => json_encode($g, JSON_UNESCAPED_UNICODE)]);
-                    flash('success', 'Фото додано до галереї');
-                }
-            }
-            if ($action === 'upload' ) {
-                $key = preg_match('/^[a-z0-9_]+$/', (string)($_POST['key'] ?? '')) ? $_POST['key'] : null;
-                if ($key) {
-                    $old = Content::get($key, 'image', '');
+            if ($action === 'upload') {
+                $key = (string)($_POST['key'] ?? '');
+                if (ContentSchema::type($key, 'image') === 'image') {
                     $res = Images::saveUpload($_FILES['image'] ?? [], 'content-' . $key);
-                    if ($res) {
-                        [$path, $w, $h, $bytes] = $res;
-                        Content::set($key, ['image' => $path]);
-                        self::cleanupOldImage($old, $path);
-                        flash('success', "Фото оновлено ({$w}×{$h}, " . round($bytes/1024) . ' КБ)');
+                    if ($res && ContentSave::image($key, $res[0])) {
+                        [, $w, $h, $bytes] = $res;
+                        flash('success', "Фото оновлено ({$w}×{$h}, " . round($bytes / 1024) . ' КБ)');
                     } else flash('error', 'Не вдалося завантажити фото');
                 }
             }
-            if ($action === 'gallery_add') {
-                $res = Images::saveUpload($_FILES['image'] ?? [], 'gallery');
-                $title = trim($_POST['title'] ?? '');
-                if ($res) {
-                    [$path] = $res;
-                    $g = json_decode(Content::get('gallery', 'body', '[]'), true) ?: [];
+            if ($action === 'gallery_pick' || $action === 'gallery_add') {
+                $path = $action === 'gallery_add'
+                    ? (($res = Images::saveUpload($_FILES['image'] ?? [], 'gallery')) ? $res[0] : '')
+                    : (string)($_POST['media_path'] ?? '');
+                $title = trim((string)($_POST['title'] ?? ''));
+                if (Content::isSafeImagePath($path)) {
+                    $g = ContentSave::currentList('gallery');
                     $g[] = [$title ?: 'Фото', $path];
-                    Content::set('gallery', ['body' => json_encode($g, JSON_UNESCAPED_UNICODE)]);
+                    ContentSave::text('gallery', ['body' => $g]);
                     flash('success', 'Фото додано до галереї');
-                }
+                } else flash('error', 'Не вдалося додати фото');
             }
             if ($action === 'gallery_del') {
                 $idx = (int)($_POST['index'] ?? -1);
-                $g = json_decode(Content::get('gallery', 'body', '[]'), true) ?: [];
+                $g = ContentSave::currentList('gallery');
                 if (isset($g[$idx])) {
-                    if (str_starts_with($g[$idx][1] ?? '', 'uploads/')) Images::delete($g[$idx][1]);
+                    $path = (string)($g[$idx][1] ?? '');
                     array_splice($g, $idx, 1);
-                    Content::set('gallery', ['body' => json_encode($g, JSON_UNESCAPED_UNICODE)]);
+                    ContentSave::text('gallery', ['body' => $g]);
+                    ContentSave::forgetImage($path);
                     flash('success', 'Фото прибрано з галереї');
                 }
             }
@@ -107,19 +83,11 @@ class ContentAdmin
         }
 
         View::show('admin/content', [
-            'groups' => self::GROUPS,
-            'field_labels' => self::FIELD_LABELS,
+            'groups' => ContentSchema::groups(),
             'blocks' => Content::all(),
-            'faq' => json_decode(Content::get('faq', 'body', '[]'), true) ?: [],
-            'gallery' => json_decode(Content::get('gallery', 'body', '[]'), true) ?: [],
+            'faq' => ContentSave::currentList('faq'),
+            'gallery' => ContentSave::currentList('gallery'),
             'page_title' => 'Контент сайту — адмінка',
         ], 'layouts/admin');
-    }
-
-    /** Прибрати попереднє фото блоку, якщо воно більше ніде на сайті не використовується */
-    private static function cleanupOldImage(string $old, string $new): void
-    {
-        if ($old === '' || $old === $new || !str_starts_with($old, 'uploads/')) return;
-        if (!Media::usage($old)) Images::delete($old);
     }
 }
