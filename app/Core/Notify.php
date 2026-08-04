@@ -244,6 +244,7 @@ class Notify
             $channel = (string)$rule['channel'];
             if (!isset(self::EVENTS[$event], self::CHANNELS[$channel])) continue;
             if (!self::channelEnabled($channel)) continue;
+            if (!self::canSubscribe($uid, $channel)) continue;
             if (!self::inGroup($uid, (string)$rule['recipients'])) continue;
             [$ready, $hint] = self::readiness($user, $channel);
             $out[$event][$channel] = [
@@ -255,6 +256,26 @@ class Notify
         return $out;
     }
 
+    /**
+     * Чи може ця людина взагалі підключити канал.
+     *
+     * Push — лише персоналу, і це не забаганка: підписатися можна тільки
+     * кнопкою в адмінпанелі, а Api::pushSubscribe() відповідає стороннім 403.
+     * Пропонувати галку тому, хто фізично не має де підписатись, гірше за
+     * відсутність каналу: людина ставить її й чекає сповіщень, яких не буде.
+     * Покупцю ті самі події приходять у Telegram і на пошту.
+     *
+     * Якщо колись зʼявиться підписка з кабінету — знімати обмеження треба
+     * тут і в Api::pushSubscribe() разом, інакше знову розʼїдеться.
+     */
+    private static function canSubscribe(int $userId, string $channel): bool
+    {
+        // роль беремо ту, що людина МАЄ, а не обрану робочу — з тієї ж причини,
+        // що й у inGroup(): адмін, який дивиться очима покупця, не перестає
+        // отримувати сповіщення й не має втрачати свої налаштування
+        return $channel !== 'push' || self::inGroup($userId, 'admins_sellers');
+    }
+
     /** Чи налаштований канал у конкретної людини */
     private static function readiness(array $user, string $channel): array
     {
@@ -264,7 +285,7 @@ class Notify
             'email'    => [!empty($user['email']), 'В акаунті немає пошти'],
             'push'     => [
                 (bool)DB::val('SELECT 1 FROM push_subscriptions WHERE user_id = ? LIMIT 1', [(int)$user['id']]),
-                'Дозвольте сповіщення в браузері кнопкою в кабінеті',
+                'Натисніть «Увімкнути пуші» в адмінпанелі — з того браузера, де хочете їх бачити',
             ],
             default    => [false, ''],
         };
