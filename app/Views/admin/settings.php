@@ -121,8 +121,12 @@
 
 Кнопка перевірки нижче пробує зʼєднання тими значеннями, що зараз у полях, і нічого не зберігає — можна переконатися до збереження.">
       Інтеграції та SEO</h2>
-    <div class="form-grid">
+    <?php /* Одна колонка, а не дві: тут не короткі підписи, а ключі, токени й
+             адреси на пів сотні символів. У вузькому полі видно початок і
+             крапки — звірити його з кабінетом сервісу неможливо. */ ?>
+    <div class="form-grid form-grid-1">
       <?php foreach ($text_keys as $key => $label): ?>
+        <?php $secret = str_contains($key, 'secret') || str_contains($key, 'token') || str_contains($key, 'key'); ?>
         <div class="field" data-help-title="<?= e($label) ?>"
              data-help="Значення для інтеграції «<?= e($label) ?>».
 
@@ -132,8 +136,21 @@
 
 Перевірте зʼєднання кнопкою нижче до того, як зберігати.">
           <label><?= e($label) ?></label>
-          <input type="<?= str_contains($key, 'secret') || str_contains($key, 'token') || str_contains($key, 'key') ? 'password' : 'text' ?>"
-                 name="text[<?= e($key) ?>]" value="<?= e(Settings::get($key, '')) ?>" autocomplete="off">
+          <?php if ($secret): ?>
+            <?php /* Крапки лишаються за замовчуванням — ключі не мають світитись
+                     на екрані просто так. Але звірити збережене з тим, що в
+                     кабінеті сервісу, треба вміти, інакше єдиний спосіб
+                     переконатись — перезаписати наосліп. */ ?>
+            <div class="field-secret">
+              <input type="password" name="text[<?= e($key) ?>]"
+                     value="<?= e(Settings::get($key, '')) ?>" autocomplete="off" spellcheck="false">
+              <button type="button" class="field-eye" data-eye
+                      title="Показати значення" aria-label="Показати значення">👁</button>
+            </div>
+          <?php else: ?>
+            <input type="text" name="text[<?= e($key) ?>]"
+                   value="<?= e(Settings::get($key, '')) ?>" autocomplete="off" spellcheck="false">
+          <?php endif; ?>
         </div>
       <?php endforeach; ?>
     </div>
