@@ -19,6 +19,13 @@ $soldOut = $cardLimit !== null && $cardLimit <= 0;
     <?php elseif ($prod['featured']): ?><span class="badge">Хіт</span><?php endif; ?>
   </a>
   <div class="card-body">
+    <?php /* Чий товар — видно вже в каталозі, не лише всередині картки:
+             у великому списку це головний орієнтир після назви.
+             Бренди беруться з кешу — списки прогріває Catalog::preloadBrands(). */ ?>
+    <?php $cardBrands = Catalog::brandsOf($prod); if ($cardBrands): ?>
+      <div class="card-brand"><?php foreach ($cardBrands as $i => $b): ?><?= $i ? ' · ' : '' ?><a
+            href="<?= e(url('/shop?brand=' . $b['slug'])) ?>"><?= e($b['name']) ?></a><?php endforeach; ?></div>
+    <?php endif; ?>
     <div class="card-title"><a href="<?= e(url('/product/' . $prod['slug'])) ?>"><?= e($prod['name']) ?></a></div>
     <div class="card-desc"><?= e($prod['short_desc'] ?? '') ?></div>
     <div class="card-foot">

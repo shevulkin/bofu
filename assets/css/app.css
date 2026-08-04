@@ -115,6 +115,11 @@ button.chip{font-family:inherit;display:inline-flex;align-items:center;gap:8px}
 .badge{position:absolute;top:12px;left:12px;background:var(--gold);color:var(--bg);font-size:11px;font-weight:800;letter-spacing:.06em;padding:4px 10px;border-radius:2px;text-transform:uppercase}
 .badge.red{background:var(--danger);color:#fff}
 .card-body{padding:14px 16px 16px;display:flex;flex-direction:column;gap:6px;flex:1}
+/* чий товар — над назвою, дрібним: орієнтир, а не заголовок */
+.card-brand{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);margin-bottom:4px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card-brand a{color:inherit}
+.card-brand a:hover{color:var(--gold)}
 .card-title{font-family:var(--serif);font-size:17px;font-weight:600;line-height:1.25}
 .card-title a{color:var(--text)}
 .card-title a:hover{color:var(--gold)}
