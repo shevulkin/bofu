@@ -34,9 +34,28 @@ class CartController
             redirect($to);
         }
 
-        if ($p) Cart::add($pid, $vid, $qty);
-        if (($_POST['ajax'] ?? '') === '1') json_response(['ok' => true, 'count' => Cart::count()]);
-        flash('success', 'Додано до кошика');
+        $added = $p ? Cart::add($pid, $vid, $qty) : 0;
+        $ajax = ($_POST['ajax'] ?? '') === '1';
+
+        // Поклали менше, ніж просили, — це не тиха дрібниця: покупець розраховував
+        // на свою кількість і має дізнатися про стелю тут, а не на оформленні.
+        if ($added <= 0) {
+            // «Немає в наявності» і «все наявне вже у вас у кошику» — різні речі,
+            // і друге не привід шукати товар деінде
+            $limit = $p ? Cart::limit($pid, $vid) : 0;
+            $msg = $limit
+                ? 'У кошику вже вся наявна кількість — ' . $limit . ' шт.'
+                : 'Цього товару зараз немає в наявності.';
+            if ($ajax) json_response(['ok' => false, 'error' => $msg]);
+            flash('error', $msg);
+            redirect(safe_back($_POST['back'] ?? null, '/cart'));
+        }
+        $note = $added < $qty
+            ? 'Додали ' . $added . ' шт. — це все, що є в наявності.'
+            : null;
+
+        if ($ajax) json_response(['ok' => true, 'count' => Cart::count(), 'note' => $note]);
+        flash('success', $note ?? 'Додано до кошика');
         redirect(safe_back($_POST['back'] ?? null, '/cart'));
     }
 

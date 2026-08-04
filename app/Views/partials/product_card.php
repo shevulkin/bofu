@@ -4,6 +4,10 @@ $cardVariant = $cardVariants[0] ?? null;
 // Є з чого вибирати — вибирає покупець, а не картка. Кладемо в кошик прямо
 // звідси лише те, де вибору немає: без варіантів або з єдиним варіантом.
 $needsChoice = count($cardVariants) > 1;
+// Скільки з картки взагалі можна покласти: null — без обмежень («під замовлення»)
+$cardLimit = $needsChoice ? null
+    : Cart::limit((int)$prod['id'], $cardVariant ? (int)$cardVariant['id'] : null);
+$soldOut = $cardLimit !== null && $cardLimit <= 0;
 [$pr, $old] = Catalog::price($prod, $cardVariant);
 ?>
 <div class="card">
@@ -21,6 +25,8 @@ $needsChoice = count($cardVariants) > 1;
       <span class="price"><?php if ($old !== null): ?><s><?= e(price_fmt($old)) ?></s><?php endif; ?><?= e(price_label($pr, (bool)$prod['made_to_order'])) ?></span>
       <?php if ($needsChoice): ?>
         <a class="btn btn-gold btn-sm" href="<?= e(url('/product/' . $prod['slug'])) ?>">Обрати</a>
+      <?php elseif ($soldOut): ?>
+        <button class="btn btn-gold btn-sm" type="button" disabled>Немає в наявності</button>
       <?php else: ?>
         <form method="post" action="<?= e(url('/cart/add')) ?>" class="add-cart-form" data-product-name="<?= e($prod['name']) ?>"><?= Csrf::field() ?>
           <input type="hidden" name="product_id" value="<?= (int)$prod['id'] ?>">

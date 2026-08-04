@@ -148,7 +148,7 @@ class OrderFlow
      * прибирає. На SQLite такого синтаксису немає, і він там не потрібен:
      * ця база тримає лише тести, які йдуть в один потік.
      */
-    private static function sellable(int $productId, ?int $variantId, bool $lock = false): int
+    public static function sellable(int $productId, ?int $variantId, bool $lock = false): int
     {
         $active = self::activeStoreIds();
         if (!$active) return 0;
