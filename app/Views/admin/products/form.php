@@ -121,7 +121,7 @@ $roEdit = $canEdit ? '' : 'disabled';
 Її можуть перебити, у такому порядку: окрема ціна магазину (таблиця нижче), потім ціна варіанта, а вже на результат накладається акція.
 
 Порожнє поле означає «За запитом»: покупець побачить не число, а пропозицію звʼязатися. Використовуйте свідомо — товар без ціни купують значно рідше.">
-        <label>Базова ціна, грн (порожньо = «За запитом»)</label><input type="number" step="0.01" name="base_price" value="<?= e($p['base_price'] ?? '') ?>" <?= $roEdit ?>></div>
+        <label>Базова ціна, грн (порожньо = «За запитом»)</label><input type="number" step="0.01" name="base_price" value="<?= e(num_val($p['base_price'] ?? '')) ?>" <?= $roEdit ?>></div>
       <div class="field" data-help-title="Стара ціна"
            data-help="Закреслена ціна поруч із поточною — щоб показати вигоду.
 
@@ -130,7 +130,7 @@ $roEdit = $canEdit ? '' : 'disabled';
 Увага: товар зі старою ціною вважається «вже зі знижкою». Промокод із вимкненим «Сумується з акціями» на нього не подіє, а стеля знижки рахуватиме цю різницю. Не ставте сюди вигадану ціну «для краси» — вона впливає на реальні розрахунки.
 
 Якщо знижка тимчасова, правильніше створити Акцію: вона сама закреслить стару ціну й сама закінчиться в потрібний день.">
-        <label>Стара ціна (закреслена)</label><input type="number" step="0.01" name="old_price" value="<?= e($p['old_price'] ?? '') ?>" <?= $roEdit ?>></div>
+        <label>Стара ціна (закреслена)</label><input type="number" step="0.01" name="old_price" value="<?= e(num_val($p['old_price'] ?? '')) ?>" <?= $roEdit ?>></div>
     </div>
     <div class="field" data-help-title="Короткий опис"
          data-help="Один рядок, який показується під назвою в каталозі — там, де покупець швидко переглядає багато товарів.
@@ -216,7 +216,7 @@ $roEdit = $canEdit ? '' : 'disabled';
               <input type="text" name="variant[<?= $vid ?>][name]" value="<?= e($v['name']) ?>" placeholder="Назва варіанта">
             <?php endif; ?>
           </div>
-          <input type="number" step="0.01" name="variant[<?= $vid ?>][price]" value="<?= e($v['price']) ?>" placeholder="ціна" title="Порожньо = базова ціна товару">
+          <input type="number" step="0.01" name="variant[<?= $vid ?>][price]" value="<?= e(num_val($v['price'])) ?>" placeholder="ціна" title="Порожньо = базова ціна товару">
           <input type="text" name="variant[<?= $vid ?>][sku]" value="<?= e($v['sku'] ?? '') ?>" placeholder="артикул">
           <label class="checkbox" title="Показувати покупцям"><input type="checkbox" name="variant[<?= $vid ?>][active]" <?= $v['active'] ? 'checked' : '' ?>> вкл.</label>
           <button class="btn btn-danger btn-xs row-del" type="button" title="Видалити варіант">✕</button>
@@ -292,7 +292,7 @@ $roEdit = $canEdit ? '' : 'disabled';
         <?php foreach ($stores as $s): $sid = (int)$s['id']; $ro = $canStore($sid) ? '' : 'disabled title="Немає доступу до цього магазину"'; ?>
           <tr>
             <td><?= e($s['name']) ?><?= $s['city'] ? ' · ' . e($s['city']) : '' ?></td>
-            <td><input type="number" step="0.01" name="store_price[<?= $sid ?>]" value="<?= e($store_prices[$sid] ?? '') ?>" placeholder="базова" <?= $ro ?>></td>
+            <td><input type="number" step="0.01" name="store_price[<?= $sid ?>]" value="<?= e(num_val($store_prices[$sid] ?? '')) ?>" placeholder="базова" <?= $ro ?>></td>
             <td>
               <?php if ($activeVariants): ?>
                 <?php $sum = 0; foreach ($activeVariants as $v) $sum += (int)($variant_stock[(int)$v['id']][$sid] ?? 0); ?>
@@ -302,7 +302,7 @@ $roEdit = $canEdit ? '' : 'disabled';
               <?php endif; ?>
             </td>
             <?php foreach ($variants as $v): $vid = (int)$v['id']; ?>
-              <td><input type="number" step="0.01" name="vprice[<?= $vid ?>][<?= $sid ?>]" value="<?= e($variant_prices[$vid][$sid] ?? '') ?>" placeholder="базова" <?= $ro ?>></td>
+              <td><input type="number" step="0.01" name="vprice[<?= $vid ?>][<?= $sid ?>]" value="<?= e(num_val($variant_prices[$vid][$sid] ?? '')) ?>" placeholder="базова" <?= $ro ?>></td>
               <td><input type="number" name="vstock[<?= $vid ?>][<?= $sid ?>]" value="<?= e($variant_stock[$vid][$sid] ?? '') ?>" <?= $ro ?>></td>
             <?php endforeach; ?>
           </tr>
