@@ -3,7 +3,9 @@ declare(strict_types=1);
 
 namespace Controllers\Admin;
 
-use DB, View, Auth, Catalog;
+// Media НЕ імпортуємо: він у цьому ж неймспейсі, а `use Media` вказав би на
+// глобальний клас, якого немає, — і виклик падав би вже після запису в базу
+use DB, View, Auth, Catalog, Images;
 
 /**
  * Довідник брендів: чий товар. Один бренд позначений «наш» — саме він дає
@@ -17,8 +19,9 @@ class Brands
         if (is_post()) {
             $action = $_POST['_action'] ?? '';
             if ($action === 'add') self::add();
-            if ($action === 'save') self::save();
+            if ($action === 'save') self::save((int)($_POST['id'] ?? 0));
             if ($action === 'own') self::makeOwn((int)($_POST['id'] ?? 0));
+            if ($action === 'logo_remove') self::removeLogo((int)($_POST['id'] ?? 0));
             if ($action === 'delete') self::delete((int)($_POST['id'] ?? 0));
             redirect('/admin/brands');
         }
@@ -60,27 +63,56 @@ class Brands
         flash('success', 'Бренд додано');
     }
 
-    private static function save(): void
+    /** Один бренд — одна форма: інакше файл лого не вкласти без вкладених форм */
+    private static function save(int $id): void
     {
-        foreach ((array)($_POST['brand'] ?? []) as $id => $b) {
-            $id = (int)$id;
-            $name = trim($b['name'] ?? '');
-            if ($name === '') continue;   // порожня назва — це не перейменування, а промах
-            $busy = DB::row('SELECT id FROM brands WHERE name = ? AND id <> ?', [$name, $id]);
-            if ($busy) { flash('error', 'Бренд «' . $name . '» уже є — назви не повторюються'); continue; }
-            DB::update('brands', [
-                'name' => $name,
-                // slug завжди перераховуємо з назви: інакше перейменований бренд
-                // лишається під чужою адресою, а звільнена назва дістає при
-                // створенні slug із хвостиком. Для незмінної назви freeSlug()
-                // повертає той самий рядок, тож зайвих правок не буде.
-                'slug' => self::freeSlug($name, $id),
-                // own тут навмисно немає: у таблиці його вже не редагують, і
-                // запис нуля стер би позначку при кожному збереженні назв
-                'active' => !empty($b['active']) ? 1 : 0,
-            ], 'id = ?', [$id]);
+        if (!$id || !DB::row('SELECT id FROM brands WHERE id = ?', [$id])) return;
+        $name = trim($_POST['name'] ?? '');
+        if ($name === '') { flash('error', 'Назва не може бути порожньою'); return; }
+        if (DB::row('SELECT id FROM brands WHERE name = ? AND id <> ?', [$name, $id])) {
+            flash('error', 'Бренд «' . $name . '» уже є — назви не повторюються'); return;
         }
-        flash('success', 'Збережено');
+        $data = [
+            'name' => $name,
+            // slug завжди перераховуємо з назви: інакше перейменований бренд
+            // лишається під чужою адресою, а звільнена назва дістає при
+            // створенні slug із хвостиком. Для незмінної назви freeSlug()
+            // повертає той самий рядок, тож зайвих правок не буде.
+            'slug' => self::freeSlug($name, $id),
+            'description' => trim($_POST['description'] ?? '') ?: null,
+            // own тут навмисно немає: його переносять окремою дією, і запис
+            // нуля стирав би позначку при кожному збереженні назви
+            'active' => !empty($_POST['active']) ? 1 : 0,
+        ];
+        $note = '';
+        if (($_FILES['logo']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE) {
+            $res = Images::saveUpload($_FILES['logo'], 'brand');
+            if ($res) { self::dropLogoFile($id, $res[0]); $data['logo'] = $res[0]; }
+            else $note = ' Лого не завантажилось — потрібен JPEG, PNG, GIF або WebP до 15 МБ.';
+        }
+        DB::update('brands', $data, 'id = ?', [$id]);
+        flash($note ? 'error' : 'success', 'Збережено.' . $note);
+    }
+
+    private static function removeLogo(int $id): void
+    {
+        if (!$id) return;
+        self::dropLogoFile($id, null);
+        DB::update('brands', ['logo' => null], 'id = ?', [$id]);
+        flash('success', 'Лого прибрано');
+    }
+
+    /**
+     * Прибирає старий файл лого, якщо він більше ніде не використовується.
+     * $keep — новий шлях: коли міняють лого на те саме фото з медіатеки,
+     * видаляти нічого не можна.
+     */
+    private static function dropLogoFile(int $id, ?string $keep): void
+    {
+        $old = (string)(DB::val('SELECT logo FROM brands WHERE id = ?', [$id]) ?? '');
+        if ($old === '' || $old === $keep) return;
+        DB::update('brands', ['logo' => null], 'id = ?', [$id]);   // щоб Media::usage не рахував нас самих
+        if (!Media::usage($old)) Images::delete($old);
     }
 
     /** Перенести позначку «наш» — вона одна на весь каталог */

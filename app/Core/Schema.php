@@ -7,7 +7,7 @@ declare(strict_types=1);
  */
 class Schema
 {
-    public const VERSION = 28;
+    public const VERSION = 29;
 
     /** Оновлення існуючої бази до поточної версії без втрати даних */
     public static function upgrade(): void
@@ -272,6 +272,12 @@ class Schema
                 }
             }
         }
+        if ($ver < 29) {
+            // Бренд — не лише назва: покупцю, який уперше бачить «Медоїжка»,
+            // потрібні лого й пояснення, хто це.
+            self::addColumn('brands', 'logo', 'str null');
+            self::addColumn('brands', 'description', 'text null');
+        }
         Settings::set('schema_version', (string)self::VERSION);
     }
 
@@ -393,6 +399,7 @@ class Schema
             // не має залежати від такої правки.
             'brands' => [
                 'id' => 'id', 'name' => 'str', 'slug' => 'str unique',
+                'logo' => 'str null', 'description' => 'text null',
                 'own' => 'bool default 0', 'active' => 'bool default 1', 'sort' => 'int default 0',
             ],
             // Брендів у товару може бути кілька: спільне виробництво — це не
