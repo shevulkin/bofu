@@ -139,7 +139,12 @@ button.chip{font-family:inherit;display:inline-flex;align-items:center;gap:8px}
 .qty-box input{width:52px;background:none;border:none;border-left:1px solid var(--line2);border-right:1px solid var(--line2);color:var(--text);text-align:center;font-size:15px}
 
 /* ---------- форми ---------- */
-input[type=text],input[type=number],input[type=email],input[type=tel],input[type=date],input[type=password],select,textarea{
+/* Типи перелічені навмисно (а не `input`), щоб не зачепити галки, радіо й
+   кнопки. Але кожен забутий тут тип випадає зі стилю зовсім: поле лишається
+   системним, вужчим за колонку, і довге значення в ньому не видно —
+   саме так свого часу зникли посилання на соцмережі (type=url). */
+input[type=text],input[type=url],input[type=search],input[type=number],input[type=email],
+input[type=tel],input[type=date],input[type=password],select,textarea{
   width:100%;background:var(--bg2);border:1px solid var(--line2);color:var(--text);border-radius:2px;
   padding:12px 14px;font-size:14.5px;font-family:inherit;transition:border-color .15s}
 input:focus,select:focus,textarea:focus{outline:none;border-color:var(--gold)}
@@ -897,6 +902,9 @@ body.ce-on [data-ce].ce-just-saved{outline:2px solid var(--ok);outline-offset:3p
 }
 
 /* ---------- список блоків контенту в адмінці ---------- */
+/* Поле з посиланням займає цілий рядок сітки: адреса на 60+ символів у пів
+   колонки обрізається, і переконатись, що збережено саме те, неможливо. */
+.content-block .field:has(input[type=url]){grid-column:1/-1}
 .content-block{padding:14px 0;border-top:1px solid var(--bg3)}
 .content-block:first-of-type{border-top:0;padding-top:0}
 .content-block-head{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;margin-bottom:10px}
