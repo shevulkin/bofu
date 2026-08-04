@@ -17,8 +17,10 @@
     <?php /* прийшли з картки товару по бренду — це фактично сторінка бренду:
              лого й опис тут доречніші за будь-де, бо покупець уперше бачить
              назву й питає «хто це?» */ ?>
-    <?php if ($brand): ?>
-      <div class="brand-head">
+    <?php if ($brand): $brandCard = !empty($brand['logo']) || !empty($brand['description']); ?>
+      <?php /* рамка лише коли в ній щось є: порожня панель із одним рядком
+               усередині читається як недовантажений блок, а не як задум */ ?>
+      <div class="<?= $brandCard ? 'brand-head' : '' ?>" style="<?= $brandCard ? '' : 'margin:0 0 18px' ?>">
         <?php if (!empty($brand['logo'])): ?>
           <img class="brand-logo" src="<?= e(asset($brand['logo'])) ?>" alt="<?= e($brand['name']) ?>">
         <?php endif; ?>
