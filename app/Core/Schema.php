@@ -7,7 +7,7 @@ declare(strict_types=1);
  */
 class Schema
 {
-    public const VERSION = 24;
+    public const VERSION = 25;
 
     /** Оновлення існуючої бази до поточної версії без втрати даних */
     public static function upgrade(): void
@@ -207,6 +207,17 @@ class Schema
             foreach (Notify::EVENTS as $event => $label) {
                 if (!Notify::isCustomerEvent($event)) continue;
                 DB::query('UPDATE notification_rules SET recipients = ? WHERE event = ?', ['customer', $event]);
+            }
+        }
+        if ($ver < 25) {
+            // Viber заводили вимкненим «щоб не шуміти», і власник цього не
+            // просив — а бот у нього налаштований, і покупці ним користуються.
+            // Вирівнюємо на Telegram: де подія йде в Telegram, туди ж і Viber.
+            // Правила, які адмін уже ввімкнув сам, лишаються ввімкненими.
+            foreach (DB::all('SELECT event FROM notification_rules WHERE channel = ? AND enabled = 1',
+                     ['telegram']) as $r) {
+                DB::query('UPDATE notification_rules SET enabled = 1 WHERE channel = ? AND event = ?',
+                    ['viber', (string)$r['event']]);
             }
         }
         Settings::set('schema_version', (string)self::VERSION);

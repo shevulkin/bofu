@@ -191,9 +191,11 @@ class Seeder
             foreach (array_keys(Notify::CHANNELS) as $channel) {
                 DB::insert('notification_rules', [
                     'event' => $event, 'channel' => $channel,
-                    // viber вимкнений навіть у ввімкнених подіях: канал є не в
-                    // кожного магазину, а зайвий шум дратує
-                    'enabled' => ($on && $channel !== 'viber') ? 1 : 0,
+                    // Viber нарівні з рештою каналів. Зайвого шуму це не додає:
+                    // повідомлення йде лише тому, хто сам підключив Viber у
+                    // кабінеті (send() перевіряє viber_id). А вимкнене правило
+                    // змушувало вмикати канал руками після кожної установки.
+                    'enabled' => $on ? 1 : 0,
                     'recipients' => $to, 'template' => Notify::DEFAULT_TEMPLATES[$event] ?? '',
                 ]);
             }
