@@ -14,6 +14,9 @@ $rsStores  = array_values(array_filter(
     fn($s) => in_array((int)$s['id'], $rsAllowed, true)
 ));
 $rsStoreId = Auth::actingStoreId();
+// Точка потрібна тільки ролі продавця — в інших ролях store_id сервер ігнорує.
+// Якщо продавця серед доступних ролей немає, поле не показуємо взагалі.
+$rsShowStore = in_array(Roles::SELLER, $rsRoles, true) && count($rsStores) > 1;
 ?>
 <div class="role-switch<?= $rsActive !== null ? ' is-acting' : '' ?>">
   <?php if ($rsActive !== null): ?>
@@ -42,9 +45,9 @@ $rsStoreId = Auth::actingStoreId();
             <option value="<?= e($r) ?>"><?= e(Roles::label($r)) ?></option>
           <?php endforeach; ?>
         </select>
-        <?php if (count($rsStores) > 1): ?>
-          <label class="dim" for="rsStore">Точка для ролі продавця</label>
-          <select name="store_id" id="rsStore">
+        <?php if ($rsShowStore): ?>
+          <label class="dim rs-store-row" for="rsStore">Точка продавця</label>
+          <select class="rs-store-row" name="store_id" id="rsStore">
             <?php foreach ($rsStores as $s): ?>
               <option value="<?= (int)$s['id'] ?>"><?= e($s['name']) ?></option>
             <?php endforeach; ?>
@@ -55,3 +58,24 @@ $rsStoreId = Auth::actingStoreId();
     </details>
   <?php endif; ?>
 </div>
+<?php if ($rsActive === null && $rsShowStore): ?>
+<script>
+// Ховаємо вибір точки для всіх ролей, крім продавця: інакше в ролі покупця
+// це виглядає як обов'язковий другий крок, хоча сервер store_id там не читає.
+// Поле лишається в розмітці видимим — якщо скрипт не завантажився, це просто
+// зайвий вибір, а не поламаний перемикач.
+(function () {
+  var seller = <?= json_encode(Roles::SELLER) ?>;
+  document.querySelectorAll('.role-switch-more form').forEach(function (f) {
+    var role = f.querySelector('select[name="role"]'),
+        rows = f.querySelectorAll('.rs-store-row');
+    if (!role || !rows.length) return;
+    function sync() {
+      rows.forEach(function (el) { el.hidden = role.value !== seller; });
+    }
+    role.addEventListener('change', sync);
+    sync();
+  });
+})();
+</script>
+<?php endif; ?>
