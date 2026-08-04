@@ -106,6 +106,47 @@ class Catalog
         return [$raw, $old];
     }
 
+    /**
+     * Бренд самого магазину: ним підписані товари власного виробництва.
+     * Береться з налаштувань, а якщо там порожньо — з назви сайту, щоб
+     * працювало одразу після встановлення й без зайвого поля в адмінці.
+     */
+    public static function ownBrand(): string
+    {
+        $set = trim((string)Settings::get('brand_own', ''));
+        return $set !== '' ? $set : (string)cfg('app_name');
+    }
+
+    /** Чи це наш власний товар — саме за брендом, а не за категорією чи наявністю */
+    public static function isOwnBrand(array $product): bool
+    {
+        $brand = trim((string)($product['brand'] ?? ''));
+        if ($brand === '') return false;
+        return mb_strtolower($brand) === mb_strtolower(self::ownBrand());
+    }
+
+    /**
+     * Напис для товару, якого немає на складі, але який можна замовити.
+     *
+     * «Ми виробник» — твердження про походження товару, і казати його про
+     * чужий воскопрес чи пошив у сторонній майстерні не можна. Для решти
+     * важливо інше: товар усе одно буде, просто доведеться зачекати.
+     */
+    public static function madeToOrderNote(array $product): string
+    {
+        return self::isOwnBrand($product)
+            ? 'Виготовимо під замовлення — ми виробник 🍯'
+            : 'Виготовляється на замовлення — привеземо для вас';
+    }
+
+    /** Те саме коротко — там, де напис доклеюється до іншого рядка */
+    public static function madeToOrderShort(array $product): string
+    {
+        return self::isOwnBrand($product)
+            ? 'виготовимо під замовлення'
+            : 'виготовляється на замовлення';
+    }
+
     /** Чи має товар активні варіанти (кешовано на запит) */
     public static function hasVariants(int $productId): bool
     {

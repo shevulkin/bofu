@@ -17,15 +17,18 @@
 <link rel="stylesheet" href="<?= e(asset_v('css/app.css')) ?>">
 <link rel="canonical" href="<?= e((!empty($_SERVER['HTTPS']) ? 'https' : 'http') . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost') . strtok($_SERVER['REQUEST_URI'] ?? '/', '?')) ?>">
 <?php if (!empty($jsonld_product) && !empty($p)): ?>
-<script type="application/ld+json"><?= json_js([
+<script type="application/ld+json"><?= json_js(array_filter([
     '@context' => 'https://schema.org', '@type' => 'Product',
     'name' => $p['name'], 'description' => $p['short_desc'] ?? '',
+    // бренд Google показує в картці товару; без нього позицію легше сплутати з чужою.
+    // Порожній не віддаємо: array_filter нижче прибирає його разом із null
+    'brand' => !empty($p['brand']) ? ['@type' => 'Brand', 'name' => $p['brand']] : null,
     // усі фото товару: головне першим — Google показує їх у картці товару
     'image' => array_map(fn($i) => asset($i['path']), $images ?? [['path' => Catalog::photo($p)]]),
     'offers' => ['@type' => 'Offer', 'priceCurrency' => 'UAH', 'price' => $price ?? 0,
         'availability' => (Catalog::stock((int)$p['id']) > 0 || !empty($p['made_to_order']))
             ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock'],
-]) ?></script>
+], fn($v) => $v !== null)) ?></script>
 <?php endif; ?>
 </head>
 <body>

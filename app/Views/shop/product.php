@@ -90,7 +90,7 @@
             </span>
           <?php endforeach; ?>
           <?php if ($p['made_to_order']): ?>
-            <span class="yes" id="madeToOrder" style="color:var(--gold)<?= $anyStock ? ';display:none' : '' ?>">Виготовимо під замовлення — ми виробник 🍯</span>
+            <span class="yes" id="madeToOrder" style="color:var(--gold)<?= $anyStock ? ';display:none' : '' ?>"><?= e(Catalog::madeToOrderNote($p)) ?></span>
           <?php endif; ?>
         </div>
 
@@ -111,9 +111,14 @@
           <?php endif; ?>
         </div>
 
-        <?php if ($attrs): ?>
+        <?php if ($attrs || !empty($p['brand'])): ?>
           <h2 style="font-size:22px;margin-top:34px">Характеристики</h2>
           <table class="specs">
+            <?php /* Бренд першим рядком: «чий це товар» — питання, яке виникає
+                     раніше за вагу й обʼєм, надто коли позиція не наша. */ ?>
+            <?php if (!empty($p['brand'])): ?>
+              <tr><td>Бренд</td><td><?= e($p['brand']) ?></td></tr>
+            <?php endif; ?>
             <?php foreach ($attrs as $a): ?>
               <tr>
                 <td><?= e($a['name']) ?><?= !empty($a['unit']) ? ', ' . e($a['unit']) : '' ?></td>
@@ -156,6 +161,7 @@
       <script>
         window.BOFU_VARIANTS = <?= json_js($variant_data) ?>;
         window.BOFU_MADE_TO_ORDER = <?= $p['made_to_order'] ? 'true' : 'false' ?>;
+        window.BOFU_MTO_NOTE = <?= json_js(Catalog::madeToOrderShort($p)) ?>;
         window.BOFU_LOW_STOCK_THRESHOLD = <?= $lowStock !== null ? $lowStock : 'null' ?>;
       </script>
     <?php endif; ?>
