@@ -168,6 +168,17 @@ label{display:block;font-size:12.5px;color:var(--muted);font-weight:600;letter-s
 input.is-bad,input.is-bad:focus{border-color:var(--danger)}
 .field{margin-bottom:18px}
 .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 22px}
+/* Одна колонка — там, де в полях довгі значення (ключі, токени, адреси) */
+.form-grid-1{grid-template-columns:1fr}
+/* Приховане значення з кнопкою «показати»: крапки захищають від погляду
+   через плече, кнопка дає звірити ключ, не перезаписуючи його наосліп. */
+.field-secret{position:relative}
+.field-secret input{padding-right:44px}
+.field-eye{position:absolute;right:5px;top:50%;transform:translateY(-50%);
+  width:32px;height:32px;background:none;border:0;border-radius:4px;
+  color:var(--dim);font-size:15px;line-height:1;cursor:pointer;padding:0}
+.field-eye:hover{color:var(--gold);background:var(--bg3)}
+.field-eye.is-on{color:var(--gold)}
 .checkbox{display:flex;align-items:center;gap:9px;color:var(--text);font-size:14px;cursor:pointer;text-transform:none;letter-spacing:0}
 .checkbox input{width:auto}
 /* Галки й радіо малюємо самі. accent-color лише перефарбовував системний
