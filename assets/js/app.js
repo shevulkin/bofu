@@ -94,8 +94,12 @@
         var bits = [];
         if (v.sku) bits.push('Артикул: ' + v.sku);
         var t = window.BOFU_LOW_STOCK_THRESHOLD;
+        // текст «під замовлення» приходить із сервера: для чужого бренду він
+        // інший, і дублювати тут правило означало б розʼїхатися з ним
         bits.push(v.qty > 0 ? (t !== null && v.qty <= t ? 'Закінчується' : 'У наявності')
-          : (window.BOFU_MADE_TO_ORDER ? 'Немає на складі — виготовимо під замовлення' : 'Немає в наявності'));
+          : (window.BOFU_MADE_TO_ORDER
+              ? 'Немає на складі — ' + (window.BOFU_MTO_NOTE || 'під замовлення')
+              : 'Немає в наявності'));
         note.textContent = bits.join(' · ');
       }
       updateAvailability(v);

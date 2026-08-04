@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 namespace Controllers\Admin;
 
-use DB, View, Auth, Catalog, Images, Attrs;
+use DB, View, Auth, Catalog, Images, Attrs, StockWatch;
 
 class Products
 {
@@ -95,6 +95,7 @@ class Products
                 'category_id' => (int)($_POST['category_id'] ?? 0),
                 'name' => $name, 'slug' => $slug,
                 'sku' => trim($_POST['sku'] ?? '') ?: null,
+                'brand' => trim($_POST['brand'] ?? '') ?: null,
                 'short_desc' => trim($_POST['short_desc'] ?? '') ?: null,
                 'description' => trim($_POST['description'] ?? '') ?: null,
                 'base_price' => $_POST['base_price'] === '' ? null : (float)$_POST['base_price'],
@@ -267,6 +268,7 @@ class Products
                 'name' => trim($_POST['name'] ?? $p['name']),
                 'category_id' => (int)($_POST['category_id'] ?? $p['category_id']),
                 'sku' => trim($_POST['sku'] ?? '') ?: null,
+                'brand' => trim($_POST['brand'] ?? '') ?: null,
                 'short_desc' => trim($_POST['short_desc'] ?? '') ?: null,
                 'description' => trim($_POST['description'] ?? '') ?: null,
                 'base_price' => ($_POST['base_price'] ?? '') === '' ? null : (float)$_POST['base_price'],

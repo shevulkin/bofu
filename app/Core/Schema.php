@@ -7,7 +7,7 @@ declare(strict_types=1);
  */
 class Schema
 {
-    public const VERSION = 25;
+    public const VERSION = 26;
 
     /** Оновлення існуючої бази до поточної версії без втрати даних */
     public static function upgrade(): void
@@ -220,6 +220,24 @@ class Schema
                     ['viber', (string)$r['event']]);
             }
         }
+        if ($ver < 26) {
+            // Чий товар. Досі сайт про кожну позицію «під замовлення» писав
+            // «ми виробник», хоча воскопрес і пошив костюма роблять інші.
+            self::addColumn('products', 'brand', 'str null');
+            // Свої підписуємо самі — за тим, що вже вказано в характеристиках:
+            // «Походження: Власна пасіка» ставив власник, і це рівно та ознака.
+            // Решта лишається порожньою: вгадувати чужі бренди не можна.
+            $own = (int)(DB::val('SELECT id FROM attributes WHERE slug = ?', ['pokhodzhennia']) ?? 0);
+            $rows = $own
+                ? DB::all('SELECT product_id FROM product_attrs WHERE attribute_id = ? AND value LIKE ?',
+                    [$own, 'Власна пасіка%'])
+                : DB::all('SELECT product_id FROM product_attrs WHERE name = ? AND value LIKE ?',
+                    ['Походження', 'Власна пасіка%']);
+            foreach ($rows as $r) {
+                DB::query('UPDATE products SET brand = ? WHERE id = ? AND (brand IS NULL OR brand = ?)',
+                    [Catalog::ownBrand(), (int)$r['product_id'], '']);
+            }
+        }
         Settings::set('schema_version', (string)self::VERSION);
     }
 
@@ -351,7 +369,8 @@ class Schema
             ],
             'products' => [
                 'id' => 'id', 'category_id' => 'int', 'name' => 'str', 'slug' => 'str unique',
-                'sku' => 'str null', 'short_desc' => 'text null', 'description' => 'text null',
+                'sku' => 'str null', 'brand' => 'str null', // чий товар; свій бренд — Catalog::ownBrand()
+                'short_desc' => 'text null', 'description' => 'text null',
                 'base_price' => 'num null', // null => "За запитом"
                 'old_price' => 'num null',
                 'type' => "str default 'product'", // product|service|video|course

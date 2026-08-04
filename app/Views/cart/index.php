@@ -24,7 +24,7 @@
               <?php if ($where): ?>
                 <div class="dim">Є в наявності: <?= e(implode(', ', $where)) ?></div>
               <?php elseif ($r['product']['made_to_order']): ?>
-                <div class="dim">Немає в магазинах — виготовимо під замовлення</div>
+                <div class="dim">Немає в магазинах — <?= e(Catalog::madeToOrderShort($r['product'])) ?></div>
               <?php else: ?>
                 <div class="dim" style="color:var(--danger2)">Немає в наявності</div>
               <?php endif; ?>

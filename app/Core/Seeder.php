@@ -54,8 +54,16 @@ class Seeder
         foreach ($products as [$cat, $name, $desc, $price, $stock, $img, $featured, $specs, $variants]) {
             $type = $cat === 'films' ? 'video' : ($cat === 'services' ? 'service' : 'product');
             $photos = $img === null ? [] : (array)$img; // перше — головне, решта — додаткові
+            // Свій бренд ставимо лише там, де в характеристиках стоїть власна
+            // пасіка. Решта лишається без бренду: тоді сайт не називає нас
+            // виробником чужого товару — те саме правило, що й у міграції 26.
+            $own = false;
+            foreach ($specs as [$aname, $avalue]) {
+                if ($aname === 'Походження' && str_starts_with($avalue, 'Власна пасіка')) $own = true;
+            }
             $pid = DB::insert('products', [
                 'category_id' => $catIds[$cat], 'name' => $name, 'slug' => slugify($name),
+                'brand' => $own ? Catalog::ownBrand() : null,
                 'short_desc' => $desc, 'description' => $desc,
                 'base_price' => $price, 'type' => $type, 'active' => 1, 'featured' => $featured,
                 'made_to_order' => 1, 'image' => $photos[0] ?? null,
