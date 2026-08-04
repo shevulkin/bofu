@@ -320,6 +320,9 @@
         if (res && res.ok) {
           updateCartBadge(res.count);
           showCartToast(form.dataset.productName);
+        } else if (res && res.redirect) {
+          // сервер каже, що бракує вибору — ведемо туди, де його роблять
+          location.href = res.redirect;
         } else {
           form.submit();
         }
