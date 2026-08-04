@@ -113,15 +113,58 @@ class Catalog
             . ' ORDER BY own DESC, sort, name');
     }
 
+    /**
+     * Бренди для панелі фільтрів: лише ті, під якими справді є активні товари,
+     * зі скільки їх. Порожній бренд у фільтрі — це завжди «нічого не знайдено».
+     */
+    public static function filterableBrands(?int $categoryId = null): array
+    {
+        $sql = 'SELECT b.*, COUNT(DISTINCT p.id) AS cnt
+                  FROM brands b
+                  JOIN product_brands pb ON pb.brand_id = b.id
+                  JOIN products p ON p.id = pb.product_id AND p.active = 1'
+             . ($categoryId ? ' AND p.category_id = ?' : '')
+             . ' WHERE b.active = 1 GROUP BY b.id ORDER BY b.own DESC, b.sort, b.name';
+        return DB::all($sql, $categoryId ? [$categoryId] : []);
+    }
+
+    /** @var array<int,array> бренди за id товару; порожній масив — «питали, брендів немає» */
+    private static array $brandsCache = [];
+
     /** Бренди товару (кешовано на запит). Свій — першим: із нього починається відповідь «чий це товар» */
     public static function brandsOf(array $product): array
     {
-        static $cache = [];
         $pid = (int)($product['id'] ?? 0);
         if (!$pid) return [];
-        return $cache[$pid] ??= DB::all(
-            'SELECT b.* FROM product_brands pb JOIN brands b ON b.id = pb.brand_id
-             WHERE pb.product_id = ? ORDER BY b.own DESC, b.sort, b.name', [$pid]);
+        if (!array_key_exists($pid, self::$brandsCache)) self::preloadBrands([$product]);
+        return self::$brandsCache[$pid];
+    }
+
+    /**
+     * Бренди одразу для списку товарів — один запит замість запиту на картку.
+     * Без цього каталог із 40 позицій робив би 40 звернень до бази (N+1).
+     * Викликати перед відмальовуванням будь-якого списку карток.
+     */
+    public static function preloadBrands(array $products): void
+    {
+        $ids = [];
+        foreach ($products as $p) {
+            $id = (int)($p['id'] ?? 0);
+            if ($id && !array_key_exists($id, self::$brandsCache)) $ids[$id] = true;
+        }
+        if (!$ids) return;
+        $ids = array_keys($ids);
+        // порожній масив наперед: товар без брендів інакше перепитувався б щоразу
+        foreach ($ids as $id) self::$brandsCache[$id] = [];
+        $in = implode(',', array_fill(0, count($ids), '?'));
+        $rows = DB::all(
+            "SELECT pb.product_id, b.* FROM product_brands pb JOIN brands b ON b.id = pb.brand_id
+              WHERE pb.product_id IN ($in) ORDER BY b.own DESC, b.sort, b.name", $ids);
+        foreach ($rows as $r) {
+            $pid = (int)$r['product_id'];
+            unset($r['product_id']);
+            self::$brandsCache[$pid][] = $r;
+        }
     }
 
     /** Один рядок довідника за id — для сторінок, де товару ще немає */
@@ -300,13 +343,16 @@ class Catalog
             $where[] = self::IN_STOCK_EXISTS;
             $params[] = (int)$f['store_id'];
         }
-        // Бренд: приймаємо і slug (посилання з картки товару), і id (адмінка).
+        // Бренд: приймаємо і slug (посилання з картки товару), і id (адмінка),
+        // і кілька значень одразу (галки у фільтрах) — між ними «або».
         // EXISTS, а не JOIN, — товар під двома брендами не має задвоюватись.
-        if (!empty($f['brand'])) {
-            $where[] = 'EXISTS (SELECT 1 FROM product_brands pb JOIN brands b ON b.id = pb.brand_id
-                                 WHERE pb.product_id = p.id AND (b.slug = ? OR b.id = ?))';
-            $params[] = (string)$f['brand'];
-            $params[] = (int)$f['brand'];
+        $brands = array_values(array_filter(array_map('strval', (array)($f['brand'] ?? [])), fn($v) => $v !== ''));
+        if ($brands) {
+            $in = implode(',', array_fill(0, count($brands), '?'));
+            $where[] = "EXISTS (SELECT 1 FROM product_brands pb JOIN brands b ON b.id = pb.brand_id
+                                 WHERE pb.product_id = p.id AND (b.slug IN ($in) OR b.id IN ($in)))";
+            foreach ($brands as $v) $params[] = $v;
+            foreach ($brands as $v) $params[] = (int)$v;
         }
         if (!empty($f['attr']) && is_array($f['attr'])) {
             foreach ($f['attr'] as $slug => $values) {

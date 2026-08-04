@@ -27,11 +27,9 @@
       <?php endforeach; ?>
     </div>
 
-    <?php $hasActiveFilters = $filters['q'] !== '' || $filters['min'] !== '' || $filters['max'] !== '' || !empty($filters['store_id']) || $filters['sort'] !== '' || array_filter($filters['attr']); ?>
+    <?php $hasActiveFilters = $filters['q'] !== '' || $filters['min'] !== '' || $filters['max'] !== '' || !empty($filters['store_id']) || $filters['sort'] !== '' || array_filter($filters['attr']) || $filters['brand']; ?>
     <form class="filters" id="filtersPanel" method="get" action="<?= e(url('/shop')) ?>" style="<?= $hasActiveFilters ? '' : 'display:none' ?>">
       <?php if ($current_cat): ?><input type="hidden" name="cat" value="<?= e($current_cat['slug']) ?>"><?php endif; ?>
-      <?php /* бренд не має губитись, коли всередині нього щось шукають */ ?>
-      <?php if ($brand): ?><input type="hidden" name="brand" value="<?= e($brand['slug']) ?>"><?php endif; ?>
       <div class="filters-row">
         <div><label>Пошук</label><input type="text" name="q" value="<?= e($filters['q']) ?>" placeholder="Назва, опис, артикул…"></div>
         <div><label>Ціна від</label><input type="number" name="min" value="<?= e($filters['min']) ?>" min="0" step="1"></div>
@@ -54,8 +52,24 @@
         </div>
         <button class="btn btn-gold btn-sm" type="submit">Застосувати</button>
       </div>
-      <?php if ($attr_options): ?>
+      <?php if ($attr_options || $brand_options): ?>
         <div class="attr-filters">
+          <?php /* бренд у тому ж ряду, що й характеристики: для покупця це така
+                   сама ознака товару, і шукати її окремо він не стане */ ?>
+          <?php if ($brand_options): $chosenBrands = array_map('strval', (array)$filters['brand']); ?>
+            <div class="attr-filter">
+              <label>Бренд</label>
+              <div class="attr-values">
+                <?php foreach ($brand_options as $b): ?>
+                  <label class="checkbox">
+                    <input type="checkbox" name="brand[]" value="<?= e($b['slug']) ?>"
+                           <?= in_array((string)$b['slug'], $chosenBrands, true) ? 'checked' : '' ?>>
+                    <?= e($b['name']) ?> <span class="dim">(<?= (int)$b['cnt'] ?>)</span>
+                  </label>
+                <?php endforeach; ?>
+              </div>
+            </div>
+          <?php endif; ?>
           <?php foreach ($attr_options as $slug => $a): $chosen = (array)($filters['attr'][$slug] ?? []); ?>
             <div class="attr-filter">
               <label><?= e($a['name']) ?><?= $a['unit'] ? ', ' . e($a['unit']) : '' ?></label>

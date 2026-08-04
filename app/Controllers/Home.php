@@ -10,6 +10,7 @@ class Home
     public static function index(): never
     {
         $featured = DB::all('SELECT * FROM products WHERE active = 1 AND featured = 1 ORDER BY id LIMIT 6');
+        Catalog::preloadBrands($featured);   // бренди карток — одним запитом, а не по одному
         $gallery = json_decode(Content::get('gallery', 'body', '[]'), true) ?: [];
         View::show('home/index', [
             'categories' => Catalog::categories(),

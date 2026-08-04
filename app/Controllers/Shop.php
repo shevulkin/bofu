@@ -22,16 +22,25 @@ class Shop
             'store_id' => (int)($_GET['store'] ?? 0) ?: null,
             'sort' => $_GET['sort'] ?? '',
             'attr' => (array)($_GET['attr'] ?? []),
-            'brand' => trim((string)($_GET['brand'] ?? '')),
+            // і один slug із посилання, і галки в панелі фільтрів
+            'brand' => array_values(array_filter(array_map(
+                fn($v) => trim((string)$v), (array)($_GET['brand'] ?? [])), fn($v) => $v !== '')),
         ];
         $products = Catalog::search($filters);
-        // назва бренду для заголовка: людина прийшла сюди з картки товару
-        $brand = $filters['brand'] === '' ? null
-            : DB::row('SELECT * FROM brands WHERE slug = ? OR id = ?', [$filters['brand'], (int)$filters['brand']]);
+        // бренди списку — одним запитом, інакше кожна картка ходила б у базу сама
+        Catalog::preloadBrands($products);
+
+        // назва бренду для заголовка, коли обрано рівно один: людина прийшла
+        // сюди з картки товару й має бачити, де опинилась
+        $brand = count($filters['brand']) === 1
+            ? DB::row('SELECT * FROM brands WHERE slug = ? OR id = ?',
+                [$filters['brand'][0], (int)$filters['brand'][0]])
+            : null;
 
         // Обрані товари інших категорій (як у дизайні)
         $other = DB::all('SELECT * FROM products WHERE active = 1 AND featured = 1' .
             ($current ? ' AND category_id != ' . (int)$current['id'] : '') . ' ORDER BY id LIMIT 4');
+        Catalog::preloadBrands($other);
 
         View::show('shop/index', [
             'categories' => $cats,
@@ -42,6 +51,7 @@ class Shop
             'brand' => $brand,
             'stores' => Catalog::stores(),
             'attr_options' => Catalog::filterableAttrs($current['id'] ?? null),
+            'brand_options' => Catalog::filterableBrands($current['id'] ?? null),
             'page_title' => ($current ? $current['name'] . ' — ' : '') . 'Магазин — ' . cfg('app_name'),
         ]);
     }
@@ -101,6 +111,7 @@ class Shop
         }
 
         $related = DB::all('SELECT * FROM products WHERE active = 1 AND category_id = ? AND id != ? LIMIT 4', [$p['category_id'], $p['id']]);
+        Catalog::preloadBrands($related);
 
         View::show('shop/product', [
             'p' => $p, 'cat' => $cat, 'variants' => $variants, 'attrs' => $attrs,
