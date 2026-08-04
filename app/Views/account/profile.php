@@ -98,21 +98,18 @@
       <form class="admin-card" method="post" action="<?= e(url('/profile')) ?>">
         <?= Csrf::field() ?><input type="hidden" name="_action" value="notify">
         <h2 class="h-serif" style="font-size:20px">Сповіщення</h2>
-        <p class="dim" style="margin-bottom:16px">Оберіть, що і куди вам надсилати. Показано лише те,
+        <p class="dim" style="margin-bottom:16px">Оберіть, куди вам надсилати. Показано лише те,
           що ввімкнув адміністратор — решту він вимкнув для всіх.</p>
-        <?php foreach ($notify_options as $ev => $channels): ?>
+        <?php foreach ($notify_options as $ch => $st): ?>
           <div class="notify-row">
-            <b><?= e($notify_events[$ev] ?? $ev) ?></b>
-            <div class="notify-ch">
-              <?php foreach ($channels as $ch => $st): ?>
-                <label class="checkbox<?= $st['ready'] ? '' : ' is-off' ?>"
-                       <?= $st['ready'] ? '' : 'title="' . e($st['hint']) . '"' ?>>
-                  <input type="checkbox" name="n[<?= e($ev) ?>][<?= e($ch) ?>]" value="1"<?= $st['on'] ? ' checked' : '' ?>>
-                  <span><?= e($notify_channels[$ch] ?? $ch) ?><?php
-                    if (!$st['ready']): ?> <span class="dim">— <?= e($st['hint']) ?></span><?php endif; ?></span>
-                </label>
-              <?php endforeach; ?>
-            </div>
+            <label class="checkbox<?= $st['ready'] ? '' : ' is-off' ?>"
+                   <?= $st['ready'] ? '' : 'title="' . e($st['hint']) . '"' ?>>
+              <input type="checkbox" name="ch[<?= e($ch) ?>]" value="1"<?= $st['on'] ? ' checked' : '' ?>>
+              <span><b><?= e($notify_channels[$ch] ?? $ch) ?></b><?php
+                if (!$st['ready']): ?> <span class="dim">— <?= e($st['hint']) ?></span><?php endif; ?></span>
+            </label>
+            <?php /* що саме сюди приходитиме — не вибір людини, а пояснення */ ?>
+            <div class="dim notify-what"><?= e(implode(', ', array_unique($st['events']))) ?></div>
           </div>
         <?php endforeach; ?>
         <button class="btn btn-gold" type="submit" style="margin-top:16px">💾 Зберегти сповіщення</button>

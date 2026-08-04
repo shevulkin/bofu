@@ -774,10 +774,11 @@ body.help-on [data-help] *{pointer-events:none}
 /* ---------- особисті сповіщення в профілі ---------- */
 .notify-row{padding:12px 0;border-bottom:1px solid var(--bg3)}
 .notify-row:last-of-type{border-bottom:0}
-.notify-ch{display:flex;flex-wrap:wrap;gap:8px 22px;margin-top:8px}
-.notify-ch .checkbox{align-items:flex-start;margin:0;font-size:13.5px}
+.notify-row .checkbox{align-items:flex-start;margin:0;font-size:13.5px}
 /* канал не налаштований — галку лишаємо робочою, але видно, що зараз не дійде */
-.notify-ch .checkbox.is-off{opacity:.65}
+.notify-row .checkbox.is-off{opacity:.65}
+/* перелік подій — довідка під галкою, тому з відступом під текст, а не під бокс */
+.notify-what{font-size:12.5px;margin:4px 0 0 30px}
 
 /* ---------- мініатюра товару біля заголовка ---------- */
 .prod-title{display:flex;align-items:center;gap:14px;min-width:0}

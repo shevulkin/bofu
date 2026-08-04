@@ -28,8 +28,10 @@ final class NotifyTest
         $this->setUp();
         try {
             $this->testDefaults();
+            $this->testUserPicksChannelNotEvents();
             $this->testUserCanTurnOff();
             $this->testUserCannotTurnOnWhatAdminClosed();
+            $this->testLegacyPerEventRowsCleared();
             $this->testAdminSwitchesWin();
             $this->testGroups();
             $this->testOrderMessage();
@@ -102,18 +104,32 @@ final class NotifyTest
         $this->ok('канал позначено готовим — chat_id заданий', $opts['order_new']['telegram']['ready']);
     }
 
+    private function testUserPicksChannelNotEvents(): void
+    {
+        $this->group('людина обирає спосіб отримання, а не події');
+        $chans = Notify::channelsFor($this->user($this->admin));
+        $this->ok('у кабінеті пропонуються канали', array_keys($chans) === ['telegram']);
+        $this->ok('канал позначено готовим — chat_id заданий', $chans['telegram']['ready']);
+        $this->ok('поруч сказано, що саме приходитиме',
+            $chans['telegram']['events'] === ['Нове замовлення']);
+    }
+
     private function testUserCanTurnOff(): void
     {
-        $this->group('людина може вимкнути те, що їй не потрібне');
-        Notify::savePrefs($this->user($this->admin), []);   // жодної галки
+        $this->group('людина може вимкнути канал цілком');
+        Notify::saveChannels($this->user($this->admin), []);   // жодної галки
         Notify::forgetPrefs();
-        $this->ok('вимкнене більше не хоче', !Notify::wants($this->admin, 'order_new', 'telegram'));
-        $this->ok('у БД рядок саме про цю пару',
-            (int)DB::val("SELECT COUNT(*) FROM user_notify_prefs WHERE user_id = ? AND event = 'order_new' AND channel = 'telegram'", [$this->admin]) === 1);
+        $this->ok('вимкнений канал більше не хоче', !Notify::wantsChannel($this->admin, 'telegram'));
+        $this->ok('і жодна подія цим каналом не піде',
+            !Notify::wants($this->admin, 'order_new', 'telegram')
+            && !Notify::wants($this->admin, 'order_status', 'telegram'));
+        $this->ok('у БД один рядок — про канал, не про подію',
+            (int)DB::val('SELECT COUNT(*) FROM user_notify_prefs WHERE user_id = ? AND event = ? AND channel = ?',
+                [$this->admin, Notify::ANY_EVENT, 'telegram']) === 1);
 
-        Notify::savePrefs($this->user($this->admin), ['order_new' => ['telegram' => '1']]);
+        Notify::saveChannels($this->user($this->admin), ['telegram' => '1']);
         Notify::forgetPrefs();
-        $this->ok('повернути назад можна', Notify::wants($this->admin, 'order_new', 'telegram'));
+        $this->ok('повернути назад можна', Notify::wantsChannel($this->admin, 'telegram'));
         $this->ok('зайвих рядків не лишається',
             (int)DB::val('SELECT COUNT(*) FROM user_notify_prefs WHERE user_id = ?', [$this->admin]) === 0);
     }
@@ -121,17 +137,30 @@ final class NotifyTest
     private function testUserCannotTurnOnWhatAdminClosed(): void
     {
         $this->group('вибір не може вийти за межі дозволеного адміном');
-        // підроблена форма: просимо подію й канал, які адмін вимкнув
-        Notify::savePrefs($this->user($this->admin), [
-            'order_new' => ['telegram' => '1', 'email' => '1'],
-            'stock_low' => ['telegram' => '1'],
-        ]);
+        // підроблена форма: просимо канал, якого адмін не давав
+        Notify::saveChannels($this->user($this->admin), ['telegram' => '1', 'email' => '1']);
         Notify::forgetPrefs();
-        $this->ok('закрита адміном подія не потрапила в налаштування',
-            (int)DB::val("SELECT COUNT(*) FROM user_notify_prefs WHERE event = 'stock_low'") === 0);
+        $this->ok('закритий адміном канал не потрапив у налаштування',
+            (int)DB::val("SELECT COUNT(*) FROM user_notify_prefs WHERE channel = 'email'") === 0);
+        $this->ok('і не зʼявляється у виборі',
+            !isset(Notify::channelsFor($this->user($this->admin))['email']));
         $opts = Notify::optionsFor($this->user($this->admin));
-        $this->ok('і не зʼявляється у виборі', !isset($opts['stock_low']));
-        $this->ok('канал, вимкнений у правилі, теж не зʼявляється', !isset($opts['order_new']['email']));
+        $this->ok('закрита адміном подія теж не зʼявляється', !isset($opts['stock_low']));
+    }
+
+    /** Старий вибір по подіях не має глушити канал, який людина щойно ввімкнула */
+    private function testLegacyPerEventRowsCleared(): void
+    {
+        $this->group('рядки старого формату прибираються');
+        DB::insert('user_notify_prefs', ['user_id' => $this->admin, 'event' => 'order_new',
+                                         'channel' => 'telegram', 'enabled' => 0]);
+        Notify::forgetPrefs();
+        Notify::saveChannels($this->user($this->admin), ['telegram' => '1']);
+        Notify::forgetPrefs();
+        $this->ok('стара заборона по події зникла',
+            (int)DB::val("SELECT COUNT(*) FROM user_notify_prefs WHERE user_id = ? AND event = 'order_new'",
+                [$this->admin]) === 0);
+        $this->ok('канал працює', Notify::wants($this->admin, 'order_new', 'telegram'));
     }
 
     private function testAdminSwitchesWin(): void
@@ -152,7 +181,9 @@ final class NotifyTest
         $this->group('групи отримувачів');
         $this->ok('адмін входить у admins_sellers', Notify::inGroup($this->admin, 'admins_sellers'));
         $this->ok('покупець не входить', !Notify::inGroup($this->customer, 'admins_sellers'));
-        $this->ok('покупцю нема чого налаштовувати', Notify::optionsFor($this->user($this->customer)) === []);
+        $this->ok('покупцю нема чого налаштовувати',
+            Notify::optionsFor($this->user($this->customer)) === []
+            && Notify::channelsFor($this->user($this->customer)) === []);
     }
 
     /**
