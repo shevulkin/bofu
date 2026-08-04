@@ -50,6 +50,7 @@
             ['/admin/stock-requests', 'Очікують товар', true],
             ['/admin/categories', 'Категорії', Auth::can('catalog.manage')],
             ['/admin/attributes', 'Характеристики', Auth::can('catalog.manage')],
+            ['/admin/brands', 'Бренди', Auth::can('catalog.manage')],
         ]],
         ['Мережа', [
             ['/admin/stores', 'Магазини', Auth::can('stores.manage')],

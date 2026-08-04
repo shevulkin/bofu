@@ -22,7 +22,8 @@
     'name' => $p['name'], 'description' => $p['short_desc'] ?? '',
     // бренд Google показує в картці товару; без нього позицію легше сплутати з чужою.
     // Порожній не віддаємо: array_filter нижче прибирає його разом із null
-    'brand' => !empty($p['brand']) ? ['@type' => 'Brand', 'name' => $p['brand']] : null,
+    'brand' => Catalog::brandName($p) !== ''
+        ? ['@type' => 'Brand', 'name' => Catalog::brandName($p)] : null,
     // усі фото товару: головне першим — Google показує їх у картці товару
     'image' => array_map(fn($i) => asset($i['path']), $images ?? [['path' => Catalog::photo($p)]]),
     'offers' => ['@type' => 'Offer', 'priceCurrency' => 'UAH', 'price' => $price ?? 0,

@@ -180,6 +180,7 @@ class App
             '/admin/stock-requests'     => [$A.'StockRequests', 'index', 'products.view'],
             '/admin/categories'         => [$A.'Categories', 'index', 'catalog.manage'],
             '/admin/attributes'         => [$A.'Attributes', 'index', 'catalog.manage'],
+            '/admin/brands'             => [$A.'Brands', 'index', 'catalog.manage'],
             '/admin/stores'             => [$A.'Stores', 'index', 'stores.manage'],
             '/admin/orders'             => [$A.'Orders', 'index', 'orders.view'],
             '/admin/promos'             => [$A.'Promos', 'index', 'promos.manage'],

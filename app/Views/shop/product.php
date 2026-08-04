@@ -111,13 +111,14 @@
           <?php endif; ?>
         </div>
 
-        <?php if ($attrs || !empty($p['brand'])): ?>
+        <?php $brandName = Catalog::brandName($p); ?>
+        <?php if ($attrs || $brandName !== ''): ?>
           <h2 style="font-size:22px;margin-top:34px">Характеристики</h2>
           <table class="specs">
             <?php /* Бренд першим рядком: «чий це товар» — питання, яке виникає
                      раніше за вагу й обʼєм, надто коли позиція не наша. */ ?>
-            <?php if (!empty($p['brand'])): ?>
-              <tr><td>Бренд</td><td><?= e($p['brand']) ?></td></tr>
+            <?php if ($brandName !== ''): ?>
+              <tr><td>Бренд</td><td><?= e($brandName) ?></td></tr>
             <?php endif; ?>
             <?php foreach ($attrs as $a): ?>
               <tr>

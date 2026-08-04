@@ -7,7 +7,7 @@ declare(strict_types=1);
  */
 class Schema
 {
-    public const VERSION = 26;
+    public const VERSION = 27;
 
     /** Оновлення існуючої бази до поточної версії без втрати даних */
     public static function upgrade(): void
@@ -238,6 +238,26 @@ class Schema
                     [Catalog::ownBrand(), (int)$r['product_id'], '']);
             }
         }
+        if ($ver < 27) {
+            // Бренд стає довідником: сам по собі текст у картці не давав ні
+            // списку, ні захисту від «SINCERA» проти «Sincera» в сусідніх позиціях.
+            self::createAll(); // brands
+            self::addColumn('products', 'brand_id', 'int null');
+            foreach (DB::all("SELECT DISTINCT brand FROM products WHERE brand IS NOT NULL AND brand <> ''") as $r) {
+                $name = trim((string)$r['brand']);
+                if ($name === '') continue;
+                $id = (int)(DB::val('SELECT id FROM brands WHERE name = ?', [$name]) ?? 0);
+                if (!$id) {
+                    $id = DB::insert('brands', [
+                        'name' => $name, 'slug' => slugify($name) ?: 'brand-' . random_int(100, 999),
+                        // свій бренд упізнаємо один раз — далі вирішує прапорець
+                        'own' => mb_strtolower($name) === mb_strtolower(Catalog::ownBrandName()) ? 1 : 0,
+                        'active' => 1, 'sort' => 0,
+                    ]);
+                }
+                DB::query('UPDATE products SET brand_id = ? WHERE brand = ?', [$id, $name]);
+            }
+        }
         Settings::set('schema_version', (string)self::VERSION);
     }
 
@@ -353,6 +373,14 @@ class Schema
                 'viber_id' => 'str null', 'phone' => 'str null',
                 'created_at' => 'ts',
             ],
+            // Чий товар. own = 1 стоїть у бренда самого магазину — саме з нього
+            // сайт бере право сказати «ми виробник». Прапорець, а не порівняння
+            // назв: назву магазину міняють, і твердження про походження товару
+            // не має залежати від такої правки.
+            'brands' => [
+                'id' => 'id', 'name' => 'str', 'slug' => 'str unique',
+                'own' => 'bool default 0', 'active' => 'bool default 1', 'sort' => 'int default 0',
+            ],
             'stores' => [
                 'id' => 'id', 'name' => 'str', 'slug' => 'str unique', 'city' => 'str null',
                 'address' => 'str null', 'phone' => 'str null', 'active' => 'bool default 1', 'sort' => 'int default 0',
@@ -369,7 +397,9 @@ class Schema
             ],
             'products' => [
                 'id' => 'id', 'category_id' => 'int', 'name' => 'str', 'slug' => 'str unique',
-                'sku' => 'str null', 'brand' => 'str null', // чий товар; свій бренд — Catalog::ownBrand()
+                'sku' => 'str null',
+                'brand_id' => 'int null',  // чий товар — довідник brands
+                'brand' => 'str null',     // застаріле текстове поле; лишилось до міграції 27, не читається
                 'short_desc' => 'text null', 'description' => 'text null',
                 'base_price' => 'num null', // null => "За запитом"
                 'old_price' => 'num null',

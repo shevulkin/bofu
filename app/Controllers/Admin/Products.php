@@ -11,10 +11,12 @@ class Products
     {
         $q = trim($_GET['q'] ?? '');
         $cat = (int)($_GET['cat'] ?? 0);
+        $brand = (int)($_GET['brand'] ?? 0);   // з довідника брендів — «показати ці товари»
         $where = ['1=1'];
         $params = [];
         if ($q !== '') { $where[] = '(p.name LIKE ? OR p.sku LIKE ?)'; $params[] = "%$q%"; $params[] = "%$q%"; }
         if ($cat) { $where[] = 'p.category_id = ?'; $params[] = $cat; }
+        if ($brand) { $where[] = 'p.brand_id = ?'; $params[] = $brand; }
         $products = DB::all(
             'SELECT p.*, c.name AS cat_name FROM products p LEFT JOIN categories c ON c.id = p.category_id
              WHERE ' . implode(' AND ', $where) . ' ORDER BY p.id DESC', $params);
@@ -26,6 +28,7 @@ class Products
             'products' => $products, 'categories' => Catalog::categories(),
             'stores' => Catalog::stores(), 'stocks' => Catalog::stockTotals(), 'variant_count' => $variantCount,
             'q' => $q, 'cat' => $cat,
+            'brand' => $brand ? Catalog::brand(['brand_id' => $brand]) : null,
             'page_title' => 'Товари — адмінка',
         ], 'layouts/admin');
     }
@@ -95,7 +98,7 @@ class Products
                 'category_id' => (int)($_POST['category_id'] ?? 0),
                 'name' => $name, 'slug' => $slug,
                 'sku' => trim($_POST['sku'] ?? '') ?: null,
-                'brand' => trim($_POST['brand'] ?? '') ?: null,
+                'brand_id' => (int)($_POST['brand_id'] ?? 0) ?: null,
                 'short_desc' => trim($_POST['short_desc'] ?? '') ?: null,
                 'description' => trim($_POST['description'] ?? '') ?: null,
                 'base_price' => $_POST['base_price'] === '' ? null : (float)$_POST['base_price'],
@@ -268,7 +271,7 @@ class Products
                 'name' => trim($_POST['name'] ?? $p['name']),
                 'category_id' => (int)($_POST['category_id'] ?? $p['category_id']),
                 'sku' => trim($_POST['sku'] ?? '') ?: null,
-                'brand' => trim($_POST['brand'] ?? '') ?: null,
+                'brand_id' => (int)($_POST['brand_id'] ?? 0) ?: null,
                 'short_desc' => trim($_POST['short_desc'] ?? '') ?: null,
                 'description' => trim($_POST['description'] ?? '') ?: null,
                 'base_price' => ($_POST['base_price'] ?? '') === '' ? null : (float)$_POST['base_price'],
