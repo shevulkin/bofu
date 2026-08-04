@@ -21,6 +21,12 @@
         <h1 style="font-size:40px"><?= e($p['name']) ?></h1>
         <p class="lead" style="margin:16px 0 20px"><?= e($p['short_desc'] ?? '') ?></p>
 
+        <?php
+        // Стан кнопки до першого кліку по варіанту. Далі його переставляє JS
+        // разом із ціною й наявністю — див. updateAddButton() в app.js.
+        $stockNow = 0; foreach ($availability as $av) $stockNow += (int)$av['qty'];
+        $outOfStock = $stockNow <= 0 && !$p['made_to_order'];
+        ?>
         <form method="post" action="<?= e(url('/cart/add')) ?>" class="add-cart-form" data-product-name="<?= e($p['name']) ?>">
           <?= Csrf::field() ?>
           <input type="hidden" name="product_id" value="<?= (int)$p['id'] ?>">
@@ -62,10 +68,12 @@
             </span>
             <div class="qty-box">
               <button type="button" onclick="var i=this.parentNode.querySelector('input');i.value=Math.max(1,+i.value-1)">−</button>
-              <input type="number" name="qty" value="1" min="1">
-              <button type="button" onclick="var i=this.parentNode.querySelector('input');i.value=+i.value+1">+</button>
+              <input type="number" name="qty" value="1" min="1"
+                     <?= $p['made_to_order'] || $stockNow <= 0 ? '' : 'max="' . $stockNow . '"' ?>>
+              <button type="button" onclick="var i=this.parentNode.querySelector('input'),m=+i.max||Infinity;i.value=Math.min(m,+i.value+1)">+</button>
             </div>
-            <button class="btn btn-gold" type="submit">До кошика</button>
+            <button class="btn btn-gold" type="submit" id="addToCart" <?= $outOfStock ? 'disabled' : '' ?>>
+              <?= $outOfStock ? 'Немає в наявності' : 'До кошика' ?></button>
           </div>
         </form>
 

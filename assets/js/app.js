@@ -99,6 +99,7 @@
         note.textContent = bits.join(' · ');
       }
       updateAvailability(v);
+      updateAddButton(v);
       // гасимо значення, які не поєднуються з поточним вибором
       picker.querySelectorAll('.opt').forEach(function (btn) {
         var axis = btn.dataset.axis;
@@ -108,6 +109,27 @@
       picker.querySelectorAll('.opt-plain').forEach(function (btn) {
         btn.classList.toggle('active', +btn.dataset.variant === v.id);
       });
+    }
+
+    /**
+     * Кнопка «До кошика» для варіанта, якого немає. Сервер відмовить у будь-якому
+     * разі — тут ми лише не даємо людині дізнатися про це вже на оформленні.
+     * «Виготовимо під замовлення» не обмежуємо: такий товар роблять під клієнта.
+     */
+    function updateAddButton(v) {
+      var btn = document.getElementById('addToCart');
+      if (!btn) return;
+      var blocked = v.qty <= 0 && !window.BOFU_MADE_TO_ORDER;
+      btn.disabled = blocked;
+      btn.textContent = blocked ? 'Немає в наявності' : 'До кошика';
+      var qtyInput = document.querySelector('.qty-box input[name=qty]');
+      if (qtyInput) {
+        if (window.BOFU_MADE_TO_ORDER || v.qty <= 0) qtyInput.removeAttribute('max');
+        else {
+          qtyInput.max = v.qty;
+          if (+qtyInput.value > v.qty) qtyInput.value = v.qty;
+        }
+      }
     }
 
     function updateAvailability(v) {
@@ -174,10 +196,12 @@
   // додавання в кошик без перезавантаження сторінки
   var cartToast = document.getElementById('cartToast');
   var cartToastTimer = null;
-  function showCartToast(name) {
+  function showCartToast(name, note) {
     if (!cartToast) return;
     var textEl = cartToast.querySelector('.cart-toast-text');
-    if (textEl) textEl.textContent = (name ? '«' + name + '»' : 'Товар') + ' додано в кошик';
+    // note приходить, коли поклали не всю замовлену кількість — тоді про це
+    // й кажемо: «додано в кошик» приховало б, що штук менше, ніж просили
+    if (textEl) textEl.textContent = note || ((name ? '«' + name + '»' : 'Товар') + ' додано в кошик');
     cartToast.classList.add('show');
     clearTimeout(cartToastTimer);
     cartToastTimer = setTimeout(function () { cartToast.classList.remove('show'); }, 6000);
@@ -319,7 +343,9 @@
       .then(function (res) {
         if (res && res.ok) {
           updateCartBadge(res.count);
-          showCartToast(form.dataset.productName);
+          showCartToast(form.dataset.productName, res.note);
+        } else if (res && res.error) {
+          showCartToast(null, res.error);
         } else if (res && res.redirect) {
           // сервер каже, що бракує вибору — ведемо туди, де його роблять
           location.href = res.redirect;

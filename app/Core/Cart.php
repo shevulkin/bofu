@@ -45,21 +45,55 @@ class Cart
         if ($changed) $_SESSION['cart'] = $out;
     }
 
-    public static function add(int $productId, ?int $variantId = null, int $qty = 1): void
+    /**
+     * Скільки цієї позиції можна покласти в кошик. null — без обмежень:
+     * «виготовимо під замовлення» від залишку не залежить.
+     *
+     * Рахуємо тим самим OrderFlow::sellable(), що вирішує на оформленні, —
+     * інакше кошик приймав би те, що потім відхиляє підтвердження замовлення.
+     */
+    public static function limit(int $productId, ?int $variantId): ?int
+    {
+        $p = DB::row('SELECT made_to_order FROM products WHERE id = ? AND active = 1', [$productId]);
+        if (!$p) return 0;
+        if (!empty($p['made_to_order'])) return null;
+        return min(self::MAX_QTY, OrderFlow::sellable($productId, $variantId));
+    }
+
+    /**
+     * Кладе позицію в кошик і повертає, скільки саме поклали: 0 означає
+     * «нічого немає», менше за $qty — «стільки й лишилось». Це відповідь
+     * покупцеві, тож приймати рішення про повідомлення має він, не кошик.
+     */
+    public static function add(int $productId, ?int $variantId = null, int $qty = 1): int
     {
         $variantId = self::resolveVariant($productId, $variantId);
         $key = self::key($productId, $variantId);
         $cart = self::items();
-        if (isset($cart[$key])) $cart[$key]['qty'] = min(self::MAX_QTY, $cart[$key]['qty'] + $qty);
-        else $cart[$key] = ['product_id' => $productId, 'variant_id' => $variantId, 'qty' => min(self::MAX_QTY, max(1, $qty))];
+        $was = (int)($cart[$key]['qty'] ?? 0);
+        $want = min(self::MAX_QTY, $was + max(1, $qty));
+
+        // Порожній склад — не привід тримати позицію в кошику: інакше людина
+        // заповнить усю форму й дізнається про відмову на останньому кліку.
+        $limit = self::limit($productId, $variantId);
+        if ($limit !== null) $want = min($want, $limit);
+        if ($want <= $was) return 0;
+
+        if ($was) $cart[$key]['qty'] = $want;
+        else $cart[$key] = ['product_id' => $productId, 'variant_id' => $variantId, 'qty' => $want];
         $_SESSION['cart'] = $cart;
+        return $want - $was;
     }
 
     public static function setQty(string $key, int $qty): void
     {
         if (!isset($_SESSION['cart'][$key])) return;
+        $item = $_SESSION['cart'][$key];
+        $limit = self::limit((int)$item['product_id'], isset($item['variant_id']) ? (int)$item['variant_id'] : null);
+        $qty = min(self::MAX_QTY, $qty);
+        if ($limit !== null) $qty = min($qty, $limit);
         if ($qty <= 0) unset($_SESSION['cart'][$key]);
-        else $_SESSION['cart'][$key]['qty'] = min(self::MAX_QTY, $qty);
+        else $_SESSION['cart'][$key]['qty'] = $qty;
     }
 
     public static function remove(string $key): void { unset($_SESSION['cart'][$key]); }
