@@ -23,60 +23,68 @@ $roCard = $canCard ? '' : 'disabled';
   <p class="dim" style="margin:0 0 12px">
     У товарів з варіантами ціна й залишок задаються окремим рядком для кожного варіанта — саме з них береться наявність у магазині.
   </p>
-  <table class="tbl">
-    <tr>
-      <th data-help-title="Колонка «Товар»"
+  <table class="tbl tbl-bulk">
+    <?php /* Двоповерхова шапка: «ціна» і «залишок» читаються як пара під назвою
+             магазину, а не як чотири однакові стовпці поспіль. Разом із рамкою
+             ліворуч кожної групи це знімає потребу щоразу зіставляти заголовок
+             зі стовпцем. */ ?>
+    <tr class="grp-head">
+      <th rowspan="2" data-help-title="Колонка «Товар»"
           data-help="Назву можна правити прямо тут, не заходячи в картку.
 
 Сірим під полем — категорія й кількість варіантів, якщо вони є.
 
 Фото, опис, характеристики й самі варіанти тут не редагуються — для цього відкрийте картку товару в розділі «Товари».">Товар</th>
-      <th class="w-price num" data-help-title="Базова ціна"
+      <th rowspan="2" class="w-price num cell-money" data-help-title="Базова ціна"
           data-help="Ціна за замовчуванням для всіх магазинів.
 
 Порожньо означає «За запитом»: покупець побачить не число, а пропозицію звʼязатися.
 
 Її перебиває ціна конкретного магазину, задана у стовпцях праворуч.">Базова ціна</th>
       <?php foreach ($stores as $s): $lock = $canStore((int)$s['id']) ? '' : ' 🔒'; ?>
-        <th class="w-price num"
-            data-help-title="Ціна · <?= e($s['city'] ?: $s['name']) ?>"
-            data-help="Окрема ціна саме в цій точці. Порожньо (підказка «базова») — діє базова ціна товару.
+        <th colspan="2" class="grp-store"
+            data-help-title="Магазин · <?= e($s['city'] ?: $s['name']) ?>"
+            data-help="Дві колонки під назвою точки — це її власна ціна й залишок.
 
-Замок 🔒 означає, що магазин не ваш: значення видно, але правити його може лише його продавець або адміністратор.
+Ціна порожня (підказка «базова») — діє базова ціна товару, задана ліворуч. Акція накладається вже поверх.
 
-Акція накладається вже поверх цієї ціни.">Ціна · <?= e($s['city'] ?: $s['name']) . $lock ?></th>
-        <th class="w-stock num"
-            data-help-title="Залишок · <?= e($s['city'] ?: $s['name']) ?>"
-            data-help="Скільки штук зараз у цій точці.
+Залишок — скільки штук зараз у цій точці. Від цих чисел залежить, якому магазину дістанеться замовлення.
 
-Замість поля може стояти сіре «Σ 12» — це товар з варіантами: у нього залишок задається окремо по кожному варіанту, у рядках нижче, а тут показана їх сума.
-
-Від цих чисел залежить, якому магазину дістанеться замовлення: система шукає точку, де вистачає на всю кількість.
-
-Замок 🔒 — чужий магазин, лише перегляд.">Залишок · <?= e($s['city'] ?: $s['name']) . $lock ?></th>
+Замок 🔒 означає, що магазин не ваш: значення видно, але правити його може лише його продавець або адміністратор."><?= e($s['city'] ?: $s['name']) . $lock ?></th>
       <?php endforeach; ?>
-      <th class="col-mid" data-help-title="Колонка «Активний»"
+      <th rowspan="2" class="col-mid" data-help-title="Колонка «Активний»"
           data-help="Чи показувати товар на сайті.
 
 Знята галка ховає його з каталогу й пошуку, але нічого не видаляє: ціни, залишки, фото й опис лишаються на місці.
 
 Зміни застосуються лише після «Зберегти все» внизу сторінки.">Активний</th>
     </tr>
+    <tr class="grp-sub">
+      <?php foreach ($stores as $s): ?>
+        <th class="w-price num cell-price">ціна</th>
+        <th class="w-stock num cell-stock">залишок</th>
+      <?php endforeach; ?>
+    </tr>
     <?php foreach ($products as $p): $pid = (int)$p['id']; $vs = $variants[$pid] ?? []; ?>
-      <tr>
+      <tr class="row-product">
         <td>
           <input type="text" name="p[<?= $pid ?>][name]" value="<?= e($p['name']) ?>" style="min-width:220px" <?= $roCard ?>>
           <div class="dim"><?= e($p['cat_name'] ?? '') ?><?= $vs ? ' · варіантів: ' . count($vs) : '' ?></div>
         </td>
-        <td class="num"><input type="number" step="0.01" name="p[<?= $pid ?>][base_price]" value="<?= e($p['base_price']) ?>" placeholder="За запитом" <?= $roCard ?>></td>
+        <td class="num cell-money"><input type="number" step="0.01" name="p[<?= $pid ?>][base_price]" value="<?= e($p['base_price']) ?>" placeholder="За запитом" <?= $roCard ?>></td>
         <?php foreach ($stores as $s): $sid = (int)$s['id']; $ro = $canStore($sid) ? '' : 'disabled title="Магазин не ваш — правити може лише його продавець або адмін"'; ?>
-          <td class="num"><input type="number" step="0.01" name="p[<?= $pid ?>][store_price][<?= $sid ?>]"
+          <td class="num cell-price"><input type="number" step="0.01" name="p[<?= $pid ?>][store_price][<?= $sid ?>]"
                      value="<?= e($prices[$pid][$sid] ?? '') ?>" placeholder="базова" <?= $ro ?>></td>
-          <td class="num">
+          <?php
+          // «нуль» видно одразу кольором, а не після прочитання числа
+          $stockVal = $vs ? null : ($stocks[$pid][$sid] ?? '');
+          $zero = $vs ? false : ($stockVal === '' || (int)$stockVal === 0);
+          ?>
+          <td class="num cell-stock<?= $zero ? ' is-zero' : '' ?>">
             <?php if ($vs): $sum = 0; foreach ($vs as $v) $sum += (int)($vstocks[(int)$v['id']][$sid] ?? 0); ?>
-              <span class="dim" title="Сума по варіантах — редагуйте в рядках нижче">Σ <?= $sum ?></span>
+              <span class="stock-sum" title="Сума по варіантах — редагуйте в рядках нижче">Σ <?= $sum ?></span>
             <?php else: ?>
-              <input type="number" name="p[<?= $pid ?>][stock][<?= $sid ?>]" value="<?= e($stocks[$pid][$sid] ?? '') ?>" <?= $ro ?>>
+              <input type="number" name="p[<?= $pid ?>][stock][<?= $sid ?>]" value="<?= e($stockVal) ?>" placeholder="0" <?= $ro ?>>
             <?php endif; ?>
           </td>
         <?php endforeach; ?>
@@ -91,13 +99,16 @@ $roCard = $canCard ? '' : 'disabled';
       </tr>
       <?php foreach ($vs as $v): $vid = (int)$v['id']; ?>
         <tr class="variant-sub">
-          <td style="padding-left:26px" class="muted">↳ <?= e($v['name']) ?><?= $v['sku'] ? ' · ' . e($v['sku']) : '' ?></td>
-          <td class="dim" style="text-align:center"><?= $v['price'] !== null && $v['price'] !== '' ? e(price_fmt($v['price'])) : '—' ?></td>
+          <?php /* стрілка ↳ була символом, якого немає в шрифті інтерфейсу, —
+                   на екрані виходило «І,». Вкладеність малюємо рискою в CSS. */ ?>
+          <td class="var-name muted"><?= e($v['name']) ?><?= $v['sku'] ? ' · ' . e($v['sku']) : '' ?></td>
+          <td class="num cell-money"><span class="dim"><?= $v['price'] !== null && $v['price'] !== '' ? e(price_fmt($v['price'])) : '—' ?></span></td>
           <?php foreach ($stores as $s): $sid = (int)$s['id']; $ro = $canStore($sid) ? '' : 'disabled title="Магазин не ваш — правити може лише його продавець або адмін"'; ?>
-            <td class="num"><input type="number" step="0.01" name="p[<?= $pid ?>][vprice][<?= $vid ?>][<?= $sid ?>]"
+            <td class="num cell-price"><input type="number" step="0.01" name="p[<?= $pid ?>][vprice][<?= $vid ?>][<?= $sid ?>]"
                        value="<?= e($vprices[$vid][$sid] ?? '') ?>" placeholder="базова" <?= $ro ?>></td>
-            <td class="num"><input type="number" name="p[<?= $pid ?>][vstock][<?= $vid ?>][<?= $sid ?>]"
-                       value="<?= e($vstocks[$vid][$sid] ?? '') ?>" <?= $ro ?>></td>
+            <?php $vq = $vstocks[$vid][$sid] ?? ''; $vzero = $vq === '' || (int)$vq === 0; ?>
+            <td class="num cell-stock<?= $vzero ? ' is-zero' : '' ?>"><input type="number" name="p[<?= $pid ?>][vstock][<?= $vid ?>][<?= $sid ?>]"
+                       value="<?= e($vq) ?>" placeholder="0" <?= $ro ?>></td>
           <?php endforeach; ?>
           <td></td>
         </tr>

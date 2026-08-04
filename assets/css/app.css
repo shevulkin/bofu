@@ -545,6 +545,42 @@ footer{border-top:1px solid var(--line);padding:44px 0 60px;margin-top:40px}
    і мати цифри однакової ширини. */
 .tbl .num,.tbl .num input{text-align:right;font-variant-numeric:tabular-nums}
 .tbl .col-mid{text-align:center}
+
+/* ---------- масове редагування: щоб зрозуміти з погляду ----------
+   Було чотири однакові стовпці поспіль — «ціна, залишок, ціна, залишок», — і
+   щоб дізнатись, чиє це число, доводилось вести очима вгору до заголовка.
+   Групуємо: назва магазину накриває свою пару, група відбита рамкою ліворуч,
+   а гроші й кількість розрізняються кольором — далі їх не плутають узагалі. */
+.tbl-bulk .grp-store{text-align:center;color:var(--gold);font-weight:700;letter-spacing:.09em}
+.tbl-bulk .grp-sub th{font-size:10.5px;letter-spacing:.08em;text-transform:lowercase}
+/* другий поверх шапки теж липкий — інакше при прокрутці лишалися б самі назви
+   магазинів, без підпису, де ціна, а де залишок */
+/* Другий поверх приліплений рівно під перший, тож його висота задана явно й
+   тим самим числом: 8+8 паддінга + 18 рядка. Тримаємо їх однією змінною —
+   інакше дворядковий заголовок чи інший шрифт розсунули б поверхи, і при
+   прокрутці «ціна/залишок» наїхали б на назви магазинів. */
+.tbl-bulk{--hdr1:34px}
+.tbl-bulk .grp-head th{position:sticky;top:0;z-index:3;padding:8px 12px;line-height:18px;height:var(--hdr1)}
+.tbl-bulk .grp-sub th{position:sticky;top:var(--hdr1);z-index:3;padding:4px 12px;line-height:14px}
+/* межа групи: одна лінія на весь стовпчик магазину */
+.tbl-bulk .grp-store,.tbl-bulk .cell-price{border-left:2px solid var(--line2)}
+/* гроші — золоті, як усюди на сайті; кількість — звичайним текстом на ледь
+   помітній підкладці, тож пари «ціна/залишок» видно навіть боковим зором */
+.tbl-bulk .cell-money input,.tbl-bulk .cell-price input{color:var(--gold)}
+.tbl-bulk .cell-stock{background:rgba(246,236,217,.028)}
+.tbl-bulk .cell-stock input{color:var(--text);font-weight:600}
+/* нуль не має читатись як число: його шукають, щоб поповнити */
+.tbl-bulk .cell-stock.is-zero input{color:var(--dim);font-weight:400}
+.tbl-bulk .cell-stock input::placeholder{color:var(--dim)}
+/* сума по варіантах — не поле, і не має вдавати його */
+.tbl-bulk .stock-sum{color:var(--muted);font-size:12.5px;background:var(--bg3);
+  border-radius:10px;padding:2px 8px;white-space:nowrap}
+/* товар починає групу — відбиваємо його від попередньої */
+.tbl-bulk tr.row-product td{border-top:1px solid var(--line2)}
+/* вкладеність варіанта — рискою, а не символом: ↳ у шрифті інтерфейсу немає */
+.tbl-bulk tr.variant-sub td.var-name{padding-left:32px;position:relative;white-space:nowrap}
+.tbl-bulk tr.variant-sub td.var-name::before{content:'';position:absolute;left:14px;top:50%;
+  width:10px;height:1px;background:var(--line2)}
 /* Незворотна дія не має виглядати як звичайна галка: у спокої вона малюється
    хрестиком, тож колонку «Видалити» видно, ще не навівши на неї. Полем форми
    вона лишається навмисно — видалення відбувається не тут, а при збереженні,
