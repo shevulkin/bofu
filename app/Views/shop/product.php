@@ -123,8 +123,10 @@
               <tr>
                 <td><?= count($prodBrands) > 1 ? 'Бренди' : 'Бренд' ?></td>
                 <td><?php foreach ($prodBrands as $i => $b): ?><?= $i ? ', ' : '' ?><a
-                      href="<?= e(url('/shop?brand=' . $b['slug'])) ?>"
-                      title="Показати всі товари цього бренду"><?= e($b['name']) ?></a><?php endforeach; ?></td>
+                      class="brand-link" href="<?= e(url('/shop?brand=' . $b['slug'])) ?>"
+                      title="Показати всі товари цього бренду"><?php
+                        if (!empty($b['logo'])): ?><img src="<?= e(asset(Images::displayThumb($b['logo']))) ?>"
+                             alt="" loading="lazy"><?php endif; ?><?= e($b['name']) ?></a><?php endforeach; ?></td>
               </tr>
             <?php endif; ?>
             <?php foreach ($attrs as $a): ?>

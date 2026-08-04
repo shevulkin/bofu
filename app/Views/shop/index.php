@@ -14,10 +14,22 @@
       </div>
     </div>
 
-    <?php /* прийшли з картки товару по бренду — показуємо це й даємо вийти */ ?>
+    <?php /* прийшли з картки товару по бренду — це фактично сторінка бренду:
+             лого й опис тут доречніші за будь-де, бо покупець уперше бачить
+             назву й питає «хто це?» */ ?>
     <?php if ($brand): ?>
-      <p class="dim" style="margin:0 0 18px">Товари бренду <b><?= e($brand['name']) ?></b>
-        · <a href="<?= e(url('/shop')) ?>">показати всі</a></p>
+      <div class="brand-head">
+        <?php if (!empty($brand['logo'])): ?>
+          <img class="brand-logo" src="<?= e(asset($brand['logo'])) ?>" alt="<?= e($brand['name']) ?>">
+        <?php endif; ?>
+        <div>
+          <?php if (!empty($brand['description'])): ?>
+            <p class="lead" style="margin:0 0 8px"><?= e($brand['description']) ?></p>
+          <?php endif; ?>
+          <p class="dim" style="margin:0">Товари бренду <b><?= e($brand['name']) ?></b>
+            · <a href="<?= e(url('/shop')) ?>">показати всі</a></p>
+        </div>
+      </div>
     <?php endif; ?>
 
     <div class="cat-chips">

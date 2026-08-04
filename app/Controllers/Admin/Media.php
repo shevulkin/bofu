@@ -20,6 +20,9 @@ class Media
         ) as $p) {
             $uses[] = ['label' => 'Товар: ' . $p['name'], 'url' => url('/admin/products/' . $p['id'])];
         }
+        foreach (DB::all('SELECT id, name FROM brands WHERE logo = ?', [$path]) as $b) {
+            $uses[] = ['label' => 'Лого бренду: ' . $b['name'], 'url' => url('/admin/brands')];
+        }
         foreach (DB::all('SELECT `key` FROM content_blocks WHERE image = ?', [$path]) as $c) {
             $uses[] = ['label' => 'Банер/фото сайту: ' . $c['key'], 'url' => url('/admin/content')];
         }

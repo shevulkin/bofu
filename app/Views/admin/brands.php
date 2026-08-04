@@ -8,83 +8,84 @@
   <div style="flex:1;min-width:200px" data-help-title="Назва бренду"
        data-help="Хто виробник: «SINCERA», «Апіпродукт», «<?= e($own_default) ?>».
 
-Пишіть так, як написано на упаковці, — покупець бачить цю назву в характеристиках товару, і вона ж іде в розмітку для Google.
+Пишіть так, як написано на упаковці, — покупець бачить цю назву в характеристиках товару й у каталозі, і вона ж іде в розмітку для Google.
 
-Назви не повторюються: якщо бренд уже є в списку, додати другий такий самий сайт не дасть.">
+Назви не повторюються: якщо бренд уже є в списку, додати другий такий самий сайт не дасть.
+
+Лого та опис додаються нижче, після створення.">
     <label>Назва</label><input type="text" name="name" required></div>
   <button class="btn btn-gold btn-sm" type="submit">+ Додати</button>
 </form>
 
 <?php if (!$brands): ?>
   <p class="dim">Поки що порожньо. Додайте перший бренд — далі його можна буде обрати в картці товару.</p>
-<?php else: ?>
-<form method="post" action="<?= e(url('/admin/brands')) ?>">
-  <?= Csrf::field() ?><input type="hidden" name="_action" value="save">
-  <table class="tbl">
-    <tr>
-      <th data-help-title="Колонка «Назва»"
-          data-help="Як бренд називається. Покупець бачить цю назву в характеристиках товару.
+<?php endif; ?>
 
-Позначка «наш» стоїть на вашому власному виробництві — лише його товари сайт підписує «ми виробник». Такий бренд може бути тільки один; щоб перенести позначку, натисніть «Зробити нашим» у сусідньому бренді.">Назва</th>
-      <th class="col-mid" data-help-title="Колонка «Активний»"
-          data-help="Чи пропонувати бренд у картці товару.
+<?php foreach ($brands as $b): $n = (int)($counts[(int)$b['id']] ?? 0); ?>
+  <?php /* окрема форма на бренд: файл лого не можна вкласти у спільну форму
+           таблиці, а вкладені форми браузер не приймає */ ?>
+  <form class="admin-card" method="post" action="<?= e(url('/admin/brands')) ?>" enctype="multipart/form-data">
+    <?= Csrf::field() ?><input type="hidden" name="id" value="<?= (int)$b['id'] ?>">
+
+    <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start">
+      <div style="flex:1;min-width:260px">
+        <div class="field" style="margin-bottom:12px">
+          <label>Назва <?php if ($b['own']): ?><span class="status-pill st-new">наш</span><?php endif; ?></label>
+          <input type="text" name="name" value="<?= e($b['name']) ?>" required>
+        </div>
+        <div class="field" data-help-title="Опис бренду"
+             data-help="Кілька речень про виробника: хто це, чим відомий, чому ви з ним працюєте.
+
+Показується покупцю на сторінці бренду — тій, куди веде назва бренду з картки товару.
+
+Порожньо — сторінка просто покаже товари без пояснення.">
+          <label>Опис</label>
+          <textarea name="description" rows="3" placeholder="Хто це і чому ви з ним працюєте"><?= e($b['description'] ?? '') ?></textarea>
+        </div>
+        <label class="checkbox" style="margin:0" data-help-title="Активний"
+               data-help="Чи пропонувати бренд у картці товару та у фільтрах магазину.
 
 Знята галка ховає бренд зі списку вибору, але вже підписані ним товари не змінюються — вони й далі показують цю назву покупцю.
 
-Так правильно виводити з обігу бренд, з яким більше не працюєте, замість видаляти його.">Активний</th>
-      <th class="col-mid">Товарів</th>
-      <th class="col-mid"></th>
-    </tr>
-    <?php foreach ($brands as $b): $n = (int)($counts[(int)$b['id']] ?? 0); ?>
-      <tr>
-        <td>
-          <div style="display:flex;align-items:center;gap:10px">
-            <input type="text" name="brand[<?= (int)$b['id'] ?>][name]" value="<?= e($b['name']) ?>">
-            <?php /* ознака, а не галка: свій бренд один і міняється раз на все
-                     життя магазину — колонка під це витрачала місце дарма */ ?>
-            <?php if ($b['own']): ?><span class="status-pill st-new">наш</span><?php endif; ?>
+Так правильно виводити з обігу бренд, з яким більше не працюєте, замість видаляти його.">
+          <input type="checkbox" name="active" value="1" <?= $b['active'] ? 'checked' : '' ?>> Активний</label>
+      </div>
+
+      <div style="width:200px" data-help-title="Лого бренду"
+           data-help="Показується на сторінці бренду й поруч із назвою в характеристиках товару. У каталозі на картках лого немає навмисно — воно збивало б рівний ритм фотографій товарів.
+
+Підійде звичайний файл із сайту виробника: JPEG, PNG, GIF або WebP до 15 МБ. Велике зображення сайт зменшить сам.
+
+Фон краще прозорий або білий — лого стоїть на темному.">
+        <label style="display:block;margin-bottom:8px">Лого</label>
+        <?php if (!empty($b['logo'])): ?>
+          <div style="background:var(--bg3);border-radius:6px;padding:10px;text-align:center;margin-bottom:8px">
+            <img src="<?= e(asset($b['logo'])) ?>" alt="<?= e($b['name']) ?>" style="max-width:100%;max-height:90px">
           </div>
-        </td>
-        <td class="col-mid"><input type="checkbox" name="brand[<?= (int)$b['id'] ?>][active]" <?= $b['active'] ? 'checked' : '' ?>></td>
-        <td class="col-mid">
-          <?php if ($n): ?>
-            <a href="<?= e(url('/admin/products?brand=' . (int)$b['id'])) ?>" title="Показати ці товари"><?= $n ?></a>
-          <?php else: ?><span class="dim">0</span><?php endif; ?>
-        </td>
-        <td class="col-mid" style="white-space:nowrap">
-          <?php /* «наш» переносимо окремою дією, а не галкою в масовому збереженні:
-                   це не правка рядка, а перепризначення на весь каталог */ ?>
-          <?php if (!$b['own']): ?>
-            <button class="btn btn-line btn-xs" type="submit" form="own<?= (int)$b['id'] ?>"
-                    title="Зробити цей бренд власним виробництвом">Зробити нашим</button>
-          <?php endif; ?>
-          <?php /* видалення лише в порожнього: інакше товари лишились би без відповіді, чиї вони */ ?>
-          <?php if (!$n): ?>
-            <button class="btn btn-danger btn-xs" type="submit" form="del<?= (int)$b['id'] ?>">Видалити</button>
-          <?php endif; ?>
-          <?php if ($b['own'] && $n): ?><span class="dim">—</span><?php endif; ?>
-        </td>
-      </tr>
-    <?php endforeach; ?>
-  </table>
-  <div class="admin-save">
-    <button class="btn btn-gold" type="submit">💾 Зберегти</button>
-    <span class="admin-save-note"></span>
-  </div>
-</form>
-<?php /* форми дій поза таблицею: вкладені форми браузер не приймає */ ?>
-<?php foreach ($brands as $b): ?>
-  <?php if (empty($counts[(int)$b['id']])): ?>
-    <form id="del<?= (int)$b['id'] ?>" method="post" action="<?= e(url('/admin/brands')) ?>" style="display:none">
-      <?= Csrf::field() ?><input type="hidden" name="_action" value="delete">
-      <input type="hidden" name="id" value="<?= (int)$b['id'] ?>">
-    </form>
-  <?php endif; ?>
-  <?php if (!$b['own']): ?>
-    <form id="own<?= (int)$b['id'] ?>" method="post" action="<?= e(url('/admin/brands')) ?>" style="display:none">
-      <?= Csrf::field() ?><input type="hidden" name="_action" value="own">
-      <input type="hidden" name="id" value="<?= (int)$b['id'] ?>">
-    </form>
-  <?php endif; ?>
+          <button class="btn btn-line btn-xs" type="submit" name="_action" value="logo_remove"
+                  style="width:100%;margin-bottom:8px">Прибрати лого</button>
+        <?php else: ?>
+          <p class="dim" style="margin:0 0 8px">Лого немає</p>
+        <?php endif; ?>
+        <input type="file" name="logo" accept="image/*">
+      </div>
+    </div>
+
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:16px">
+      <button class="btn btn-gold btn-sm" type="submit" name="_action" value="save">💾 Зберегти</button>
+      <?php if (!$b['own']): ?>
+        <button class="btn btn-line btn-xs" type="submit" name="_action" value="own"
+                title="Зробити цей бренд власним виробництвом">Зробити нашим</button>
+      <?php endif; ?>
+      <span class="dim" style="margin-left:auto">
+        <?php if ($n): ?>
+          <a href="<?= e(url('/admin/products?brand=' . (int)$b['id'])) ?>"><?= $n ?> товар(ів)</a>
+        <?php else: ?>Товарів немає<?php endif; ?>
+      </span>
+      <?php /* видалення лише в порожнього: інакше товари лишились би без відповіді, чиї вони */ ?>
+      <?php if (!$n): ?>
+        <button class="btn btn-danger btn-xs" type="submit" name="_action" value="delete">Видалити</button>
+      <?php endif; ?>
+    </div>
+  </form>
 <?php endforeach; ?>
-<?php endif; ?>
