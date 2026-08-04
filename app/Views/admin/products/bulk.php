@@ -71,10 +71,10 @@ $roCard = $canCard ? '' : 'disabled';
           <input type="text" name="p[<?= $pid ?>][name]" value="<?= e($p['name']) ?>" style="min-width:220px" <?= $roCard ?>>
           <div class="dim"><?= e($p['cat_name'] ?? '') ?><?= $vs ? ' · варіантів: ' . count($vs) : '' ?></div>
         </td>
-        <td class="num cell-money"><input type="number" step="0.01" name="p[<?= $pid ?>][base_price]" value="<?= e($p['base_price']) ?>" placeholder="За запитом" <?= $roCard ?>></td>
+        <td class="num cell-money"><input type="number" step="0.01" name="p[<?= $pid ?>][base_price]" value="<?= e(num_val($p['base_price'])) ?>" placeholder="За запитом" <?= $roCard ?>></td>
         <?php foreach ($stores as $s): $sid = (int)$s['id']; $ro = $canStore($sid) ? '' : 'disabled title="Магазин не ваш — правити може лише його продавець або адмін"'; ?>
           <td class="num cell-price"><input type="number" step="0.01" name="p[<?= $pid ?>][store_price][<?= $sid ?>]"
-                     value="<?= e($prices[$pid][$sid] ?? '') ?>" placeholder="базова" <?= $ro ?>></td>
+                     value="<?= e(num_val($prices[$pid][$sid] ?? '')) ?>" placeholder="базова" <?= $ro ?>></td>
           <?php
           // «нуль» видно одразу кольором, а не після прочитання числа
           $stockVal = $vs ? null : ($stocks[$pid][$sid] ?? '');
@@ -105,7 +105,7 @@ $roCard = $canCard ? '' : 'disabled';
           <td class="num cell-money"><span class="dim"><?= $v['price'] !== null && $v['price'] !== '' ? e(price_fmt($v['price'])) : '—' ?></span></td>
           <?php foreach ($stores as $s): $sid = (int)$s['id']; $ro = $canStore($sid) ? '' : 'disabled title="Магазин не ваш — правити може лише його продавець або адмін"'; ?>
             <td class="num cell-price"><input type="number" step="0.01" name="p[<?= $pid ?>][vprice][<?= $vid ?>][<?= $sid ?>]"
-                       value="<?= e($vprices[$vid][$sid] ?? '') ?>" placeholder="базова" <?= $ro ?>></td>
+                       value="<?= e(num_val($vprices[$vid][$sid] ?? '')) ?>" placeholder="базова" <?= $ro ?>></td>
             <?php $vq = $vstocks[$vid][$sid] ?? ''; $vzero = $vq === '' || (int)$vq === 0; ?>
             <td class="num cell-stock<?= $vzero ? ' is-zero' : '' ?>"><input type="number" name="p[<?= $pid ?>][vstock][<?= $vid ?>][<?= $sid ?>]"
                        value="<?= e($vq) ?>" placeholder="0" <?= $ro ?>></td>
