@@ -6,6 +6,12 @@
       <div class="flash" style="padding:0;margin-top:16px"><div class="flash-error">Для користування сайтом потрібен номер телефону — вкажіть його нижче.</div></div>
     <?php endif; ?>
 
+    <?php /* Замовлення — те, по що в кабінет приходять найчастіше, тож кнопка
+             стоїть перед формами, а не рядком під ними. Персоналу вона ще
+             потрібніша: у шапці в нього «Адмінпанель» замість «Мої замовлення»,
+             і власні покупки шукати більше ніде. */ ?>
+    <p style="margin-top:18px"><a class="btn btn-line" href="<?= e(url('/orders')) ?>">📦 Мої замовлення</a></p>
+
     <form class="admin-card" method="post" action="<?= e(url('/profile')) ?>" style="margin-top:22px">
       <?= Csrf::field() ?>
       <div class="field"><label>Ім'я та прізвище</label><input type="text" name="name" value="<?= e($u['name']) ?>" required></div>
@@ -159,7 +165,6 @@
         </div>
       </div>
     </div>
-    <p><a href="<?= e(url('/orders')) ?>">→ Мої замовлення</a></p>
   </div>
 </section>
 <?php if ($np_enabled) echo View::partial('partials/np_autocomplete'); ?>
