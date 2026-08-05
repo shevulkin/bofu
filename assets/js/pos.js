@@ -164,6 +164,10 @@
       ui.say("Код " + code + " — шукаємо…");
       act("scan", { code: code }).then(function (d) {
         if (!d) return;
+        // Код прочитано (високий «пік» уже прозвучав), але товару за ним немає —
+        // це друга новина, і вона має звучати інакше, інакше продавець піде
+        // далі, впевнений, що позиція в чеку.
+        if (d.error) ui.beep(false);
         ui.say(d.error ? d.error : (d.added ? d.added + " — додано" : "Готово"));
       });
     }, { onError: function (m) { say(m, true); } });
