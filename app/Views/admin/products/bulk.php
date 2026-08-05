@@ -47,6 +47,23 @@ $roCard = $canCard ? '' : 'disabled';
       </select>
     </div>
   <?php endif; ?>
+  <?php if (count($all_stores) > 1): ?>
+    <div data-help-title="Магазин"
+         data-help="Лишає в таблиці колонки лише однієї точки — її ціну й залишок.
+
+Це саме звуження показу: ціни й залишки інших магазинів нікуди не діваються й не зачіпаються при збереженні.
+
+Разом із добіркою «Закінчились» питання стає точнішим: не «чого немає ніде», а «чого немає в цій точці».">
+      <label>Магазин</label>
+      <select name="store">
+        <option value="">Усі магазини</option>
+        <?php foreach ($all_stores as $s): ?>
+          <option value="<?= (int)$s['id'] ?>" <?= $f['store'] === (int)$s['id'] ? 'selected' : '' ?>>
+            <?= e($s['city'] ?: $s['name']) ?></option>
+        <?php endforeach; ?>
+      </select>
+    </div>
+  <?php endif; ?>
   <div data-help-title="Показати"
        data-help="Готові добірки під те, заради чого сюди зазвичай заходять:
 
@@ -64,7 +81,7 @@ $roCard = $canCard ? '' : 'disabled';
     </select>
   </div>
   <button class="btn btn-gold btn-sm" type="submit">Знайти</button>
-  <?php if ($f['q'] !== '' || $f['cat'] || $f['brand'] || $f['only'] !== ''): ?>
+  <?php if ($f['q'] !== '' || $f['cat'] || $f['brand'] || $f['store'] || $f['only'] !== ''): ?>
     <a class="btn btn-line btn-sm" href="<?= e(url('/admin/products/bulk')) ?>">Скинути</a>
   <?php endif; ?>
   <span class="dim" style="margin-bottom:10px">Знайдено: <?= count($products) ?></span>
