@@ -133,34 +133,68 @@ window.BofuBarcode = (function () {
 
   /**
    * Смуга пікселів → послідовність ширин чорних і білих смужок.
+   *
+   * Лінія може йти під нахилом: етикетку тримають у руці, і рівно вона не
+   * лягає майже ніколи. Горизонтальна лінія на перекошеному коді входить у
+   * смужки зверху, а виходить уже в надрукованих цифрах — і читати нема чого.
+   * Тому смугу ведемо з нахилом slope (зсув по y на кожен піксель по x).
+   *
    * Поріг рахуємо для кожної смуги окремо: освітлення на етикетці нерівне, і
    * один поріг на весь кадр з'їдав би її край.
    */
-  function runsOfRow(data, width, y) {
-    var min = 255, max = 0, i, v, row = new Uint8Array(width);
+  // Буфери на модуль, а не на виклик: ліній за кадр — під дві сотні, і
+  // алокація масиву на кожну з них коштувала б більше, ніж саме читання.
+  var rowBuf = null, preBuf = null;
+
+  function runsOfLine(data, width, height, yCenter, slope) {
+    if (!rowBuf || rowBuf.length < width) {
+      rowBuf = new Uint8Array(width);
+      preBuf = new Float64Array(width + 1);
+    }
+    var row = rowBuf, n = 0, min = 255, max = 0, i, v;
     for (i = 0; i < width; i++) {
-      var p = (y * width + i) * 4;
+      var y = Math.round(yCenter + slope * (i - width / 2));
+      if (y < 0 || y >= height) continue;       // лінія вийшла за кадр — цей шматок пропускаємо
       // зелений канал замість чесної яскравості: він і є більшість яскравості,
       // а множень на кадр стає втричі менше
-      v = data[p + 1];
-      row[i] = v;
+      v = data[(y * width + i) * 4 + 1];
+      row[n++] = v;
       if (v < min) min = v;
       if (v > max) max = v;
     }
-    if (max - min < 40) return null;            // смуга без контрасту — не штрихкод
-    var threshold = (min + max) / 2;
+    if (n < 60 || max - min < 40) return null;  // закоротка смуга або без контрасту
 
-    var runs = [], count = 0, black = row[0] < threshold;
-    // Перша смужка має бути чорною: з білого поля відлік починати нема сенсу
-    for (i = 0; i < width; i++) {
-      var isBlack = row[i] < threshold;
+    /**
+     * Поріг рахуємо для кожного пікселя по його околиці, а не один на всю смугу.
+     *
+     * Один поріг працює лише на рівно освітленому папері. У житті смуга йде
+     * через яскраву коробку, тінь від руки й темний стіл — і половина коду
+     * опиняється по «неправильний» бік єдиного порогу. Ковзне середнє знімає і
+     * тінь, і нерівне світло: важливо ж не «темніше за 128», а «темніше за те,
+     * що поруч».
+     *
+     * Рахуємо через префіксні суми — один прохід замість вікна на кожен піксель.
+     */
+    var win = Math.max(12, Math.round(n / 24));
+    var pre = preBuf;
+    pre[0] = 0;
+    for (i = 0; i < n; i++) pre[i + 1] = pre[i] + row[i];
+
+    var runs = [], count = 0, black = false, first = true;
+    for (i = 0; i < n; i++) {
+      var a = i - win; if (a < 0) a = 0;
+      var b = i + win + 1; if (b > n) b = n;
+      // 0.88 — запас проти шуму: рівний білий фон не має розпадатись на смужки
+      var isBlack = row[i] < (pre[b] - pre[a]) / (b - a) * 0.88;
+      if (first) { black = isBlack; first = false; count = 1; continue; }
       if (isBlack === black) { count++; continue; }
       runs.push(count);
       count = 1;
       black = isBlack;
     }
     runs.push(count);
-    if (!(row[0] < threshold)) runs.shift();     // прибираємо біле поле зліва
+    // Перша смужка має бути чорною: з білого поля відлік починати нема сенсу
+    if (row[0] >= (pre[Math.min(n, win + 1)] - pre[0]) / Math.min(n, win + 1) * 0.88) runs.shift();
     return runs.length < 30 ? null : runs;
   }
 
@@ -187,24 +221,61 @@ window.BofuBarcode = (function () {
     return null;
   }
 
+  /**
+   * Нахили, під якими пробуємо вести лінію.
+   *
+   * Рівно етикетку в руці не тримає ніхто, а горизонтальна лінія на
+   * перекошеному коді входить у смужки зверху й виходить уже в надрукованих
+   * цифрах. Без нахилів код на коробці в руці не читається взагалі.
+   *
+   * Крок навмисно дрібний. З рідким (п'ять значень) робочий діапазон між ними
+   * провалювався: 12° читалось, а 7° — ні, і виглядало це як «камера не бачить».
+   * Заміряно на tests/barcode.html: смуга, у якій код читається, вужча за 0.05.
+   *
+   * Порядок — від найменшого: рівно піднесений код має читатися з першої спроби.
+   */
+  var SLOPES = (function () {
+    var out = [0];
+    for (var s = 0.03; s <= 0.281; s += 0.03) out.push(+s.toFixed(2), -s.toFixed(2));
+    return out;
+  })();
+
+  // Нахил, під яким пощастило минулого разу. Руку між двома товарами тримають
+  // приблизно однаково, тож наступний код майже напевно піде тим самим кутом —
+  // і знайдеться з першої спроби, а не з пʼятої.
+  var luckySlope = 0;
+
   return {
     /**
-     * Прочитати штрихкод із кадру. Пробуємо кілька горизонтальних смуг: одна
-     * може впасти на блік, згин чи пальці, а сусідня — ні.
+     * Прочитати штрихкод із кадру.
+     *
+     * Пробуємо кілька смуг під кількома нахилами: одна впаде на блік, згин чи
+     * пальці, друга — на цифри під кодом, а третя пройде чисто. Виходимо на
+     * першому ж коді, що зійшовся з контрольною цифрою.
      *
      * @param {ImageData} img
      * @return {?string} код або null
      */
     decode: function (img) {
-      var rows = 24;
-      for (var i = 1; i <= rows; i++) {
-        var y = Math.floor(img.height * i / (rows + 1));
-        var runs = runsOfRow(img.data, img.width, y);
-        if (!runs) continue;
-        var code = fromRuns(runs);
-        if (code) return code;
+      var rows = 14;
+      var order = [luckySlope].concat(SLOPES.filter(function (s) { return s !== luckySlope; }));
+      for (var s = 0; s < order.length; s++) {
+        for (var i = 1; i <= rows; i++) {
+          var y = img.height * i / (rows + 1);
+          var runs = runsOfLine(img.data, img.width, img.height, y, order[s]);
+          if (!runs) continue;
+          var code = fromRuns(runs);
+          if (code) { luckySlope = order[s]; return code; }
+        }
       }
       return null;
-    }
+    },
+
+    // Внутрішня кухня, відкрита навмисно: tests/barcode.html міряє нею, під
+    // якими нахилами код читається, а під якими ні. Без цього «не читається»
+    // лишається здогадкою — а здогадками такі речі не лагодяться.
+    _line: runsOfLine,
+    _read: fromRuns,
+    _slopes: SLOPES
   };
 })();

@@ -84,6 +84,40 @@ function render(bits, opt) {
   return c;
 }
 
+/**
+ * Кадр із камери: код лежить під кутом, десь у смузі, з тінню й нерівним
+ * світлом, а навколо — темний стіл. Саме так виглядало те, що не читалось.
+ */
+function photo(bits, opt) {
+  opt = opt || {};
+  var src = render(bits, { module: opt.module || 3 });
+  var W = opt.width || 900, H = opt.height || 400;
+  var c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  var x = c.getContext('2d');
+
+  x.fillStyle = opt.table || '#6b5a44';           // стіл навколо коробки
+  x.fillRect(0, 0, W, H);
+
+  x.save();
+  x.translate(W / 2 + (opt.dx || 0), H / 2 + (opt.dy || 0));
+  x.rotate((opt.angle || 0) * Math.PI / 180);
+  var s = opt.zoom || 1;
+  x.fillStyle = '#efe9dd';                        // сама коробка, більша за код
+  x.fillRect(-src.width * s / 2 - 30, -src.height * s / 2 - 26, src.width * s + 60, src.height * s + 52);
+  x.drawImage(src, -src.width * s / 2, -src.height * s / 2, src.width * s, src.height * s);
+  x.restore();
+
+  if (opt.shadow) {                               // тінь від руки навскіс
+    var g = x.createLinearGradient(0, 0, W, H);
+    g.addColorStop(0, 'rgba(0,0,0,0)');
+    g.addColorStop(1, 'rgba(0,0,0,' + opt.shadow + ')');
+    x.fillStyle = g;
+    x.fillRect(0, 0, W, H);
+  }
+  return c;
+}
+
 var out, pass = 0, fail = 0;
 function say(name, got, want) {
   var ok = got === want;
@@ -121,6 +155,19 @@ function runTests() {
   var e8 = '9638507' + check('9638507');
   say('EAN-8 ' + e8, decodeCanvas(render(ean8bits(e8))), e8);
 
+  // ── Те, що приходить із камери: код у руці, під кутом, на столі ──────────
+  // Саме на цьому декодер і провалювався: горизонтальна лінія входила у смужки
+  // зверху, а виходила вже в надрукованих цифрах.
+  var live = ean13bits(full);
+  [-12, -7, -3, 3, 7, 12].forEach(function (a) {
+    say('кадр: нахил ' + a + '°', decodeCanvas(photo(live, { angle: a })), full);
+  });
+  say('кадр: не по центру', decodeCanvas(photo(live, { angle: 6, dx: -140, dy: -60 })), full);
+  say('кадр: тінь від руки', decodeCanvas(photo(live, { angle: -5, shadow: 0.55 })), full);
+  say('кадр: темний стіл і нерівне світло',
+    decodeCanvas(photo(live, { angle: 8, table: '#2b2119', shadow: 0.4 })), full);
+  say('кадр: далеко (дрібні смужки)', decodeCanvas(photo(live, { angle: 4, module: 2 })), full);
+
   // Вигаданий код у чеку гірший за жоден: чужий товар ляже тихо й непомітно
   say('порожній кадр', decodeCanvas(render('0'.repeat(95), {})), null);
   var noise = document.createElement('canvas');
@@ -134,10 +181,35 @@ function runTests() {
   // Саме для цього в коді є контрольна цифра — перевіряємо, що ми її й перевіряємо
   say('невірна контрольна цифра', decodeCanvas(render(ean13bits('4820000000009'))), null);
 
+  // ── Швидкість ───────────────────────────────────────────────────────────
+  // Декодер крутиться в циклі камери, тож повільний він так само марний, як
+  // неточний: кадри почнуть відставати від руки. Найгірший випадок — коли в
+  // кадрі коду немає взагалі: тоді перебираються геть усі нахили й смуги.
+  function ms(canvas) {
+    var img = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
+    window.BofuBarcode.decode(img);
+    var t0 = performance.now();
+    for (var i = 0; i < 10; i++) window.BofuBarcode.decode(img);
+    return (performance.now() - t0) / 10;
+  }
+  var big = photo(ean13bits(full), { angle: 7, width: 1600, height: 600, module: 4 });
+  var noise2 = document.createElement('canvas');
+  noise2.width = 1600; noise2.height = 600;
+  var n2 = noise2.getContext('2d');
+  n2.fillStyle = '#6b5a44'; n2.fillRect(0, 0, 1600, 600);
+  for (var k = 0; k < 600; k += 7) { n2.fillStyle = 'rgba(0,0,0,.2)'; n2.fillRect(0, k, 1600, 3); }
+
+  var tFound = ms(big), tWorst = ms(noise2);
+  ok('кадр із кодом читається швидше за 8 мс (' + tFound.toFixed(1) + ' мс)', tFound < 8);
+  ok('найгірший кадр (коду немає) вкладається в 40 мс (' + tWorst.toFixed(1) + ' мс)', tWorst < 40);
+
   out.insertAdjacentHTML('beforeend',
     '<h2 class="' + (fail ? 'bad' : 'ok') + '" id="verdict">' +
     (fail ? 'ПРОВАЛЕНО ' + fail + ' з ' + (pass + fail) : 'УСЕ ДОБРЕ: ' + pass + ' перевірок') + '</h2>');
 }
+
+/** ok() з попередніх перевірок — той самий, лише з іншою назвою для читабельності */
+function ok(what, cond) { say(what, cond ? 'так' : 'ні', 'так'); }
 </script>
 </body>
 </html>
