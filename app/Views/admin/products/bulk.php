@@ -18,11 +18,67 @@ $roCard = $canCard ? '' : 'disabled';
     Вам доступні <b>ціни та залишки ваших магазинів</b> — решта колонок лише для перегляду.
   </div>
 <?php endif; ?>
-<form method="post" action="<?= e(url('/admin/products/bulk')) ?>">
+<?php /* Фільтр окремою формою (GET) — усередині форми збереження він став би
+         її частиною й відправлявся б разом із цінами. */ ?>
+<form class="admin-card" method="get" action="<?= e(url('/admin/products/bulk')) ?>"
+      style="display:flex;gap:14px;align-items:end;flex-wrap:wrap">
+  <div style="flex:1;min-width:180px" data-help-title="Пошук"
+       data-help="Шукає за назвою товару й за артикулом одночасно. Досить частини слова.
+
+Фільтр переживає збереження: після «Зберегти все» ви лишаєтесь у тій самій добірці.">
+    <label>Пошук</label><input type="text" name="q" value="<?= e($f['q']) ?>" placeholder="Назва або артикул"></div>
+  <div data-help-title="Категорія" data-help="Показати лише товари однієї категорії.">
+    <label>Категорія</label>
+    <select name="cat">
+      <option value="">Всі</option>
+      <?php foreach ($categories as $c): ?>
+        <option value="<?= (int)$c['id'] ?>" <?= $f['cat'] === (int)$c['id'] ? 'selected' : '' ?>><?= e($c['name']) ?></option>
+      <?php endforeach; ?>
+    </select>
+  </div>
+  <?php if ($brands): ?>
+    <div data-help-title="Бренд" data-help="Показати товари одного виробника. Товар під кількома брендами знайдеться за кожним із них.">
+      <label>Бренд</label>
+      <select name="brand">
+        <option value="">Всі</option>
+        <?php foreach ($brands as $b): ?>
+          <option value="<?= (int)$b['id'] ?>" <?= $f['brand'] === (int)$b['id'] ? 'selected' : '' ?>><?= e($b['name']) ?></option>
+        <?php endforeach; ?>
+      </select>
+    </div>
+  <?php endif; ?>
+  <div data-help-title="Показати"
+       data-help="Готові добірки під те, заради чого сюди зазвичай заходять:
+
+«Закінчились» — нічого немає в жодному магазині: саме їх треба поповнити після постачання.
+
+«Без ціни» — порожня базова ціна: покупець бачить «За запитом».
+
+«З варіантами» — товари, у яких ціна й залишок задаються по кожному варіанту окремо.">
+    <label>Показати</label>
+    <select name="only">
+      <option value="">Усі товари</option>
+      <option value="zero" <?= $f['only'] === 'zero' ? 'selected' : '' ?>>Закінчились</option>
+      <option value="noprice" <?= $f['only'] === 'noprice' ? 'selected' : '' ?>>Без ціни</option>
+      <option value="variants" <?= $f['only'] === 'variants' ? 'selected' : '' ?>>З варіантами</option>
+    </select>
+  </div>
+  <button class="btn btn-gold btn-sm" type="submit">Знайти</button>
+  <?php if ($f['q'] !== '' || $f['cat'] || $f['brand'] || $f['only'] !== ''): ?>
+    <a class="btn btn-line btn-sm" href="<?= e(url('/admin/products/bulk')) ?>">Скинути</a>
+  <?php endif; ?>
+  <span class="dim" style="margin-bottom:10px">Знайдено: <?= count($products) ?></span>
+</form>
+
+<?php /* фільтр у дії форми: після збереження редірект має повернути ту саму добірку */ ?>
+<form method="post" action="<?= e(url('/admin/products/bulk' . $query)) ?>">
   <?= Csrf::field() ?>
   <p class="dim" style="margin:0 0 12px">
     У товарів з варіантами ціна й залишок задаються окремим рядком для кожного варіанта — саме з них береться наявність у магазині.
   </p>
+  <?php if (!$products): ?>
+    <p class="dim">За цим фільтром нічого немає. <a href="<?= e(url('/admin/products/bulk')) ?>">Показати всі товари</a>.</p>
+  <?php endif; ?>
   <table class="tbl tbl-bulk">
     <?php /* Двоповерхова шапка: «ціна» і «залишок» читаються як пара під назвою
              магазину, а не як чотири однакові стовпці поспіль. Разом із рамкою

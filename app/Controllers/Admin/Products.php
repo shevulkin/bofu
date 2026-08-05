@@ -79,9 +79,16 @@ class Products
                 }
             }
             flash('success', 'Зміни збережено');
-            redirect('/admin/products/bulk');
+            // Фільтр переживає збереження: інакше після кожного «Зберегти все»
+            // людину викидало б у повний список і добірку треба було б робити
+            // заново — а саме заради неї сюди й заходять.
+            redirect('/admin/products/bulk' . self::bulkQuery());
         }
-        $products = DB::all('SELECT p.*, c.name AS cat_name FROM products p LEFT JOIN categories c ON c.id = p.category_id ORDER BY c.sort, p.name');
+
+        [$where, $params] = self::bulkFilter();
+        $products = DB::all(
+            'SELECT p.*, c.name AS cat_name FROM products p LEFT JOIN categories c ON c.id = p.category_id
+              WHERE ' . implode(' AND ', $where) . ' ORDER BY c.sort, p.name', $params);
         $variants = [];
         foreach (DB::all('SELECT * FROM product_variants WHERE active = 1 ORDER BY sort, id') as $v) {
             $variants[(int)$v['product_id']][] = $v;
@@ -98,8 +105,57 @@ class Products
         View::show('admin/products/bulk', [
             'products' => $products, 'stores' => $stores, 'variants' => $variants,
             'prices' => $prices, 'stocks' => $stocks, 'vprices' => $vprices, 'vstocks' => $vstocks,
+            'categories' => Catalog::categories(), 'brands' => Catalog::brands(),
+            'f' => self::bulkInput(), 'query' => self::bulkQuery(),
             'page_title' => 'Масове редагування — адмінка',
         ], 'layouts/admin');
+    }
+
+    /** Значення фільтра як їх увів користувач — і для запиту, і для форми */
+    private static function bulkInput(): array
+    {
+        return [
+            'q' => trim((string)($_GET['q'] ?? '')),
+            'cat' => (int)($_GET['cat'] ?? 0),
+            'brand' => (int)($_GET['brand'] ?? 0),
+            // «є що правити» — найчастіша причина сюди зайти
+            'only' => in_array($_GET['only'] ?? '', ['zero', 'noprice', 'variants'], true) ? $_GET['only'] : '',
+        ];
+    }
+
+    /** @return array{0:string[],1:array} умови та параметри для вибірки товарів */
+    private static function bulkFilter(): array
+    {
+        $f = self::bulkInput();
+        $where = ['1=1'];
+        $params = [];
+        if ($f['q'] !== '') {
+            $where[] = '(p.name LIKE ? OR p.sku LIKE ?)';
+            $params[] = '%' . $f['q'] . '%';
+            $params[] = '%' . $f['q'] . '%';
+        }
+        if ($f['cat']) { $where[] = 'p.category_id = ?'; $params[] = $f['cat']; }
+        if ($f['brand']) {
+            $where[] = 'EXISTS (SELECT 1 FROM product_brands pb WHERE pb.product_id = p.id AND pb.brand_id = ?)';
+            $params[] = $f['brand'];
+        }
+        // Порожній склад рахуємо по всій мережі й з урахуванням варіантів —
+        // саме так, як його бачить покупець.
+        if ($f['only'] === 'zero') {
+            $where[] = 'COALESCE((SELECT SUM(ss.qty) FROM store_stock ss WHERE ss.product_id = p.id), 0) <= 0';
+        }
+        if ($f['only'] === 'noprice') $where[] = '(p.base_price IS NULL OR p.base_price = 0)';
+        if ($f['only'] === 'variants') {
+            $where[] = 'EXISTS (SELECT 1 FROM product_variants pv WHERE pv.product_id = p.id AND pv.active = 1)';
+        }
+        return [$where, $params];
+    }
+
+    /** Рядок запиту поточного фільтра — щоб він пережив збереження */
+    private static function bulkQuery(): string
+    {
+        $f = array_filter(self::bulkInput(), fn($v) => $v !== '' && $v !== 0);
+        return $f ? '?' . http_build_query($f) : '';
     }
 
     public static function create(): never
