@@ -102,7 +102,12 @@ $roCard = $canCard ? '' : 'disabled';
           <?php /* стрілка ↳ була символом, якого немає в шрифті інтерфейсу, —
                    на екрані виходило «І,». Вкладеність малюємо рискою в CSS. */ ?>
           <td class="var-name muted"><?= e($v['name']) ?><?= $v['sku'] ? ' · ' . e($v['sku']) : '' ?></td>
-          <td class="num cell-money"><span class="dim"><?= $v['price'] !== null && $v['price'] !== '' ? e(price_fmt($v['price'])) : '—' ?></span></td>
+          <?php /* Власна ціна варіанта. Була текстом — і виходило, що ціну
+                   «Комбінезона» правити треба в картці товару, хоча решта
+                   чисел цього ж рядка редагується тут. */ ?>
+          <td class="num cell-money"><input type="number" step="0.01" name="p[<?= $pid ?>][vbase][<?= $vid ?>]"
+                     value="<?= e(num_val($v['price'])) ?>" placeholder="базова"
+                     title="Ціна саме цього варіанта. Порожньо — діє базова ціна товару" <?= $roCard ?>></td>
           <?php foreach ($stores as $s): $sid = (int)$s['id']; $ro = $canStore($sid) ? '' : 'disabled title="Магазин не ваш — правити може лише його продавець або адмін"'; ?>
             <td class="num cell-price"><input type="number" step="0.01" name="p[<?= $pid ?>][vprice][<?= $vid ?>][<?= $sid ?>]"
                        value="<?= e(num_val($vprices[$vid][$sid] ?? '')) ?>" placeholder="базова" <?= $ro ?>></td>

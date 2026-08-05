@@ -57,6 +57,20 @@ class Products
 
                 $variantIds = array_map('intval', array_column(
                     DB::all('SELECT id FROM product_variants WHERE product_id = ? AND active = 1', [$id]), 'id'));
+
+                // Власна ціна варіанта — така сама частина картки товару, як і
+                // базова ціна, тож і право те саме. Порожнє поле означає «діє
+                // базова ціна товару», а не нуль. WHERE по product_id не дає
+                // підробленою формою переставити ціну чужому варіанту.
+                if ($canCard) {
+                    foreach ((array)($data['vbase'] ?? []) as $vid => $val) {
+                        $vid = (int)$vid;
+                        if (!in_array($vid, $variantIds, true)) continue;
+                        DB::update('product_variants',
+                            ['price' => ($val === '' ? null : (float)$val)],
+                            'id = ? AND product_id = ?', [$vid, $id]);
+                    }
+                }
                 // ціни та залишки товару без варіанта (залишок — лише коли варіантів немає)
                 self::syncStore($id, null, (array)($data['store_price'] ?? []), $variantIds ? [] : (array)($data['stock'] ?? []));
                 // ціни та залишки по кожному варіанту
