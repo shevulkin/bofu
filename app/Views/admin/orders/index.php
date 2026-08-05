@@ -1,6 +1,13 @@
 <?php $q = fn(array $over = []) => url('/admin/orders?' . http_build_query(array_merge(
       ['status' => $status], $sees_all ? ['scope' => $scope] : [], $over))); ?>
-<div class="admin-head"><h1 class="h-serif"><?= $is_seller_view ? ($scope === 'all' ? 'Замовлення мережі' : 'Мої замовлення') : 'Замовлення' ?></h1></div>
+<div class="admin-head"><h1 class="h-serif"><?= $is_seller_view ? ($scope === 'all' ? 'Замовлення мережі' : 'Мої замовлення') : 'Замовлення' ?></h1>
+  <?php if (Auth::can('orders.create')): ?>
+    <a class="btn btn-gold btn-sm" href="<?= e(url('/admin/orders/new')) ?>" data-help-title="Кнопка «Каса»"
+       data-help="Набрати замовлення за покупця: він подзвонив або прийшов у точку.
+
+Товар додається тапом по плитці, сканером або з самого сайту. Замовлення виходить точно таким, як із вітрини, — з номером, списанням залишків і сповіщеннями. Різниця лише в тому, хто натиснув кнопку.">🛒 Каса</a>
+  <?php endif; ?>
+</div>
 <?php if ($is_seller_view): ?>
   <p class="dim" style="margin:-8px 0 14px">
     <?= $scope === 'all'
@@ -101,7 +108,14 @@
         <?php if (!empty($o['assigned_name'])): ?>
           <div class="dim" style="white-space:nowrap">у роботі: <?= e($o['assigned_name']) ?></div>
         <?php endif; ?></td>
-      <td><?= e($o['name']) ?><div class="dim"><?= e($o['phone']) ?></div></td>
+      <td><?= e($o['name']) ?>
+        <?php /* Продаж у точці буває без номера — і це не поламані дані, а те,
+                 як усе було: людина зайшла, купила й пішла. Пишемо чесно. */ ?>
+        <div class="dim"><?= $o['phone'] !== '' ? e($o['phone']) : 'без номера' ?></div>
+        <?php if (($o['source'] ?? 'site') !== 'site'): ?>
+          <div class="dim"><?= e(OrderFlow::sourceLabel($o['source'])) ?></div>
+        <?php endif; ?>
+      </td>
       <td class="muted" style="max-width:240px;white-space:normal">
         <?php $names = array_map(fn($i) => $i['title'] . ' × ' . $i['qty'], $items[$id] ?? []); echo e(implode(', ', $names)); ?>
       </td>

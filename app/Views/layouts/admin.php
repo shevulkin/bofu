@@ -41,12 +41,14 @@
         ]],
         ['Продажі', [
             ['/admin/orders', 'Замовлення', true],
+            ['/admin/orders/new', Pos::active() ? '🛒 Каса · продаж триває' : 'Каса (новий продаж)', Auth::can('orders.create')],
             ['/admin/promos', 'Акції та промокоди', Auth::can('promos.manage')],
             ['/admin/subscribers', 'Розсилка', Auth::can('subscribers.manage')],
         ]],
         ['Каталог', [
             ['/admin/products', 'Товари', true],
             ['/admin/products/bulk', 'Масове редагування', true],
+            ['/admin/products/codes', 'Коди й штрихкоди', Auth::can('products.manage')],
             ['/admin/stock-requests', 'Очікують товар', true],
             ['/admin/categories', 'Категорії', Auth::can('catalog.manage')],
             ['/admin/attributes', 'Характеристики', Auth::can('catalog.manage')],
@@ -127,5 +129,7 @@
 window.BOFU = { base: '<?= e(url('/')) ?>', vapid: '<?= e(Settings::get('vapid_public', '')) ?>', csrf: '<?= e(Csrf::token()) ?>' };
 </script>
 <script src="<?= e(asset_v('js/admin.js')) ?>" defer></script>
+<?php /* На самій касі смужка зайва — чек там і так перед очима */ ?>
+<?php if (Pos::active() && rtrim($cur, '/') !== '/admin/orders/new') echo View::partial('partials/pos_bar'); ?>
 </body>
 </html>

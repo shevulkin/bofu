@@ -26,6 +26,12 @@ class OrderFlow
 
     public const DELIVERY = ['np' => 'Нова Пошта', 'pickup' => 'Самовивіз', 'other' => 'Інше'];
 
+    /**
+     * Звідки замовлення. «Сайт» — покупець оформив сам; решту завів продавець:
+     * прийняв дзвінок або продав людині, яка прийшла в точку.
+     */
+    public const SOURCES = ['site' => 'Сайт', 'phone' => 'Телефоном', 'offline' => 'У магазині'];
+
     /** Просування: головне замовлення показує найменш просунуте з підзамовлень */
     private const RANK = ['new' => 0, 'processing' => 1, 'shipped' => 2, 'done' => 3];
 
@@ -38,6 +44,9 @@ class OrderFlow
 
     public static function deliveryLabel(?string $delivery): string
     { return self::DELIVERY[$delivery] ?? (string)$delivery; }
+
+    public static function sourceLabel(?string $source): string
+    { return self::SOURCES[$source ?: 'site'] ?? (string)$source; }
 
     /**
      * Куди везти, одним рядком: «Київ, Відділення №5».
@@ -326,6 +335,12 @@ class OrderFlow
         $data = ['parent_id' => $parentId, 'seq' => $seq,
             'number' => $head['number'] . '/' . $seq, 'token' => null,
             'store_id' => $storeId, 'status' => 'new',
+            // Звідки замовлення — властивість усього замовлення, а не однієї
+            // його частини: передана в іншу точку позиція не перестає бути
+            // продажем із каси. Не через INHERITED: стовпець не приймає NULL,
+            // а серед викликів є й такі, де головне ще не має цих полів.
+            'source' => $head['source'] ?? 'site',
+            'created_by_user_id' => $head['created_by_user_id'] ?? null,
             'subtotal' => 0, 'discount' => 0, 'total' => 0,
             'created_at' => now()];
         foreach (self::INHERITED as $f) $data[$f] = $head[$f] ?? null;

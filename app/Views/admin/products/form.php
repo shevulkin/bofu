@@ -67,6 +67,16 @@ $roEdit = $canEdit ? '' : 'disabled';
 
 Поле необовʼязкове. Якщо ведете склад у таблиці чи 1С, ставте тут той самий код, що й там.">
         <label>Артикул</label><input type="text" name="sku" value="<?= e($p['sku'] ?? '') ?>" <?= $roEdit ?>></div>
+      <div class="field" data-help-title="Штрихкод"
+           data-help="Код із етикетки — той, що під смужками (EAN-13, зазвичай 13 цифр). Саме його читає сканер на касі.
+
+Це не те саме, що артикул: артикул придумуєте ви для обліку, штрихкод друкує виробник. Тому й поля два — інакше вони рано чи пізно перетруть одне одного.
+
+Найпростіший спосіб заповнити: станьте курсором у поле й піднесіть сканер до етикетки — він сам «надрукує» код.
+
+У товару з фасовками код належить фасовці, а не товару: заповнюйте його в рядках варіантів нижче.">
+        <label>Штрихкод</label><input type="text" name="barcode" value="<?= e($p['barcode'] ?? '') ?>" <?= $roEdit ?>
+               inputmode="numeric" autocomplete="off"></div>
       <?php
       $prodBrands = $p ? Catalog::brandsOf($p) : [];
       $chosenBrands = array_map(fn($b) => (int)$b['id'], $prodBrands);
@@ -218,6 +228,9 @@ $roEdit = $canEdit ? '' : 'disabled';
           </div>
           <input type="number" step="0.01" name="variant[<?= $vid ?>][price]" value="<?= e(num_val($v['price'])) ?>" placeholder="ціна" title="Порожньо = базова ціна товару">
           <input type="text" name="variant[<?= $vid ?>][sku]" value="<?= e($v['sku'] ?? '') ?>" placeholder="артикул">
+          <?php /* Штрихкод належить фасовці: етикетку клеять на банку, а не на «мед узагалі» */ ?>
+          <input type="text" name="variant[<?= $vid ?>][barcode]" value="<?= e($v['barcode'] ?? '') ?>"
+                 placeholder="штрихкод" inputmode="numeric" autocomplete="off">
           <label class="checkbox" title="Показувати покупцям"><input type="checkbox" name="variant[<?= $vid ?>][active]" <?= $v['active'] ? 'checked' : '' ?>> вкл.</label>
           <button class="btn btn-danger btn-xs row-del" type="button" title="Видалити варіант">✕</button>
           <input type="hidden" name="variant[<?= $vid ?>][_delete]" value="" disabled>

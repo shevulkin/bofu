@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 namespace Controllers\Admin;
 
-use DB, View, Auth, Catalog, OrderFlow;
+use DB, View, Auth, Cart, Catalog, Customers, OrderFlow, AuthTokens, Newsletter, Pos, Promo, Settings;
 
 /**
  * Адмінка замовлень.
@@ -83,6 +83,467 @@ class Orders
         ], 'layouts/admin');
     }
 
+    // ------------------------------------------------------------------ каса: продаж за покупця
+
+    /**
+     * Каса: продавець набирає замовлення за покупця — той подзвонив або
+     * прийшов у точку.
+     *
+     * Один екран, а не майстер із кроків: ліворуч плитка товарів із пошуком і
+     * полем сканера, праворуч чек. Асортимент на кілька десятків позицій цілком
+     * влазить в екран, і тап по плитці — найшвидший спосіб набрати чек: без
+     * пошуку, без сканера, без ходіння сайтом.
+     *
+     * Покупець — поле чека, а не вхідні двері. Більшість продажів на місці
+     * анонімні, і питати «хто це?» перед кожною банкою меду означало б зайвий
+     * крок у найчастішому випадку. Номер можна вписати будь-коли: на початку,
+     * посеред набору чи перед самим оформленням.
+     *
+     * Той самий чек живий і на вітрині: смужка внизу приймає товар звідусіль,
+     * тож покупцеві можна показати картку товару з фото й описом, не втрачаючи
+     * набране (див. Pos і partials/pos_bar).
+     */
+    public static function pos(): never
+    {
+        Auth::requireCap('orders.create');
+        $stores = self::createStores();
+        $errors = [];
+        if ($stores && is_post()) $errors = self::posAction($stores);   // ajax-дії виходять усередині
+
+        // Поки продаж не почато, показуємо касу робочої точки продавця: саме
+        // її цінник і залишки він побачить, коли покладе перший товар.
+        $storeId = Pos::active() ? Pos::storeId() : (int)(Auth::workStoreId() ?? ($stores[0]['id'] ?? 0));
+        if ($stores && !in_array($storeId, array_map(fn($s) => (int)$s['id'], $stores), true)) {
+            $storeId = (int)$stores[0]['id'];
+        }
+        $cat = (int)($_GET['cat'] ?? 0);
+        $d = Pos::data();
+
+        View::show('admin/orders/pos', [
+            'stores' => $stores,
+            'store_id' => $storeId,
+            'source' => $d['source'] ?? 'offline',
+            'active' => Pos::active(),
+            'cats' => Catalog::categories(),
+            'cat' => $cat,
+            'tiles' => $stores ? Pos::tiles($storeId, $cat ?: null) : [],
+            'lines' => $stores ? Pos::lines($storeId) : [],
+            'totals' => $stores ? Cart::total($storeId) : ['subtotal' => 0, 'discount' => 0, 'total' => 0],
+            'customer' => self::posCustomer(),
+            'form' => self::posForm(),
+            // Сканер без жодного заповненого коду не знайде нічого й виглядатиме
+            // зламаним. Тому касa каже про це сама — і веде туди, де це чинять.
+            'has_codes' => self::anyCodes(),
+            'errors' => $errors,
+            'np_enabled' => Settings::get('np_api_key') !== null && Settings::get('np_api_key') !== '',
+            'page_title' => 'Каса — адмінка',
+        ], 'layouts/admin');
+    }
+
+    /** Чи заповнений бодай один код — інакше сканер шукатиме в порожнечі */
+    private static function anyCodes(): bool
+    {
+        $filled = "(sku IS NOT NULL AND sku <> '') OR (barcode IS NOT NULL AND barcode <> '')";
+        return (bool)(DB::val("SELECT 1 FROM products WHERE $filled LIMIT 1")
+            ?? DB::val("SELECT 1 FROM product_variants WHERE $filled LIMIT 1"));
+    }
+
+    /** Точки, від імені яких ця людина може продавати: адмін — усі активні, продавець — свої */
+    private static function createStores(): array
+    {
+        $all = Catalog::stores();
+        $mine = self::myStores();
+        if ($mine === null) return $all;
+        return array_values(array_filter($all, fn($s) => in_array((int)$s['id'], $mine, true)));
+    }
+
+    /** Хто покупець цього чека — разом із тим, що варто знати продавцю */
+    private static function posCustomer(): array
+    {
+        $d = Pos::data();
+        $uid = $d['user_id'] ?? null;
+        $phone = (string)($d['phone'] ?? '');
+        $orders = $uid ? Customers::orderCount((int)$uid) : 0;
+        // Для рядка стану беремо імʼя АКАУНТА, а не набране в формі: продавець
+        // перевіряє саме те, що причепив потрібну людину. Своє введене імʼя він
+        // і так бачить у полі поруч, а в замовленні це імʼя отримувача — воно
+        // цілком може відрізнятись (купують у подарунок, замовляють на маму).
+        $account = $uid ? DB::val('SELECT name FROM users WHERE id = ?', [(int)$uid]) : null;
+
+        return [
+            'user_id' => $uid,
+            'phone' => $phone,
+            'name' => (string)($d['name'] ?? ''),
+            // «У нього вже 4 замовлення» — те, за чим продавець упізнає свого
+            'orders' => $orders,
+        ] + self::posCustomerState($uid, $phone, (string)($account ?? ''), $orders);
+    }
+
+    /**
+     * Стан покупця одним рядком — і те саме речення показується скрізь: під
+     * полем телефону, поруч із кнопкою оформлення й у відповіді на пошук.
+     *
+     * Три стани, і між ними не має бути сумнівів. Найдорожчий — «новий»:
+     * продавець мусить розуміти, що акаунт зʼявиться, а не що номер кудись
+     * пропав. Тому це сказано словами, а не кольором поля.
+     *
+     * @return array{state:string,note:string}
+     */
+    private static function posCustomerState(?int $uid, string $phone, string $name, int $orders): array
+    {
+        if ($uid) {
+            return ['state' => 'found', 'icon' => '✓',
+                    'note' => 'Наш покупець: ' . ($name !== '' ? $name : 'без імені')
+                        . ' · замовлень уже ' . $orders . '. Це замовлення теж піде в його історію'];
+        }
+        if ($phone !== '') {
+            return ['state' => 'new', 'icon' => '+',
+                    'note' => 'Такого номера ще немає. При оформленні створимо акаунт на ' . $phone
+                        . ' — покупець зможе входити на сайт цим номером і бачити свої замовлення'];
+        }
+        return ['state' => 'anon', 'icon' => '—',
+                'note' => 'Покупець анонімний: замовлення ні до кого не прикріпиться. '
+                    . 'Впишіть номер, якщо треба, щоб покупка потрапила в його історію'];
+    }
+
+    /** Поля оформлення. Живуть у формі, а не в сесії: їх заповнюють один раз, у кінці */
+    private static function posForm(): array
+    {
+        $delivery = (string)($_POST['delivery'] ?? 'pickup');
+        if (!isset(OrderFlow::DELIVERY[$delivery])) $delivery = 'pickup';
+        return [
+            'delivery' => $delivery,
+            'email' => trim((string)($_POST['email'] ?? '')),
+            'city' => trim((string)($_POST['np_city'] ?? '')),
+            'city_ref' => trim((string)($_POST['city_ref'] ?? '')),
+            'np_office' => trim((string)($_POST['np_office'] ?? '')),
+            'address' => trim((string)($_POST['address'] ?? '')),
+            'comment' => trim((string)($_POST['comment'] ?? '')),
+            'promo_code' => Promo::fromInput($_POST['promo_code'] ?? ''),
+            // «товар віддано» стоїть у продажу на місці: там замовлення
+            // закривається тим самим рухом, яким створюється
+            'handed' => is_post() ? !empty($_POST['handed']) : true,
+        ];
+    }
+
+    /**
+     * Дії каси. Дрібні (додати, змінити кількість, скан, покупець) відповідають
+     * JSON і не перезавантажують екран: у чеку по десятку рухів на продаж, і
+     * кожен із них не має коштувати мигання сторінки.
+     *
+     * @return string[] помилки оформлення (решта дій виходить усередині)
+     */
+    private static function posAction(array $stores): array
+    {
+        $action = (string)($_POST['_action'] ?? '');
+        $allowed = array_map(fn($s) => (int)$s['id'], $stores);
+        $storeId = (int)($_POST['store_id'] ?? 0);
+        if (!in_array($storeId, $allowed, true)) $storeId = (int)(Auth::workStoreId() ?? $stores[0]['id']);
+        if (!in_array($storeId, $allowed, true)) $storeId = (int)$stores[0]['id'];
+
+        // Точку продажу міняють до першого товару; далі вона вже в чеку
+        if (Pos::active()) Pos::setStore($storeId);
+        if (isset($_POST['source'])) Pos::setSource((string)$_POST['source']);
+
+        switch ($action) {
+            case 'add':
+            case 'scan':
+                Pos::ensure($storeId);
+                Pos::setStore($storeId);
+                self::posAdd($action);          // не повертається
+            case 'qty':
+                Pos::ensure($storeId);
+                Cart::setQty((string)($_POST['key'] ?? ''), (int)($_POST['qty'] ?? 0));
+                self::posJson('');
+            case 'customer':
+                Pos::ensure($storeId);
+                self::posCustomerAction();      // не повертається
+            case 'cancel':
+                Pos::stop();
+                flash('success', 'Продаж скасовано, чек порожній.');
+                redirect('/admin/orders/new');
+            case 'save':
+                return self::placeManual($storeId);
+        }
+        return [];   // зміна точки чи способу — просто перемальовуємо екран
+    }
+
+    /** Додавання позиції: тапом по плитці або сканером */
+    private static function posAdd(string $action): never
+    {
+        $pid = (int)($_POST['product_id'] ?? 0);
+        $vid = (int)($_POST['variant_id'] ?? 0) ?: null;
+        $title = '';
+
+        if ($action === 'scan') {
+            $found = Pos::byCode((string)($_POST['code'] ?? ''));
+            if (!$found) self::posJson('', 'Код не знайдено. Перевірте, чи заповнений він у картці товару.');
+            if ($found['pick']) self::posJson('', 'Це код товару з фасовками — оберіть потрібну в пошуку або на плитці.');
+            $pid = $found['product_id'];
+            $vid = $found['variant_id'];
+            $title = $found['title'];
+        }
+
+        $p = DB::row('SELECT name FROM products WHERE id = ? AND active = 1', [$pid]);
+        if (!$p) self::posJson('', 'Товар не знайдено або він вимкнений.');
+        if ($title === '') {
+            $title = (string)$p['name'];
+            if ($vid) {
+                $vn = DB::val('SELECT name FROM product_variants WHERE id = ? AND product_id = ?', [$vid, $pid]);
+                if ($vn !== null) $title .= ', ' . $vn;
+            }
+        }
+
+        $added = Cart::add($pid, $vid, max(1, (int)($_POST['qty'] ?? 1)));
+        if ($added <= 0) {
+            $limit = Cart::limit($pid, $vid);
+            self::posJson('', $limit
+                ? 'У чеку вже вся наявна кількість — ' . $limit . ' шт.'
+                : 'Цього товару немає на складі. Виправте залишок або продайте під замовлення.');
+        }
+        self::posJson('+ ' . $title);
+    }
+
+    /**
+     * Покупець чека: знайти за номером і причепити.
+     *
+     * Знайшли — показуємо, кого саме, і скільки в нього замовлень: продавець має
+     * бачити, що причепив правильну людину, а не «щось знайшлось». Не знайшли —
+     * кажемо прямо, і акаунт зʼявиться при оформленні (Customers::resolve), бо
+     * до того часу продаж може й не відбутись.
+     */
+    private static function posCustomerAction(): never
+    {
+        $raw = trim((string)($_POST['phone'] ?? ''));
+        $name = trim((string)($_POST['name'] ?? ''));
+        $phone = $raw === '' ? null : AuthTokens::normPhoneAny($raw);
+
+        // Номер, який не є номером, не має тихо перетворитись на «аноніма»:
+        // продавець вважатиме, що покупця записано, а замовлення виявиться
+        // нічиїм. Тому непридатний номер — це помилка, і попереднє значення
+        // покупця лишається на місці, поки його не виправлять.
+        if ($raw !== '' && !$phone) {
+            self::posJson('', (string)AuthTokens::phoneProblem($raw));
+        }
+
+        $found = Customers::find($phone);
+        Pos::setCustomer($found ? (int)$found['id'] : null, $phone,
+            $found && $name === '' ? (string)$found['name'] : $name);
+        self::posJson();
+    }
+
+    /** Стан чека для екрана каси й для смужки на вітрині */
+    public static function posJson(string $added = '', string $error = ''): never
+    {
+        $storeId = Pos::storeId() ?: null;
+        $lines = [];
+        foreach (Pos::lines($storeId) as $r) {
+            $lines[] = [
+                'key' => $r['key'],
+                'title' => $r['product']['name'],
+                'variant_name' => $r['variant']['name'] ?? '',
+                'qty' => (int)$r['qty'],
+                'price_label' => price_fmt($r['price']),
+                'sum_label' => price_fmt($r['sum']),
+            ];
+        }
+        $totals = Cart::total($storeId);
+        $c = self::posCustomer();
+        json_response([
+            'ok' => $error === '',
+            'lines' => $lines,
+            'count' => Cart::count(),
+            'total' => $totals['total'],
+            'total_label' => price_fmt($totals['total']),
+            // Покупець їде у КОЖНІЙ відповіді, а не лише у відповідь на пошук:
+            // інакше рядок під полем показував би стан, який був три дії тому.
+            'customer' => Pos::label(),
+            'customer_state' => $c['state'],
+            'customer_note' => $c['note'],
+            'customer_icon' => $c['icon'],
+            // Нормалізований номер повертаємо в поле: продавець бачить рівно те,
+            // що запишеться в замовлення, а не те, що він набрав з пробілами
+            'phone' => $c['phone'],
+            'name' => $c['name'],
+            'added' => $added, 'error' => $error,
+        ]);
+    }
+
+    /**
+     * Оформлення чека. Повертає перелік помилок; коли їх немає — не
+     * повертається взагалі, а йде редіректом на створене замовлення.
+     *
+     * @return string[]
+     */
+    private static function placeManual(int $storeId): array
+    {
+        if (!Pos::active()) return ['Чек порожній — додайте товари.'];
+        $form = self::posForm();
+        $d = Pos::data();
+        $errors = [];
+
+        $rows = Pos::lines($storeId);
+        if (!$rows) $errors[] = 'Чек порожній — додайте товари';
+        foreach ($rows as $r) {
+            $title = $r['product']['name'] . ($r['variant'] ? ', ' . $r['variant']['name'] : '');
+            // Ціна «За запитом» у чеку перетворилась би на нуль — це не знижка,
+            // а невказана ціна, і вирішувати її треба в картці товару.
+            if ($r['price'] === null) $errors[] = 'Ціна не вказана: ' . $title;
+        }
+
+        // Номер беремо з поля, а не з сесії: воно перед очима, і саме йому
+        // вірить продавець. Інакше номер, набраний за секунду до натискання
+        // «Оформити» (пошук ще не встиг відповісти), тихо не потрапив би в
+        // замовлення — і воно вийшло б нічиїм.
+        $rawPhone = trim((string)($_POST['phone'] ?? ($d['phone'] ?? '')));
+        $phone = $rawPhone === '' ? null : AuthTokens::normPhoneAny($rawPhone);
+        if ($rawPhone !== '' && !$phone) {
+            $errors[] = 'Номер «' . $rawPhone . '» не годиться. '
+                . AuthTokens::phoneProblem($rawPhone)
+                . '. Виправте або очистіть поле — тоді покупець буде анонімним';
+        }
+
+        // Немає номера — покупець лишається анонімним, і це дозволено рівно там,
+        // де працює: людина забирає товар з рук просто зараз. Дзвінок без номера
+        // неможливий за визначенням, а доставку нікому підтвердити й нікому
+        // віддати посилку.
+        if (!$phone && $rawPhone === '') {
+            if (($d['source'] ?? 'offline') === 'phone') $errors[] = 'Запишіть номер, з якого дзвонять — без нього замовлення нікому підтвердити';
+            elseif ($form['delivery'] !== 'pickup') $errors[] = 'Без номера можлива лише видача на місці: посилку нікому вручити';
+        }
+
+        $name = trim((string)($_POST['name'] ?? '')) ?: trim((string)($d['name'] ?? ''));
+        if ($name === '' && $form['delivery'] !== 'pickup') $errors[] = 'Вкажіть імʼя отримувача — воно потрібне для відправлення';
+        if ($name === '') $name = 'Покупець';
+
+        $email = $form['email'] === '' ? null : Newsletter::normEmail($form['email']);
+        if ($form['email'] !== '' && !$email) $errors[] = 'Email виглядає некоректним — виправте або лишіть порожнім';
+
+        // Промокод перевіряємо номером, а не акаунтом: акаунта може ще не бути,
+        // а ліміт «раз на людину» рахується і за номером теж (Promo::usedBy).
+        $promo = null;
+        if (trim($form['promo_code']) !== '') {
+            [$promo, $promoError] = Promo::check($form['promo_code'], $d['user_id'] ?? null, $phone);
+            if (!$promo) $errors[] = $promoError;
+        }
+
+        if ($errors) return $errors;
+
+        // Продаж із порожнього складу означає, що склад розійшовся з дійсністю.
+        // Мовчки списати «в мінус» не можна: наступний покупець побачить на
+        // сайті товар, якого немає. Тому — те саме правило, що й на вітрині.
+        $short = OrderFlow::unavailable($rows);
+        if ($short) return ['Товару немає на складі: ' . OrderFlow::unavailableLine($short)
+            . '. Виправте залишки в картці товару або приберіть позицію.'];
+
+        $subtotal = 0.0; $discount = 0.0;
+        foreach ($rows as $r) {
+            $sum = (float)$r['sum'];
+            $subtotal += $sum;
+            $discount += Promo::cut($sum, $promo, Promo::ownPercent($r));
+        }
+
+        $userId = Customers::resolve($phone, $name);
+        $number = 'BOFU-' . date('ymd') . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 4));
+
+        try {
+            $placed = OrderFlow::place([
+                'number' => $number, 'token' => bin2hex(random_bytes(16)), 'user_id' => $userId,
+                'name' => $name, 'phone' => $phone ?? '', 'email' => $email,
+                'delivery' => $form['delivery'],
+                'city' => $form['city'] ?: null,
+                'np_office' => $form['np_office'] ?: null,
+                'address' => $form['address'] ?: null,
+                'comment' => $form['comment'] ?: null,
+                // Магазин у головному — це місце самовивозу, як і на вітрині.
+                // Виконавцем він стає окремо, третім аргументом place().
+                'store_id' => $form['delivery'] === 'pickup' ? $storeId : null,
+                'source' => $d['source'] ?? 'offline', 'created_by_user_id' => Auth::id(),
+                'status' => 'new', 'promo_code' => $promo['code'] ?? null,
+                'subtotal' => $subtotal, 'discount' => $discount,
+                'total' => max(0, $subtotal - $discount),
+                'created_at' => now(),
+            ], $rows, $storeId);
+        } catch (\RuntimeException $e) {
+            return [$e->getMessage()];
+        }
+
+        if ($promo) Promo::recordUse($promo, (int)$placed['id'], $userId, $phone);
+
+        OrderFlow::log((int)$placed['id'], null, 'created',
+            'Оформив продавець — ' . mb_strtolower(OrderFlow::sourceLabel($d['source'] ?? 'offline'))
+            . ($phone ? '' : ', покупець без номера') . '.', Auth::id());
+
+        // Товар уже в руках покупця — замовлення закривається тим самим рухом.
+        // Статус ставимо через setStatus(), а не UPDATE: на ньому висять історія,
+        // зведений статус головного й облік промокоду.
+        if ($form['handed'] && $form['delivery'] === 'pickup') {
+            foreach ($placed['children'] as $c) OrderFlow::setStatus((int)$c['id'], 'done', Auth::id());
+        } else {
+            // Сповіщення «нове замовлення» має сенс лише там, де його ще комусь
+            // виконувати. Продавцю, який щойно сам його й пробив, воно ні до чого.
+            foreach ($placed['children'] as $c) OrderFlow::notifyNew($c);
+        }
+
+        // Чек закрито: власний кошик продавця повертається, смужка на вітрині гасне
+        Pos::stop();
+
+        flash('success', 'Замовлення ' . $number . ' оформлено'
+            . ($userId ? '' : ' (покупець анонімний)') . '.');
+        redirect('/admin/orders/' . $placed['id']);
+    }
+
+    /**
+     * Пошук товару для каси (JSON).
+     *
+     * Окремий рядок на кожну фасовку: продавець шукає «мед 0.5», а не товар,
+     * усередині якого потім ще обирати фасування. Ціна й залишок — того
+     * магазину, від імені якого зараз продають: у сусідній точці вони інші.
+     */
+    public static function search(): never
+    {
+        Auth::requireCap('orders.create');
+        $q = trim((string)($_GET['q'] ?? ''));
+        if (mb_strlen($q) < 2) json_response(['items' => []]);
+
+        $storeId = (int)($_GET['store_id'] ?? 0);
+        $allowed = array_map(fn($s) => (int)$s['id'], self::createStores());
+        if (!in_array($storeId, $allowed, true)) $storeId = 0;
+
+        $like = '%' . $q . '%';
+        $products = DB::all(
+            'SELECT * FROM products WHERE active = 1 AND (name LIKE ? OR sku LIKE ? OR barcode LIKE ?)
+             ORDER BY name LIMIT 15', [$like, $like, $like]);
+
+        $items = [];
+        foreach ($products as $p) {
+            $variants = Catalog::variants((int)$p['id']);
+            if ($variants) {
+                foreach ($variants as $v) $items[] = self::searchRow($p, $v, $storeId ?: null);
+            } else {
+                $items[] = self::searchRow($p, null, $storeId ?: null);
+            }
+        }
+        json_response(['items' => array_slice($items, 0, 30)]);
+    }
+
+    private static function searchRow(array $p, ?array $v, ?int $storeId): array
+    {
+        [$price] = Catalog::price($p, $v, $storeId);
+        $stock = Catalog::stockByStore((int)$p['id'], $v ? (int)$v['id'] : null);
+        return [
+            'product_id' => (int)$p['id'],
+            'variant_id' => $v ? (int)$v['id'] : 0,
+            'title' => (string)$p['name'],
+            'variant_name' => $v ? (string)$v['name'] : '',
+            'price' => $price,
+            'price_label' => price_fmt($price),
+            // Залишок саме тієї точки, від імені якої продають; без вибраної —
+            // сума по мережі, щоб було видно бодай «є десь».
+            'stock' => $storeId ? (int)($stock[$storeId] ?? 0) : array_sum($stock),
+            'made_to_order' => !empty($p['made_to_order']),
+        ];
+    }
     /**
      * Одна сторінка і для головного замовлення, і для підзамовлення: завжди видно
      * замовлення цілком, а керування зʼявляється лише там, де є права.

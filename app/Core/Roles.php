@@ -24,6 +24,7 @@ class Roles
         'orders.assign'       => 'Брати замовлення в роботу',
         'orders.note'         => 'Додавати нотатки до замовлення',
         'orders.manage'       => 'Керувати замовленням цілком (передача між магазинами)',
+        'orders.create'       => 'Оформлювати замовлення за покупця (дзвінок, продаж у точці)',
         'products.view'       => 'Бачити товари',
         'products.stock'      => 'Правити залишки',
         'products.price'      => 'Правити ціни магазину',
@@ -57,7 +58,8 @@ class Roles
             // orders.view_all — лише читання чужих точок: правити можна те, що у своїх
             // (це вирішує canManage по seller_stores, а не право)
             'caps' => ['orders.view', 'orders.view_all', 'orders.status', 'orders.assign',
-                       'orders.note', 'products.view', 'products.stock', 'products.price'],
+                       'orders.note', 'orders.create',
+                       'products.view', 'products.stock', 'products.price'],
             'assignable' => true,
         ],
         self::EDITOR => [
