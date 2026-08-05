@@ -102,8 +102,15 @@ class Products
             if ($r['variant_id'] === null) $stocks[(int)$r['product_id']][(int)$r['store_id']] = $r['qty'];
             else $vstocks[(int)$r['variant_id']][(int)$r['store_id']] = $r['qty'];
         }
+        // Колонки лишає обрана точка. Дані інших магазинів від цього не
+        // страждають: syncStore() чіпає лише ті store_id, що прийшли у формі.
+        $f = self::bulkInput();
+        $shown = $f['store']
+            ? array_values(array_filter($stores, fn($s) => (int)$s['id'] === $f['store']))
+            : $stores;
+
         View::show('admin/products/bulk', [
-            'products' => $products, 'stores' => $stores, 'variants' => $variants,
+            'products' => $products, 'stores' => $shown, 'all_stores' => $stores, 'variants' => $variants,
             'prices' => $prices, 'stocks' => $stocks, 'vprices' => $vprices, 'vstocks' => $vstocks,
             'categories' => Catalog::categories(), 'brands' => Catalog::brands(),
             'f' => self::bulkInput(), 'query' => self::bulkQuery(),
@@ -118,6 +125,9 @@ class Products
             'q' => trim((string)($_GET['q'] ?? '')),
             'cat' => (int)($_GET['cat'] ?? 0),
             'brand' => (int)($_GET['brand'] ?? 0),
+            // магазин звужує таблицю до однієї точки: із двома колонками замість
+            // восьми видно, що робиш, і не треба цілитись у потрібну пару
+            'store' => (int)($_GET['store'] ?? 0),
             // «є що правити» — найчастіша причина сюди зайти
             'only' => in_array($_GET['only'] ?? '', ['zero', 'noprice', 'variants'], true) ? $_GET['only'] : '',
         ];
@@ -139,10 +149,17 @@ class Products
             $where[] = 'EXISTS (SELECT 1 FROM product_brands pb WHERE pb.product_id = p.id AND pb.brand_id = ?)';
             $params[] = $f['brand'];
         }
-        // Порожній склад рахуємо по всій мережі й з урахуванням варіантів —
-        // саме так, як його бачить покупець.
+        // Порожній склад рахуємо по всій мережі — саме так, як його бачить
+        // покупець. Але коли обрано точку, питання інше: «чого немає ТУТ», і
+        // рахувати треба по ній, інакше добірка суперечила б колонкам на екрані.
         if ($f['only'] === 'zero') {
-            $where[] = 'COALESCE((SELECT SUM(ss.qty) FROM store_stock ss WHERE ss.product_id = p.id), 0) <= 0';
+            if ($f['store']) {
+                $where[] = 'COALESCE((SELECT SUM(ss.qty) FROM store_stock ss
+                                       WHERE ss.product_id = p.id AND ss.store_id = ?), 0) <= 0';
+                $params[] = $f['store'];
+            } else {
+                $where[] = 'COALESCE((SELECT SUM(ss.qty) FROM store_stock ss WHERE ss.product_id = p.id), 0) <= 0';
+            }
         }
         if ($f['only'] === 'noprice') $where[] = '(p.base_price IS NULL OR p.base_price = 0)';
         if ($f['only'] === 'variants') {
