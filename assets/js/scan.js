@@ -12,6 +12,7 @@ window.BofuScan = (function () {
 
   var box = null, video, msgEl, stream = null, raf = null, detector = null;
   var busy = false, frame = 0, handler = null, lastCode = '', lastAt = 0;
+  var startedAt = 0, hinted = false;
   var canvas = document.createElement('canvas');
   var ctx = canvas.getContext('2d', { willReadFrequently: true });
 
@@ -22,14 +23,22 @@ window.BofuScan = (function () {
     box.hidden = true;
     box.innerHTML =
       '<div class="pos-cam-inner">' +
-      '<video playsinline muted></video>' +
       '<div class="pos-cam-aim" aria-hidden="true"></div>' +
       '<p class="pos-cam-msg"></p>' +
       '<button type="button" class="btn btn-gold btn-sm">Готово</button>' +
       '</div>';
-    document.body.appendChild(box);
-    video = box.querySelector('video');
+    // Відео створюємо окремо й вмикаємо властивостями, а не атрибутами в
+    // innerHTML: muted/playsinline, виставлені розміткою на щойно створеному
+    // елементі, Chrome не завжди підхоплює — і кадр не йде взагалі, а на екрані
+    // лишається чорний прямокутник.
+    video = document.createElement('video');
+    video.muted = true;
+    video.autoplay = true;
+    video.playsInline = true;
+    video.setAttribute('playsinline', '');   // старі iOS читають саме атрибут
+    box.querySelector('.pos-cam-inner').insertBefore(video, box.querySelector('.pos-cam-aim'));
     msgEl = box.querySelector('.pos-cam-msg');
+    document.body.appendChild(box);
     box.querySelector('button').addEventListener('click', close);
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape' && box && !box.hidden) close();
@@ -38,7 +47,33 @@ window.BofuScan = (function () {
 
   function say(text) { if (msgEl) msgEl.textContent = text; }
 
-  var api = { say: say, close: close };
+  /**
+   * «Пік» на впізнаний код.
+   *
+   * Продавець дивиться на товар, а не в екран, і має чути, що код зчитано, —
+   * інакше він водитиме етикеткою далі й просканує її двічі. Вібрація є лише
+   * на телефоні, тож звук робимо самі: короткий тон через WebAudio, без файлів
+   * і без мережі.
+   */
+  var audio = null;
+  function beep(ok) {
+    try {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      audio = audio || new AC();
+      if (audio.state === 'suspended') audio.resume();
+      var osc = audio.createOscillator(), gain = audio.createGain();
+      osc.type = 'square';
+      osc.frequency.value = ok ? 1760 : 220;    // знайшли — високо, не знайшли — низько
+      gain.gain.setValueAtTime(0.09, audio.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.0001, audio.currentTime + 0.14);
+      osc.connect(gain).connect(audio.destination);
+      osc.start();
+      osc.stop(audio.currentTime + 0.15);
+    } catch (e) { /* звук — приємність, а не умова роботи */ }
+  }
+
+  var api = { say: say, close: close, beep: beep };
 
   /**
    * Увімкнути камеру. onCode(code, api) викликається на кожен упізнаний код —
@@ -73,15 +108,40 @@ window.BofuScan = (function () {
     }).then(function (s) {
       stream = s;
       video.srcObject = s;
-      video.play();
+      // play() повертає обіцянку й цілком може відмовити (політика автозапуску,
+      // згорнута вкладка). Мовчазна відмова — це і є той самий чорний прямокутник,
+      // тож про неї треба сказати, а не сподіватись.
+      var p = video.play();
+      if (p && p.catch) p.catch(function (err) {
+        say('Камера не запустилась: ' + (err && err.message ? err.message : 'браузер не дав відтворити відео'));
+      });
+      // Постійний автофокус: без нього камера ловить різкість один раз при
+      // старті, і піднесена ближче етикетка лишається розмитою — саме тоді
+      // «камера не бачить код». Підтримують не всі, тому мовчки best-effort.
+      try {
+        var track = s.getVideoTracks()[0];
+        if (track && track.applyConstraints) {
+          track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(function () {});
+        }
+      } catch (e) { /* камера без керування фокусом — не біда */ }
+
       if ('BarcodeDetector' in window) {
         try {
           detector = new window.BarcodeDetector({
             formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128']
           });
+          // Детектор може існувати, але не вміти саме магазинних форматів
+          // (набір залежить від системи). Тоді свій декодер кращий за нього.
+          if (window.BarcodeDetector.getSupportedFormats) {
+            window.BarcodeDetector.getSupportedFormats().then(function (list) {
+              if (list && list.indexOf('ean_13') === -1) detector = null;
+            }).catch(function () {});
+          }
         } catch (e) { detector = null; }
       }
       say(opts.title || 'Наведіть камеру на штрихкод');
+      startedAt = Date.now();
+      hinted = false;
       raf = requestAnimationFrame(tick);
     }).catch(function (e) {
       box.hidden = true;
@@ -104,13 +164,32 @@ window.BofuScan = (function () {
     var now = Date.now();
     if (code === lastCode && now - lastAt < 1800) return;
     lastCode = code; lastAt = now;
-    if (navigator.vibrate) navigator.vibrate(60);   // на телефоні — єдине відчутне «пікнуло»
+    hinted = true;                                  // код читається — підказка вже не про це
+    startedAt = now;
+    beep(true);
+    if (navigator.vibrate) navigator.vibrate(60);   // на телефоні — ще й відчутно
     if (handler) handler(code, api);
   }
 
   function tick() {
     raf = requestAnimationFrame(tick);
-    if (!video.videoWidth) return;
+
+    // Кадру немає — камера не віддає зображення. Мовчати тут не можна: на
+    // екрані просто чорний прямокутник, і незрозуміло, чи це поламано, чи
+    // просто темно.
+    if (!video.videoWidth) {
+      if (Date.now() - startedAt > 4000 && !hinted) {
+        hinted = true;
+        say('Камера не дає зображення. Перевірте, чи не зайнята вона іншою програмою, і чи дозволений доступ у браузері.');
+      }
+      return;
+    }
+
+    // Код не дається — підказуємо, як тримати, замість мовчазного чорного вікна
+    if (!hinted && Date.now() - startedAt > 7000) {
+      hinted = true;
+      say('Не читається. Тримайте етикетку в рамці, за 10–20 см, рівно й без відблиску — або введіть код руками.');
+    }
 
     // Беремо не весь кадр, а смугу під рамкою прицілу: там етикетка, а решта
     // кадру — це стіл і руки, на яких декодер лише марнує час
@@ -139,5 +218,5 @@ window.BofuScan = (function () {
     if (code) hit(code);
   }
 
-  return { open: open, close: close, say: say };
+  return { open: open, close: close, say: say, beep: beep };
 })();
