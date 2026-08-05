@@ -10,7 +10,10 @@ $roCard = $canCard ? '' : 'disabled';
 ?>
 <div class="admin-head">
   <h1 class="h-serif">Масове редагування</h1>
-  <span class="dim">Змінюйте будь-які значення і натисніть «Зберегти все»</span>
+  <?php /* лічильник тут, а не у формі: він не контрол, а відповідь на фільтр,
+           і в ряду полів забирав місце, через яке кнопка «Знайти» падала
+           на другий рядок */ ?>
+  <span class="dim">Знайдено: <b><?= count($products) ?></b> · змінюйте будь-які значення і натисніть «Зберегти все»</span>
 </div>
 <?php if (!$canCard): ?>
   <div class="admin-card" style="border-color:var(--gold)">
@@ -20,9 +23,8 @@ $roCard = $canCard ? '' : 'disabled';
 <?php endif; ?>
 <?php /* Фільтр окремою формою (GET) — усередині форми збереження він став би
          її частиною й відправлявся б разом із цінами. */ ?>
-<form class="admin-card" method="get" action="<?= e(url('/admin/products/bulk')) ?>"
-      style="display:flex;gap:14px;align-items:end;flex-wrap:wrap">
-  <div style="flex:1;min-width:180px" data-help-title="Пошук"
+<form class="admin-card bulk-filter" method="get" action="<?= e(url('/admin/products/bulk')) ?>">
+  <div style="flex:1;min-width:130px" data-help-title="Пошук"
        data-help="Шукає за назвою товару й за артикулом одночасно. Досить частини слова.
 
 Фільтр переживає збереження: після «Зберегти все» ви лишаєтесь у тій самій добірці.">
@@ -84,7 +86,6 @@ $roCard = $canCard ? '' : 'disabled';
   <?php if ($f['q'] !== '' || $f['cat'] || $f['brand'] || $f['store'] || $f['only'] !== ''): ?>
     <a class="btn btn-line btn-sm" href="<?= e(url('/admin/products/bulk')) ?>">Скинути</a>
   <?php endif; ?>
-  <span class="dim" style="margin-bottom:10px">Знайдено: <?= count($products) ?></span>
 </form>
 
 <?php /* фільтр у дії форми: після збереження редірект має повернути ту саму добірку */ ?>
