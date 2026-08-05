@@ -104,6 +104,11 @@ class App
         if ($path === '/role/reset' && $method === 'POST') { Controllers\RoleController::reset(); }
         if ($path === '/role/store' && $method === 'POST') { Controllers\RoleController::store(); }
 
+        // каса — теж поза адмінкою: чек набирають, ходячи вітриною, і смужка
+        // продажу має працювати саме там, де продавець зараз стоїть
+        if ($path === '/pos/state') { Controllers\PosController::state(); }
+        if ($path === '/pos/off' && $method === 'POST') { Controllers\PosController::off(); }
+
         // режим редагування — теж поза адмінкою: правлять блоки на самій вітрині,
         // і гейт /admin закрив би збереження саме там, де воно потрібне
         if ($path === '/edit/on' && $method === 'POST') { Controllers\EditController::on(); }
@@ -129,6 +134,11 @@ class App
         if ($path === '/cart/update' && $method === 'POST') { Controllers\CartController::update(); }
         // сторінка оформлення лише читає; POST сюди приймати нема потреби, а без нього
         // стороння сторінка не може записати покупцеві промокод у сесію
+        // У режимі продажу кошик — це чек покупця, а не власна покупка продавця.
+        // Звичайне оформлення тут створило б замовлення на самого продавця, ще
+        // й повз касу: без анонімності, без «віддано», без позначки «звідки».
+        // Тому обидва входи в оформлення ведуть на касу.
+        if (str_starts_with($path, '/checkout') && Pos::active()) redirect('/admin/orders/new');
         if ($path === '/checkout' && $method !== 'POST') { Controllers\Checkout::form(); }
         if ($path === '/checkout' . '/submit' && $method === 'POST') { Controllers\Checkout::submit(); }
         // промокод — коротка комбінація літер, тобто його можна підбирати; з лімітом
@@ -183,6 +193,9 @@ class App
             '/admin/brands'             => [$A.'Brands', 'index', 'catalog.manage'],
             '/admin/stores'             => [$A.'Stores', 'index', 'stores.manage'],
             '/admin/orders'             => [$A.'Orders', 'index', 'orders.view'],
+            '/admin/orders/new'         => [$A.'Orders', 'pos', 'orders.create'],
+            '/admin/orders/search'      => [$A.'Orders', 'search', 'orders.create'],
+            '/admin/products/codes'     => [$A.'Products', 'codes', 'products.manage'],
             '/admin/promos'             => [$A.'Promos', 'index', 'promos.manage'],
             '/admin/diplomas'           => [$A.'Diplomas', 'index', 'diplomas.manage'],
             '/admin/users'              => [$A.'Users', 'index', 'users.manage'],

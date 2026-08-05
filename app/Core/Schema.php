@@ -7,7 +7,7 @@ declare(strict_types=1);
  */
 class Schema
 {
-    public const VERSION = 29;
+    public const VERSION = 31;
 
     /** Оновлення існуючої бази до поточної версії без втрати даних */
     public static function upgrade(): void
@@ -278,6 +278,25 @@ class Schema
             self::addColumn('brands', 'logo', 'str null');
             self::addColumn('brands', 'description', 'text null');
         }
+        if ($ver < 30) {
+            // Продавець оформлює замовлення сам — по телефону або на місці.
+            // Звідки воно взялося, видно з рядка, а не з здогадок: «клієнт не
+            // відповідає» до замовлення, яке людина зробила стоячи біля каси,
+            // не застосовне, а до телефонного — цілком.
+            self::addColumn('orders', 'source', "str default 'site'");
+            self::addColumn('orders', 'created_by_user_id', 'int null');
+            // Усе, що вже є, прийшло з сайту: інших шляхів досі не було.
+            DB::query("UPDATE orders SET source = 'site' WHERE source IS NULL OR source = ''");
+        }
+        if ($ver < 31) {
+            // Штрихкод — окремо від артикулу, і це не дублювання. Артикул
+            // придумуємо ми («MED-LIP-05»), штрихкод друкує виробник на
+            // етикетці. Сканер шукає саме етикетку, а обліковець — свій код;
+            // в одному полі вони рано чи пізно перетруть один одного.
+            self::addColumn('products', 'barcode', 'str null');
+            self::addColumn('product_variants', 'barcode', 'str null');
+            self::createAll();   // індекси по sku/barcode: за ними шукає каса
+        }
         Settings::set('schema_version', (string)self::VERSION);
     }
 
@@ -424,7 +443,9 @@ class Schema
             ],
             'products' => [
                 'id' => 'id', 'category_id' => 'int', 'name' => 'str', 'slug' => 'str unique',
-                'sku' => 'str null',
+                // sku — наш код для обліку, barcode — те, що надруковано на
+                // етикетці й прилітає зі сканера. Обидва необовʼязкові.
+                'sku' => 'str null', 'barcode' => 'str null',
                 // застарілі поля бренду: до міграції 28 бренд був один, до 27 — текстом.
                 // Не читаються; чий товар — тепер product_brands.
                 'brand_id' => 'int null',
@@ -442,7 +463,9 @@ class Schema
             ],
             'product_variants' => [
                 'id' => 'id', 'product_id' => 'int', 'name' => 'str',
-                'price' => 'num null', 'sku' => 'str null', 'sort' => 'int default 0', 'active' => 'bool default 1',
+                // Коди належать фасовці, а не товару: етикетку клеять на банку
+                'price' => 'num null', 'sku' => 'str null', 'barcode' => 'str null',
+                'sort' => 'int default 0', 'active' => 'bool default 1',
             ],
             'product_images' => [
                 'id' => 'id', 'product_id' => 'int', 'path' => 'str',
@@ -511,6 +534,10 @@ class Schema
                 'delivery' => 'str', 'city' => 'str null', 'np_office' => 'str null',
                 'address' => 'str null', 'comment' => 'text null',
                 'store_id' => 'int null',
+                // Звідки замовлення: сайт, дзвінок продавцю чи продаж у точці.
+                // created_by_user_id — продавець, який його завів (у сайтових порожньо).
+                'source' => "str default 'site'", // site|phone|offline
+                'created_by_user_id' => 'int null',
                 'status' => "str default 'new'", // new|processing|shipped|done|canceled
                 // хто взяв підзамовлення в роботу (мітка, не блокування)
                 'assigned_user_id' => 'int null', 'assigned_at' => 'str null',
@@ -621,8 +648,9 @@ class Schema
         }
         // індекси
         $idx = [
-            'products' => ['category_id', 'active', 'featured'],
-            'product_variants' => ['product_id'],
+            // sku/barcode — те, за чим шукає каса: точний збіг на кожен скан
+            'products' => ['category_id', 'active', 'featured', 'sku', 'barcode'],
+            'product_variants' => ['product_id', 'sku', 'barcode'],
             'product_images' => ['product_id'],
             'product_attrs' => ['product_id', 'attribute_id'],
             'product_brands' => ['product_id', 'brand_id'],

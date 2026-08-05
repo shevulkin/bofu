@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head><meta charset="utf-8"><title>Перевірка декодера штрихкодів</title>
+<style>body{font:14px monospace;background:#141110;color:#f6ecd9;padding:20px}
+.ok{color:#7fb069}.bad{color:#e0685e}canvas{background:#fff;margin:4px 0}</style>
+</head>
+<body>
+<h1>Перевірка barcode.js</h1>
+<p>Читання штрихкодів живе в браузері, тож і перевіряється в браузері:
+  <b>http://localhost/bofu/tests/barcode.html</b>. Решта тестів — <code>php bin/cli.php test</code>.</p>
+<div id="out">рахуємо…</div>
+<script>
+// Файл вантажимо з міткою часу: інакше браузер підсовує кешовану версію, і
+// тест радісно перевіряє код, який ви щойно виправили, у старому вигляді.
+// (Саме на цьому й попався автор: EAN-8 «не читався» вже полагодженим.)
+var s = document.createElement('script');
+s.src = '../assets/js/barcode.js?t=' + Date.now();
+// не `s.onload = runTests` — його ще не існує, він оголошений нижче
+s.onload = function () { runTests(); };
+document.head.appendChild(s);
+</script>
+<script>
+// Кодувальник написаний ВІД БІТОВИХ таблиць стандарту, а декодер — від ширин
+// смужок. Якби таблиці розійшлись, тест би це показав.
+var Lbits = ['0001101','0011001','0010011','0111101','0100011','0110001','0101111','0111011','0110111','0001011'];
+var Gbits = ['0100111','0110011','0011011','0100001','0011101','0111001','0000101','0010001','0001001','0010111'];
+var Rbits = Lbits.map(function (b) { return b.replace(/./g, function (c) { return c === '0' ? '1' : '0'; }); });
+var PARITY = ['LLLLLL','LLGLGG','LLGGLG','LLGGGL','LGLLGG','LGGLLG','LGGGLL','LGLGLG','LGLGGL','LGGLGL'];
+
+function ean13bits(code) {
+  var d = code.split('').map(Number);
+  var parity = PARITY[d[0]], bits = '101';
+  for (var i = 1; i <= 6; i++) bits += (parity[i - 1] === 'L' ? Lbits : Gbits)[d[i]];
+  bits += '01010';
+  for (i = 7; i <= 12; i++) bits += Rbits[d[i]];
+  return bits + '101';
+}
+function ean8bits(code) {
+  var d = code.split('').map(Number), bits = '101';
+  for (var i = 0; i < 4; i++) bits += Lbits[d[i]];
+  bits += '01010';
+  for (i = 4; i < 8; i++) bits += Rbits[d[i]];
+  return bits + '101';
+}
+function check(digits) {  // контрольна цифра для довільного префікса
+  var sum = 0;
+  for (var i = 0; i < digits.length; i++) {
+    var weight = ((digits.length - 1 - i) % 2 === 0) ? 3 : 1;
+    sum += Number(digits[i]) * weight;
+  }
+  return String((10 - (sum % 10)) % 10);
+}
+
+/** Малюємо штрихкод так, як його бачить камера: із полями, шумом і поворотом */
+function render(bits, opt) {
+  opt = opt || {};
+  var module = opt.module || 3, quiet = 12 * module, h = opt.height || 120;
+  var c = document.createElement('canvas');
+  c.width = bits.length * module + quiet * 2;
+  c.height = h;
+  var x = c.getContext('2d');
+  x.fillStyle = opt.bg || '#fff';
+  x.fillRect(0, 0, c.width, c.height);
+  x.fillStyle = opt.fg || '#000';
+  for (var i = 0; i < bits.length; i++) {
+    if (bits[i] === '1') x.fillRect(quiet + i * module, 10, module, h - 20);
+  }
+  if (opt.noise) {   // легкий шум камери
+    var img = x.getImageData(0, 0, c.width, c.height), dt = img.data;
+    for (var p = 0; p < dt.length; p += 4) {
+      var n = (Math.random() - 0.5) * opt.noise;
+      dt[p] += n; dt[p + 1] += n; dt[p + 2] += n;
+    }
+    x.putImageData(img, 0, 0);
+  }
+  if (opt.flip) {    // етикетку піднесли догори дриґом
+    var f = document.createElement('canvas');
+    f.width = c.width; f.height = c.height;
+    var fx = f.getContext('2d');
+    fx.translate(c.width, c.height); fx.rotate(Math.PI);
+    fx.drawImage(c, 0, 0);
+    return f;
+  }
+  return c;
+}
+
+var out, pass = 0, fail = 0;
+function say(name, got, want) {
+  var ok = got === want;
+  ok ? pass++ : fail++;
+  out.insertAdjacentHTML('beforeend',
+    '<div class="' + (ok ? 'ok' : 'bad') + '">' + (ok ? 'ok  ' : 'FAIL') + ' ' + name +
+    ' → ' + (got === null ? 'null' : got) + (ok ? '' : ' (чекали ' + want + ')') + '</div>');
+}
+function decodeCanvas(c) {
+  var x = c.getContext('2d');
+  return window.BofuBarcode.decode(x.getImageData(0, 0, c.width, c.height));
+}
+
+function runTests() {
+  out = document.getElementById('out');
+  out.innerHTML = '';
+
+  // '2001…' — саме такі коди придумує собі магазин сам (Barcode::make у PHP):
+  // у них перша цифра 2, а від неї залежить розкладка наборів L/G у лівій
+  // половині. Без цього випадку помилка в тій таблиці лишилась би непоміченою.
+  ['482000000000', '400638133393', '590123412345', '012345678912',
+   '200100000031', '200200000022'].forEach(function (prefix) {
+    var code = prefix + check(prefix);
+    say('EAN-13 ' + code, decodeCanvas(render(ean13bits(code))), code);
+  });
+
+  // Те, що камера підкидає в житті: різна відстань, поворот, шум, сірий папір
+  var full = '482000000000' + check('482000000000');
+  say('дрібний модуль (2px)', decodeCanvas(render(ean13bits(full), { module: 2 })), full);
+  say('великий модуль (5px)', decodeCanvas(render(ean13bits(full), { module: 5 })), full);
+  say('перевернутий', decodeCanvas(render(ean13bits(full), { flip: true })), full);
+  say('шум камери', decodeCanvas(render(ean13bits(full), { noise: 60 })), full);
+  say('сірий фон і темні смуги', decodeCanvas(render(ean13bits(full), { bg: '#ddd8cc', fg: '#221c14' })), full);
+
+  var e8 = '9638507' + check('9638507');
+  say('EAN-8 ' + e8, decodeCanvas(render(ean8bits(e8))), e8);
+
+  // Вигаданий код у чеку гірший за жоден: чужий товар ляже тихо й непомітно
+  say('порожній кадр', decodeCanvas(render('0'.repeat(95), {})), null);
+  var noise = document.createElement('canvas');
+  noise.width = 400; noise.height = 120;
+  var nx = noise.getContext('2d');
+  for (var i = 0; i < 400; i++) {
+    nx.fillStyle = Math.random() > 0.5 ? '#000' : '#fff';
+    nx.fillRect(i, 0, 1, 120);
+  }
+  say('випадкові смуги', decodeCanvas(noise), null);
+  // Саме для цього в коді є контрольна цифра — перевіряємо, що ми її й перевіряємо
+  say('невірна контрольна цифра', decodeCanvas(render(ean13bits('4820000000009'))), null);
+
+  out.insertAdjacentHTML('beforeend',
+    '<h2 class="' + (fail ? 'bad' : 'ok') + '" id="verdict">' +
+    (fail ? 'ПРОВАЛЕНО ' + fail + ' з ' + (pass + fail) : 'УСЕ ДОБРЕ: ' + pass + ' перевірок') + '</h2>');
+}
+</script>
+</body>
+</html>

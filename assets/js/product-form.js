@@ -152,6 +152,7 @@
         '<div class="gr-main"><input type="text" name="variant[' + k + '][name]" placeholder="Назва варіанта" required></div>' +
         '<input type="number" step="0.01" name="variant[' + k + '][price]" placeholder="ціна">' +
         '<input type="text" name="variant[' + k + '][sku]" placeholder="артикул">' +
+        '<input type="text" name="variant[' + k + '][barcode]" placeholder="штрихкод" inputmode="numeric" autocomplete="off">' +
         '<label class="checkbox"><input type="checkbox" name="variant[' + k + '][active]" checked> вкл.</label>' +
         '<button type="button" class="btn btn-danger btn-xs row-del" title="Прибрати">✕</button>';
       row.querySelector('.row-del').addEventListener('click', function () { row.remove(); });

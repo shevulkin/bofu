@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 namespace Controllers\Admin;
 
-use DB, View, Auth, Catalog, Images, Attrs, StockWatch;
+use DB, View, Auth, Barcode, Catalog, Images, Attrs, StockWatch;
 
 class Products
 {
@@ -119,6 +119,127 @@ class Products
     }
 
     /** Значення фільтра як їх увів користувач — і для запиту, і для форми */
+    /**
+     * Коди й штрихкоди окремим екраном.
+     *
+     * У масовому редагуванні їм не місце: там ціни й залишки по магазинах, і два
+     * зайві стовпці роблять таблицю нечитаною. А головне — заповнюють коди інакше,
+     * ніж ціни: береш товар, підносиш сканер до етикетки, переходиш до наступного.
+     * Для цього потрібен вузький список і Tab, що йде рівно по потрібних полях.
+     *
+     * Дублікати показуємо одразу: два товари з однаковим штрихкодом означають, що
+     * каса щоразу братиме той, який трапиться першим, — і продавець цього не помітить.
+     */
+    public static function codes(): never
+    {
+        Auth::requireCap('products.manage');
+        $clean = fn($v) => (trim((string)$v) !== '' ? trim((string)$v) : null);
+
+        if (is_post()) {
+            // Спершу зберігаємо набране руками, і лише потім домальовуємо власні
+            // коди порожнім: інакше генерація затерла б те, що людина щойно
+            // ввела в сусідньому полі й не встигла зберегти.
+            foreach ((array)($_POST['p'] ?? []) as $id => $d) {
+                DB::update('products', [
+                    'sku' => $clean($d['sku'] ?? ''), 'barcode' => $clean($d['barcode'] ?? ''),
+                    'updated_at' => now(),
+                ], 'id = ?', [(int)$id]);
+            }
+            foreach ((array)($_POST['v'] ?? []) as $id => $d) {
+                DB::update('product_variants', [
+                    'sku' => $clean($d['sku'] ?? ''), 'barcode' => $clean($d['barcode'] ?? ''),
+                ], 'id = ?', [(int)$id]);
+            }
+            if (($_POST['_action'] ?? '') === 'generate') {
+                $made = self::generateBarcodes();
+                flash('success', $made
+                    ? 'Збережено. Своїх кодів створено: ' . $made . ' — надрукуйте й наклейте на товар'
+                    : 'Збережено. Порожніх штрихкодів не лишилось');
+            } else {
+                flash('success', 'Коди збережено');
+            }
+            redirect('/admin/products/codes');
+        }
+
+        $products = DB::all('SELECT p.*, c.name AS cat_name FROM products p
+                             LEFT JOIN categories c ON c.id = p.category_id
+                             ORDER BY c.sort, p.name');
+        $variants = [];
+        foreach (DB::all('SELECT * FROM product_variants ORDER BY sort, id') as $v) {
+            $variants[(int)$v['product_id']][] = $v;
+        }
+
+        View::show('admin/products/codes', [
+            'products' => $products, 'variants' => $variants,
+            'dupes' => self::duplicateCodes(),
+            'page_title' => 'Коди й штрихкоди — адмінка',
+        ], 'layouts/admin');
+    }
+
+    /**
+     * Власні штрихкоди всім, у кого їх немає.
+     *
+     * Товару без фабричної етикетки код теж потрібен — інакше на касі його не
+     * просканувати ніколи. Беремо префікс, який стандарт лишив для внутрішніх
+     * кодів магазину (див. Barcode), тож наш код гарантовано не збігається з
+     * чужим товаром. Позиції з фасовками пропускаємо: код належить банці, а не
+     * «меду взагалі», і сканер має потрапляти саме у фасовку.
+     *
+     * @return int скільки кодів створено
+     */
+    private static function generateBarcodes(): int
+    {
+        $made = 0;
+        $empty = "(barcode IS NULL OR barcode = '')";
+
+        foreach (DB::all("SELECT id FROM products WHERE $empty") as $p) {
+            $pid = (int)$p['id'];
+            if (DB::val('SELECT 1 FROM product_variants WHERE product_id = ? AND active = 1 LIMIT 1', [$pid])) continue;
+            $code = Barcode::make('p', $pid);
+            if (self::codeTaken($code)) continue;   // такий уже хтось вписав руками
+            DB::update('products', ['barcode' => $code, 'updated_at' => now()], 'id = ?', [$pid]);
+            $made++;
+        }
+        foreach (DB::all("SELECT id FROM product_variants WHERE $empty") as $v) {
+            $vid = (int)$v['id'];
+            $code = Barcode::make('v', $vid);
+            if (self::codeTaken($code)) continue;
+            DB::update('product_variants', ['barcode' => $code], 'id = ?', [$vid]);
+            $made++;
+        }
+        return $made;
+    }
+
+    private static function codeTaken(string $code): bool
+    {
+        return (bool)(DB::val('SELECT 1 FROM products WHERE barcode = ? LIMIT 1', [$code])
+            ?? DB::val('SELECT 1 FROM product_variants WHERE barcode = ? LIMIT 1', [$code]));
+    }
+
+    /**
+     * Коди, які зустрічаються більш ніж раз, — по одному переліку на артикули
+     * й штрихкоди. Порівнюємо без урахування регістру: «med-05» і «MED-05» для
+     * людини один код, і саме так їх і плутатимуть.
+     *
+     * @return array{sku:string[],barcode:string[]} коди у нижньому регістрі
+     */
+    public static function duplicateCodes(): array
+    {
+        $out = ['sku' => [], 'barcode' => []];
+        foreach (['sku', 'barcode'] as $field) {
+            $seen = [];
+            foreach ([['products', ''], ['product_variants', '']] as [$table, $_]) {
+                foreach (DB::all("SELECT $field AS code FROM $table WHERE $field IS NOT NULL AND $field <> ''") as $r) {
+                    $code = mb_strtolower(trim((string)$r['code']));
+                    if ($code === '') continue;
+                    $seen[$code] = ($seen[$code] ?? 0) + 1;
+                }
+            }
+            $out[$field] = array_keys(array_filter($seen, fn($n) => $n > 1));
+        }
+        return $out;
+    }
+
     private static function bulkInput(): array
     {
         return [
@@ -140,7 +261,9 @@ class Products
         $where = ['1=1'];
         $params = [];
         if ($f['q'] !== '') {
-            $where[] = '(p.name LIKE ? OR p.sku LIKE ?)';
+            // штрихкод теж: найпростіший спосіб знайти товар — піднести до нього сканер
+            $where[] = '(p.name LIKE ? OR p.sku LIKE ? OR p.barcode LIKE ?)';
+            $params[] = '%' . $f['q'] . '%';
             $params[] = '%' . $f['q'] . '%';
             $params[] = '%' . $f['q'] . '%';
         }
@@ -188,6 +311,7 @@ class Products
                 'category_id' => (int)($_POST['category_id'] ?? 0),
                 'name' => $name, 'slug' => $slug,
                 'sku' => trim($_POST['sku'] ?? '') ?: null,
+                'barcode' => trim($_POST['barcode'] ?? '') ?: null,
                 'short_desc' => trim($_POST['short_desc'] ?? '') ?: null,
                 'description' => trim($_POST['description'] ?? '') ?: null,
                 'base_price' => $_POST['base_price'] === '' ? null : (float)$_POST['base_price'],
@@ -361,6 +485,7 @@ class Products
                 'name' => trim($_POST['name'] ?? $p['name']),
                 'category_id' => (int)($_POST['category_id'] ?? $p['category_id']),
                 'sku' => trim($_POST['sku'] ?? '') ?: null,
+                'barcode' => trim($_POST['barcode'] ?? '') ?: null,
                 'short_desc' => trim($_POST['short_desc'] ?? '') ?: null,
                 'description' => trim($_POST['description'] ?? '') ?: null,
                 'base_price' => ($_POST['base_price'] ?? '') === '' ? null : (float)$_POST['base_price'],
@@ -387,6 +512,7 @@ class Products
                 $upd = [
                     'price' => ($v['price'] ?? '') === '' ? null : (float)$v['price'],
                     'sku' => trim($v['sku'] ?? '') ?: null,
+                    'barcode' => trim($v['barcode'] ?? '') ?: null,
                     'active' => !empty($v['active']) ? 1 : 0,
                     'sort' => $sort++,
                 ];
@@ -400,6 +526,7 @@ class Products
                     'product_id' => $id, 'name' => trim($v['name']),
                     'price' => ($v['price'] ?? '') === '' ? null : (float)$v['price'],
                     'sku' => trim($v['sku'] ?? '') ?: null,
+                    'barcode' => trim($v['barcode'] ?? '') ?: null,
                     'active' => !empty($v['active']) ? 1 : 0,
                     'sort' => $sort++,
                 ]);

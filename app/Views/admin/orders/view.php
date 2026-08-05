@@ -211,8 +211,17 @@
 Ці дані однакові для всього замовлення й не змінюються від передачі позицій між магазинами.">
         Клієнт і доставка</h2>
       <p><b><?= e($parent['name']) ?></b><br>
-      <a href="tel:<?= e($parent['phone']) ?>"><?= e($parent['phone']) ?></a>
+      <?php /* Замовлення з каси може бути без номера — тоді дзвонити нікуди,
+               і посилання «tel:» на порожнечу лише вводило б в оману. */ ?>
+      <?php if ($parent['phone'] !== ''): ?>
+        <a href="tel:<?= e($parent['phone']) ?>"><?= e($parent['phone']) ?></a>
+      <?php else: ?>
+        <span class="dim">без номера — анонімний покупець</span>
+      <?php endif; ?>
       <?php if ($parent['email']): ?><br><a href="mailto:<?= e($parent['email']) ?>"><?= e($parent['email']) ?></a><?php endif; ?></p>
+      <?php if (($parent['source'] ?? 'site') !== 'site'): ?>
+        <p class="dim" style="margin-top:8px">Оформив продавець · <?= e(OrderFlow::sourceLabel($parent['source'])) ?></p>
+      <?php endif; ?>
       <p class="muted" style="margin-top:12px">
         <?= e(OrderFlow::deliveryLabel($parent['delivery'])) ?>
         <?= $parent['city'] ? '<br>Місто: ' . e($parent['city']) : '' ?>

@@ -348,6 +348,11 @@
         if (res && res.ok) {
           updateCartBadge(res.count);
           showCartToast(form.dataset.productName, res.note);
+          // Кошик змінився без перезавантаження сторінки. Смужка продажу (каса)
+          // висить на цій самій сторінці й має оновити свій підсумок — інакше
+          // продавець дивиться на суму, якої вже немає. Подія, а не прямий
+          // виклик: вітрина нічого не знає про касу й знати не мусить.
+          document.dispatchEvent(new CustomEvent('bofu:cart', { detail: { count: res.count } }));
         } else if (res && res.error) {
           showCartToast(null, res.error);
         } else if (res && res.redirect) {

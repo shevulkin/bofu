@@ -57,5 +57,7 @@
 <button class="to-top" id="toTop" aria-label="Догори">↑</button>
 <script src="<?= e(asset_v('js/app.js')) ?>" defer></script>
 <?php if (EditMode::active()) echo View::partial('partials/edit_bar'); ?>
+<?php /* Смужка каси: продавець показує покупцеві сайт, а чек іде за ним */ ?>
+<?php if (Pos::active()) echo View::partial('partials/pos_bar'); ?>
 </body>
 </html>

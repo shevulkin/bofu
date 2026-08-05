@@ -751,7 +751,7 @@ body.help-on [data-help] *{pointer-events:none}
 .grid-row .checkbox{align-self:center;white-space:nowrap}
 .grid-row .row-del{align-self:center}
 .attr-row{grid-template-columns:minmax(170px,1fr) minmax(170px,1.15fr) auto}
-.variant-row{grid-template-columns:minmax(190px,1fr) 120px 140px auto auto}
+.variant-row{grid-template-columns:minmax(170px,1fr) 110px 130px 150px auto auto}
 .grid-row.deleted{opacity:.45}
 .grid-row.deleted .gr-main{text-decoration:line-through}
 .variant-tags{display:flex;gap:8px;flex-wrap:wrap;padding-top:6px}
@@ -847,6 +847,100 @@ body.help-on [data-help] *{pointer-events:none}
 .prod-thumb-n{position:absolute;right:0;bottom:0;background:var(--gold);color:var(--bg);
   font-size:10px;font-weight:800;line-height:1;padding:2px 4px;border-radius:4px 0 0 0}
 @media (max-width:600px){.prod-thumb{width:44px;height:44px}}
+
+/* ---------- каса (продаж за покупця) ---------- */
+/* Два стовпці: ліворуч те, з чого набирають чек, праворуч сам чек. Чек
+   «липкий» — він потрібен перед очима на всій висоті плитки. */
+.pos-wrap{display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,380px);gap:18px;align-items:start}
+.pos-top{display:flex;gap:14px;align-items:end;flex-wrap:wrap}
+.pos-check{position:sticky;top:12px}
+.pos-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.pos-tile{display:flex;flex-direction:column;gap:4px;text-align:left;cursor:pointer;
+  background:var(--bg2);border:1px solid var(--line);border-radius:6px;padding:10px;
+  color:var(--text);font-family:inherit;font-size:13.5px;line-height:1.3;transition:.15s}
+.pos-tile:hover{border-color:var(--gold);background:var(--bg3)}
+.pos-tile:active{transform:scale(.97)}
+.pos-tile-photo{display:block;height:64px;border-radius:4px;background:var(--bg3) center/cover no-repeat}
+.pos-tile-name{font-weight:600}
+.pos-tile-var{color:var(--muted);font-size:12.5px}
+.pos-tile-foot{display:flex;justify-content:space-between;align-items:baseline;gap:6px;margin-top:auto;padding-top:4px}
+/* Нуль на складі не забороняє продаж, але має бути видно без читання числа */
+.pos-tile.is-empty{opacity:.65}
+.pos-tile-zero{color:var(--danger2);font-size:12px}
+.pos-lines td{padding:7px 8px;vertical-align:middle}
+.pos-qty-btn{width:26px;height:26px;border-radius:4px;background:var(--bg3);border:1px solid var(--line2);
+  color:var(--text);font-size:15px;line-height:1;cursor:pointer;margin:0 6px}
+.pos-qty-btn:hover{border-color:var(--gold);color:var(--gold)}
+.pos-total{display:flex;justify-content:space-between;align-items:baseline;margin-top:12px;
+  padding-top:12px;border-top:1px solid var(--line);font-size:16px}
+.pos-total b{font-size:22px;color:var(--gold)}
+/* Непридатний номер видно на самому полі: рядок під ним пояснює, а рамка каже,
+   де саме виправляти */
+.pos-check input.is-bad{border-color:var(--danger2)}
+/* Хто покупець цього чека. Три стани мають читатись, не вчитуючись: знайдений,
+   новий (акаунт зʼявиться) і анонім — це різні наслідки, а не відтінки одного. */
+.pos-who{display:flex;gap:9px;align-items:flex-start;margin-top:12px;padding:9px 11px;
+  border-radius:4px;font-size:13px;line-height:1.4;background:var(--bg3);
+  border-left:3px solid var(--line2);color:var(--muted)}
+.pos-who-icon{flex-shrink:0;width:18px;height:18px;border-radius:50%;display:flex;
+  align-items:center;justify-content:center;font-size:12px;font-weight:700;
+  background:var(--line2);color:var(--bg)}
+.pos-who.is-found{border-left-color:var(--ok);color:var(--text)}
+.pos-who.is-found .pos-who-icon{background:var(--ok)}
+.pos-who.is-new{border-left-color:var(--gold);color:var(--text)}
+.pos-who.is-new .pos-who-icon{background:var(--gold)}
+.pos-who.is-bad{border-left-color:var(--danger2);color:var(--danger2)}
+.pos-who.is-bad .pos-who-icon{background:var(--danger2)}
+/* Поле штрихкоду з кнопкою камери й самим кодом малюнком: сторінку кодів
+   друкують і ріжуть на етикетки, тож код має бути видно поруч із полем */
+.code-cell{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.code-cell input{flex:1;min-width:130px}
+.code-cell input.is-fresh{border-color:var(--gold)}
+.code-pic{flex-basis:100%;line-height:0}
+.code-pic svg{max-width:100%;height:auto}
+@media print{
+  /* На друк іде лише те, що ріжуть: коди з назвами */
+  .admin-side,.admin-mobilebar,.admin-save,.card-warn,.flash,.help-btn,.help-bar,
+  [data-code-scan],.code-cell input{display:none !important}
+  .admin-main{padding:0}
+  body{background:#fff;color:#000}
+}
+
+/* Вікно камери. На весь екран навмисно: етикетку треба тримати в кадрі, а не
+   цілитись у віконце розміром із марку. */
+.pos-cam{position:fixed;inset:0;z-index:200;background:rgba(10,8,7,.94);
+  display:flex;align-items:center;justify-content:center;padding:16px}
+.pos-cam-inner{position:relative;width:min(720px,100%);display:flex;flex-direction:column;align-items:center;gap:12px}
+.pos-cam video{width:100%;max-height:70vh;border-radius:6px;background:#000;object-fit:cover}
+/* Рамка прицілу показує смугу, яку насправді читає декодер */
+.pos-cam-aim{position:absolute;left:4%;right:4%;top:50%;height:22%;transform:translateY(-50%);
+  border:2px solid var(--gold);border-radius:4px;box-shadow:0 0 0 100vmax rgba(0,0,0,.25);pointer-events:none}
+.pos-cam-msg{color:var(--gold2);font-size:15px;text-align:center;margin:0;min-height:22px}
+.pos-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.pos-actions .btn-gold{flex:1;min-width:200px}
+@media (max-width:900px){
+  .pos-wrap{grid-template-columns:1fr}
+  /* На телефоні чек іде першим: продавець дивиться в нього, а не в плитку */
+  .pos-goods{order:2}
+  .pos-check{order:1;position:static}
+  .pos-tiles{grid-template-columns:repeat(auto-fill,minmax(130px,1fr))}
+}
+
+/* Смужка продажу на вітрині — та сама ідея, що й у режимі редагування:
+   з режиму має бути видно, що ти в ньому, інакше в ньому лишаються назавжди */
+.pos-bar{position:fixed;left:0;right:0;bottom:0;z-index:120;display:flex;align-items:center;gap:14px;
+  flex-wrap:wrap;padding:10px 18px;background:var(--bg3);border-top:2px solid var(--gold);
+  box-shadow:0 -10px 30px rgba(0,0,0,.45);font-size:13.5px}
+.pos-bar-dot{width:9px;height:9px;border-radius:50%;background:var(--gold);flex-shrink:0;
+  animation:cePulse 2s ease-in-out infinite}
+.pos-bar-title{color:var(--gold2);white-space:nowrap}
+.pos-bar-who{background:var(--bg);border:1px solid var(--line2);border-radius:20px;padding:3px 12px;white-space:nowrap}
+.pos-bar-sum{white-space:nowrap}
+.pos-bar-sum b{color:var(--gold)}
+.pos-bar-hint{color:var(--dim);font-size:13px}
+.pos-bar-tools{margin-left:auto;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+body.pos-on{padding-bottom:64px}
+@media (max-width:600px){.pos-bar-hint{display:none}}
 
 /* ---------- режим редагування сайту ---------- */
 /* Смужка внизу: у режимі, з якого не видно, що ти в ньому, лишаються назавжди */
