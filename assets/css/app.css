@@ -546,6 +546,13 @@ footer{border-top:1px solid var(--line);padding:44px 0 60px;margin-top:40px}
 .tbl .num,.tbl .num input{text-align:right;font-variant-numeric:tabular-nums}
 .tbl .col-mid{text-align:center}
 
+/* Фільтр масового редагування: пʼять полів і кнопка мають стати в один ряд.
+   Без стелі на випадайках «Категорія» та «Бренд» розтягувались під найдовшу
+   назву, і кнопка «Знайти» падала на другий рядок сама. */
+.bulk-filter{display:flex;gap:12px;align-items:end;flex-wrap:wrap}
+.bulk-filter select{max-width:150px}
+.bulk-filter .btn{margin-bottom:1px;flex:0 0 auto}
+
 /* ---------- масове редагування: щоб зрозуміти з погляду ----------
    Було чотири однакові стовпці поспіль — «ціна, залишок, ціна, залишок», — і
    щоб дізнатись, чиє це число, доводилось вести очима вгору до заголовка.
