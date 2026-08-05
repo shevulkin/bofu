@@ -103,7 +103,9 @@ window.BofuScan = (function () {
     say('Вмикаємо камеру…');
 
     navigator.mediaDevices.getUserMedia({
-      video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
+      // Просимо якнайбільше пікселів: код читається за шириною смужки, і на
+      // 640×480 одна смужка виходить у 1–2 пікселі — не читається нічим.
+      video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
       audio: false
     }).then(function (s) {
       stream = s;
@@ -192,12 +194,15 @@ window.BofuScan = (function () {
     }
 
     // Беремо не весь кадр, а смугу під рамкою прицілу: там етикетка, а решта
-    // кадру — це стіл і руки, на яких декодер лише марнує час
-    var sw = Math.floor(video.videoWidth * 0.92);
-    var sh = Math.floor(video.videoHeight * 0.42);
+    // кадру — це стіл і руки, на яких декодер лише марнує час. Смуга висока
+    // (пів кадру), щоб код ловився й тоді, коли рука тримає його не по центру.
+    var sw = Math.floor(video.videoWidth * 0.94);
+    var sh = Math.floor(video.videoHeight * 0.55);
     var sx = Math.floor((video.videoWidth - sw) / 2);
     var sy = Math.floor((video.videoHeight - sh) / 2);
-    var scale = Math.min(1, 900 / sw);
+    // Стискаємо якомога менше: кожен втрачений піксель — це втрачена ширина
+    // смужки, а саме з неї й читається код
+    var scale = Math.min(1, 1600 / sw);
     canvas.width = Math.floor(sw * scale);
     canvas.height = Math.floor(sh * scale);
     ctx.drawImage(video, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
@@ -211,9 +216,9 @@ window.BofuScan = (function () {
       }).catch(function () { busy = false; });
       return;
     }
-    // Свій декодер важчий за апаратний, тож не на кожному кадрі: 20 спроб на
-    // секунду людині нічого не додають, а ноутбук гудітиме
-    if (++frame % 3 !== 0 || !window.BofuBarcode) return;
+    // Свій декодер важчий за апаратний, тож не на кожному кадрі. Кожен другий —
+    // це ~30 спроб на секунду: людина не встигає піднести етикетку швидше.
+    if (++frame % 2 !== 0 || !window.BofuBarcode) return;
     var code = window.BofuBarcode.decode(ctx.getImageData(0, 0, canvas.width, canvas.height));
     if (code) hit(code);
   }
