@@ -170,7 +170,10 @@
         if (d.error) ui.beep(false);
         ui.say(d.error ? d.error : (d.added ? d.added + " — додано" : "Готово"));
       });
-    }, { onError: function (m) { say(m, true); } });
+    }, {
+      onError: function (m) { say(m, true); },
+      onManual: function () { if (scanEl) { scanEl.focus(); say("Наберіть код цифрами з-під смужок"); } }
+    });
   });
 
   // ── покупець ────────────────────────────────────────────────────────────
