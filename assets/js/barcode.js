@@ -38,7 +38,11 @@ window.BofuBarcode = (function () {
     for (i = 0; i < 4; i++) { total += widths[i]; patTotal += pattern[i]; }
     if (total < patTotal) return 1e9;          // смужки вужчі за один модуль
     var unit = total / patTotal;
-    var max = unit / 2;                         // піввідхилення модуля на смужку
+    // 0.7 модуля на смужку — стільки ж дозволяє собі ZXing. З піввідхиленням
+    // (0.5) код із дробовою шириною модуля — 2.5 пікселя на смужку — не читався
+    // взагалі: смужки виходили то по 2, то по 3 пікселі, і жоден еталон не
+    // підходив, хоча код на екрані був бездоганний.
+    var max = unit * 0.7;
     var sum = 0;
     for (i = 0; i < 4; i++) {
       var diff = Math.abs(widths[i] - pattern[i] * unit);
@@ -86,14 +90,16 @@ window.BofuBarcode = (function () {
   function readEan13(runs, at) {
     var unit = (runs[at] + runs[at + 1] + runs[at + 2]) / 3;
     if (!guard(runs, at, 3, unit)) return null;
+    bump('guard');
 
     var digits = [], parity = '', i, d;
     for (i = 0; i < 6; i++) {
       d = digitAt(runs, at + 3 + i * 4, ['L', 'G']);
-      if (!d) return null;
+      if (!d) { if (i >= 3) bump('half'); return null; }
       digits.push(d.digit);
       parity += d.set;
     }
+    bump('left');
     var center = at + 3 + 24;
     if (!guard(runs, center, 5, unit)) return null;
     for (i = 0; i < 6; i++) {
@@ -106,7 +112,10 @@ window.BofuBarcode = (function () {
     var first = FIRST.indexOf(parity);
     if (first < 0) return null;
     digits.unshift(first);
-    return checksum(digits) ? digits.join('') : null;
+    bump('read');
+    if (checksum(digits)) return digits.join('');
+    bump('csum');           // прочитали все, але контрольна цифра не зійшлась
+    return null;
   }
 
   /** EAN-8 — той самий устрій, але по чотири цифри й без гри наборами */
@@ -144,7 +153,19 @@ window.BofuBarcode = (function () {
    */
   // Буфери на модуль, а не на виклик: ліній за кадр — під дві сотні, і
   // алокація масиву на кожну з них коштувала б більше, ніж саме читання.
-  var rowBuf = null, preBuf = null;
+  var rowBuf = null, preBuf = null, minBuf = null, maxBuf = null;
+
+  /**
+   * Лічильники того, де саме читання зупинилось.
+   *
+   * «Не читається» — найгірша відповідь: вона однакова і для темряви, і для
+   * чужого коду, і для однієї збитої цифри. Тому декодер рахує, скільки ліній
+   * дало смужки, скільки з них знайшли роздільник, скільки дочитались до кінця
+   * і скільки завалили контрольну цифру. З цими числами видно, що чинити:
+   * світло, відстань чи сам код.
+   */
+  var stats = null;
+  function bump(key) { if (stats) stats[key] = (stats[key] || 0) + 1; }
 
   function runsOfLine(data, width, height, yCenter, slope) {
     if (!rowBuf || rowBuf.length < width) {
@@ -165,27 +186,48 @@ window.BofuBarcode = (function () {
     if (n < 60 || max - min < 40) return null;  // закоротка смуга або без контрасту
 
     /**
-     * Поріг рахуємо для кожного пікселя по його околиці, а не один на всю смугу.
+     * Поріг — середина між найтемнішим і найсвітлішим ПОРУЧ, а не одне число
+     * на всю смугу.
      *
-     * Один поріг працює лише на рівно освітленому папері. У житті смуга йде
-     * через яскраву коробку, тінь від руки й темний стіл — і половина коду
-     * опиняється по «неправильний» бік єдиного порогу. Ковзне середнє знімає і
-     * тінь, і нерівне світло: важливо ж не «темніше за 128», а «темніше за те,
-     * що поруч».
+     * Одного порогу вистачає лише на рівно освітленому папері. У житті смуга
+     * йде через яскраву коробку, тінь від руки й темний стіл — і половина коду
+     * опиняється по «неправильний» бік.
      *
-     * Рахуємо через префіксні суми — один прохід замість вікна на кожен піксель.
+     * Чому саме середина між min і max, а не середнє: середнє зміщене туди, де
+     * більше пікселів, а на етикетці білого завжди більше за чорне. Поріг
+     * повзе до білого, і кожна чорна смужка міряється вужчою, ніж вона є, — на
+     * різкому кадрі це ще проходить, а на трохи розмитому цифри вже не
+     * складаються. Саме через це «код видно, а не читається».
+     *
+     * Рахуємо блоками по win пікселів і беремо сусідні блоки — це той самий
+     * ковзний min/max, але за один прохід.
      */
-    var win = Math.max(12, Math.round(n / 24));
-    var pre = preBuf;
-    pre[0] = 0;
-    for (i = 0; i < n; i++) pre[i + 1] = pre[i] + row[i];
+    var win = Math.max(8, Math.round(n / 32));
+    var blocks = Math.ceil(n / win);
+    if (!minBuf || minBuf.length < blocks) {
+      minBuf = new Uint8Array(blocks + 2);
+      maxBuf = new Uint8Array(blocks + 2);
+    }
+    var bi, from, to;
+    for (bi = 0; bi < blocks; bi++) {
+      from = bi * win; to = Math.min(n, from + win);
+      var lo = 255, hi = 0;
+      for (i = from; i < to; i++) { v = row[i]; if (v < lo) lo = v; if (v > hi) hi = v; }
+      minBuf[bi] = lo; maxBuf[bi] = hi;
+    }
 
     var runs = [], count = 0, black = false, first = true;
     for (i = 0; i < n; i++) {
-      var a = i - win; if (a < 0) a = 0;
-      var b = i + win + 1; if (b > n) b = n;
-      // 0.88 — запас проти шуму: рівний білий фон не має розпадатись на смужки
-      var isBlack = row[i] < (pre[b] - pre[a]) / (b - a) * 0.88;
+      bi = (i / win) | 0;
+      var a = bi > 0 ? bi - 1 : 0, b2 = bi + 1 < blocks ? bi + 1 : blocks - 1;
+      var lo2 = minBuf[a], hi2 = maxBuf[a], k;
+      for (k = a + 1; k <= b2; k++) {
+        if (minBuf[k] < lo2) lo2 = minBuf[k];
+        if (maxBuf[k] > hi2) hi2 = maxBuf[k];
+      }
+      // Рівна ділянка без перепаду — це поле, а не смужки: інакше шум паперу
+      // розпадався б на сотні «смужок» і збивав відлік
+      var isBlack = (hi2 - lo2) < 24 ? false : row[i] < (lo2 + hi2) / 2;
       if (first) { black = isBlack; first = false; count = 1; continue; }
       if (isBlack === black) { count++; continue; }
       runs.push(count);
@@ -194,7 +236,8 @@ window.BofuBarcode = (function () {
     }
     runs.push(count);
     // Перша смужка має бути чорною: з білого поля відлік починати нема сенсу
-    if (row[0] >= (pre[Math.min(n, win + 1)] - pre[0]) / Math.min(n, win + 1) * 0.88) runs.shift();
+    if (!black || runs.length % 2 === 0) { /* нічого: чергування перевіряємо нижче */ }
+    if (!(row[0] < (minBuf[0] + maxBuf[0]) / 2 && (maxBuf[0] - minBuf[0]) >= 24)) runs.shift();
     return runs.length < 30 ? null : runs;
   }
 
@@ -256,19 +299,24 @@ window.BofuBarcode = (function () {
      * @param {ImageData} img
      * @return {?string} код або null
      */
-    decode: function (img) {
+    decode: function (img, statsOut) {
+      stats = statsOut || null;
       var rows = 14;
       var order = [luckySlope].concat(SLOPES.filter(function (s) { return s !== luckySlope; }));
-      for (var s = 0; s < order.length; s++) {
-        for (var i = 1; i <= rows; i++) {
-          var y = img.height * i / (rows + 1);
-          var runs = runsOfLine(img.data, img.width, img.height, y, order[s]);
-          if (!runs) continue;
-          var code = fromRuns(runs);
-          if (code) { luckySlope = order[s]; return code; }
+      try {
+        for (var s = 0; s < order.length; s++) {
+          for (var i = 1; i <= rows; i++) {
+            var y = img.height * i / (rows + 1);
+            bump('lines');
+            var runs = runsOfLine(img.data, img.width, img.height, y, order[s]);
+            if (!runs) continue;
+            bump('runs');
+            var code = fromRuns(runs);
+            if (code) { luckySlope = order[s]; return code; }
+          }
         }
-      }
-      return null;
+        return null;
+      } finally { stats = null; }
     },
 
     // Внутрішня кухня, відкрита навмисно: tests/barcode.html міряє нею, під

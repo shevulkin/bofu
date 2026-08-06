@@ -123,7 +123,8 @@ document.addEventListener('click', function (e) {
     input.focus();
   }, {
     title: 'Наведіть камеру на штрихкод товару',
-    onError: function (m) { window.alert(m); }
+    onError: function (m) { window.alert(m); },
+    onManual: function () { input.focus(); }
   });
 });
 </script>

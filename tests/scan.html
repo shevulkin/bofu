@@ -56,6 +56,10 @@ function run() {
     ok('відео має висоту, а не нульову смужку',
       !!video && parseFloat(getComputedStyle(video).height) > 100);
 
+    ok('є кнопка «ввести руками» — коли камера не дає ради',
+      !!box.querySelector('[data-cam-manual]'));
+    ok('є рядок діагностики', !!box.querySelector('.pos-cam-diag'));
+
     window.BofuScan.close();
     ok('close() ховає вікно', getComputedStyle(box).display === 'none');
   }

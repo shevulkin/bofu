@@ -10,9 +10,9 @@
 window.BofuScan = (function () {
   'use strict';
 
-  var box = null, video, msgEl, stream = null, raf = null, detector = null;
-  var busy = false, frame = 0, handler = null, lastCode = '', lastAt = 0;
-  var startedAt = 0, hinted = false;
+  var box = null, video, msgEl, diagEl, stream = null, raf = null, detector = null;
+  var busy = false, frame = 0, handler = null, manual = null, lastCode = '', lastAt = 0;
+  var startedAt = 0, hinted = false, lastDiag = 0;
   var canvas = document.createElement('canvas');
   var ctx = canvas.getContext('2d', { willReadFrequently: true });
 
@@ -25,8 +25,11 @@ window.BofuScan = (function () {
       '<div class="pos-cam-inner">' +
       '<div class="pos-cam-aim" aria-hidden="true"></div>' +
       '<p class="pos-cam-msg"></p>' +
-      '<button type="button" class="btn btn-gold btn-sm">Готово</button>' +
-      '</div>';
+      '<p class="pos-cam-diag" hidden></p>' +
+      '<div class="pos-cam-btns">' +
+      '<button type="button" class="btn btn-line btn-sm" data-cam-manual>Ввести код руками</button>' +
+      '<button type="button" class="btn btn-gold btn-sm" data-cam-close>Готово</button>' +
+      '</div></div>';
     // Відео створюємо окремо й вмикаємо властивостями, а не атрибутами в
     // innerHTML: muted/playsinline, виставлені розміткою на щойно створеному
     // елементі, Chrome не завжди підхоплює — і кадр не йде взагалі, а на екрані
@@ -38,8 +41,17 @@ window.BofuScan = (function () {
     video.setAttribute('playsinline', '');   // старі iOS читають саме атрибут
     box.querySelector('.pos-cam-inner').insertBefore(video, box.querySelector('.pos-cam-aim'));
     msgEl = box.querySelector('.pos-cam-msg');
+    diagEl = box.querySelector('.pos-cam-diag');
     document.body.appendChild(box);
-    box.querySelector('button').addEventListener('click', close);
+    box.querySelector('[data-cam-close]').addEventListener('click', close);
+    // Код на етикетці надрукований цифрами під смужками — коли камера не дає
+    // ради (пожмакана коробка, блік, стерта етикетка), його швидше набрати,
+    // ніж воювати з фокусом. Кнопка веде саме туди, де його чекають.
+    box.querySelector('[data-cam-manual]').addEventListener('click', function () {
+      var cb = manual;
+      close();
+      if (cb) cb();
+    });
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape' && box && !box.hidden) close();
     });
@@ -98,6 +110,8 @@ window.BofuScan = (function () {
 
     build();
     handler = onCode;
+    manual = opts.onManual || null;
+    box.querySelector('[data-cam-manual]').hidden = !manual;
     lastCode = '';
     box.hidden = false;
     say('Вмикаємо камеру…');
@@ -157,8 +171,59 @@ window.BofuScan = (function () {
     if (raf) cancelAnimationFrame(raf);
     raf = null;
     if (stream) stream.getTracks().forEach(function (t) { t.stop(); });
-    stream = null; detector = null; busy = false; handler = null;
+    stream = null; detector = null; busy = false; handler = null; manual = null;
     if (box) box.hidden = true;
+  }
+
+  /**
+   * Чому не читається — числами, а не здогадками.
+   *
+   * «Не читається» однакове і для темряви, і для задалекого коду, і для збитої
+   * цифри, тому саме на цьому кроці всі й застрягають. Рахуємо три речі, які
+   * розрізняють причини, і кажемо людині ту дію, що справді допоможе:
+   *
+   *   різкість — чи видно межі смужок узагалі (розмито = камера не навелась);
+   *   ширина   — скільки пікселів припадає на код (замало = піднесіть ближче);
+   *   крок     — де зупинилось читання (знайшли роздільник? дочитали цифри?).
+   */
+  function diagnose(img, st) {
+    var now = Date.now();
+    if (now - lastDiag < 700) return;    // перемальовувати частіше нема сенсу
+    lastDiag = now;
+
+    // Різкість: середній перепад між сусідніми пікселями по середній смузі.
+    // Розмитий кадр дає плавні переходи, різкий — стрибки.
+    var d = img.data, w = img.width, y = (img.height >> 1) * w * 4;
+    var diff = 0, min = 255, max = 0, n = 0;
+    for (var i = 0; i < w - 1; i++) {
+      var a = d[y + i * 4 + 1], b = d[y + (i + 1) * 4 + 1];
+      diff += a > b ? a - b : b - a;
+      if (a < min) min = a;
+      if (a > max) max = a;
+      n++;
+    }
+    var sharp = n ? diff / n : 0;
+    var contrast = max - min;
+
+    var where = st.read ? 'код прочитано, але контрольна цифра не зійшлась — код пошкоджений або це не EAN'
+      : st.left ? 'половина коду читається — тримайте рівніше'
+      : st.guard ? 'смужки видно, цифри не складаються — піднесіть ближче'
+      : st.runs ? 'смужок не видно як коду — наведіть на сам штрихкод'
+      : 'кадр порожній або дуже темний';
+
+    if (diagEl) {
+      diagEl.hidden = false;
+      diagEl.textContent = video.videoWidth + '×' + video.videoHeight
+        + ' · різкість ' + sharp.toFixed(1)
+        + ' · контраст ' + contrast
+        + ' · ' + where;
+    }
+
+    // Головна порада — та, що справді змінить справу
+    if (contrast < 40) say('Замало світла або камера дивиться повз етикетку.');
+    else if (sharp < 6) say('Розмито — камера не навелась. Відсуньте етикетку далі (вебкамери не фокусуються ближче ~25 см).');
+    else if (!st.guard) say('Піднесіть так, щоб штрихкод заповнив рамку по ширині — зараз смужки надто вузькі.');
+    else say('Майже: тримайте рівніше й без відблиску.');
   }
 
   /** Код упізнано: та сама етикетка в кадрі щомиті, тож повтори притримуємо */
@@ -187,17 +252,13 @@ window.BofuScan = (function () {
       return;
     }
 
-    // Код не дається — підказуємо, як тримати, замість мовчазного чорного вікна
-    if (!hinted && Date.now() - startedAt > 7000) {
-      hinted = true;
-      say('Не читається. Тримайте етикетку в рамці, за 10–20 см, рівно й без відблиску — або введіть код руками.');
-    }
 
-    // Беремо не весь кадр, а смугу під рамкою прицілу: там етикетка, а решта
-    // кадру — це стіл і руки, на яких декодер лише марнує час. Смуга висока
-    // (пів кадру), щоб код ловився й тоді, коли рука тримає його не по центру.
-    var sw = Math.floor(video.videoWidth * 0.94);
-    var sh = Math.floor(video.videoHeight * 0.55);
+    // Читаємо рівно те, що обведено рамкою (трохи ширше — під поля обабіч
+    // коду). Рамка вужча за кадр навмисно: вона показує, наскільки великим має
+    // бути штрихкод. Найчастіша причина «не читається» — код задалеко, і на
+    // смужку лишається два пікселі.
+    var sw = Math.floor(video.videoWidth * 0.80);
+    var sh = Math.floor(video.videoHeight * 0.40);
     var sx = Math.floor((video.videoWidth - sw) / 2);
     var sy = Math.floor((video.videoHeight - sh) / 2);
     // Стискаємо якомога менше: кожен втрачений піксель — це втрачена ширина
@@ -219,8 +280,11 @@ window.BofuScan = (function () {
     // Свій декодер важчий за апаратний, тож не на кожному кадрі. Кожен другий —
     // це ~30 спроб на секунду: людина не встигає піднести етикетку швидше.
     if (++frame % 2 !== 0 || !window.BofuBarcode) return;
-    var code = window.BofuBarcode.decode(ctx.getImageData(0, 0, canvas.width, canvas.height));
-    if (code) hit(code);
+    var img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    var st = {};
+    var code = window.BofuBarcode.decode(img, st);
+    if (code) { hit(code); return; }
+    diagnose(img, st);
   }
 
   return { open: open, close: close, say: say, beep: beep };
