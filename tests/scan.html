@@ -1,7 +1,11 @@
 <!DOCTYPE html>
 <html lang="uk">
 <head><meta charset="utf-8"><title>Перевірка вікна сканування</title>
-<link rel="stylesheet" href="../assets/css/app.css">
+<script>
+// Стилі теж із міткою часу: інакше браузер підсовує кешовану копію, і тест
+// перевіряє вигляд, якого вже немає у файлі.
+document.write('<link rel="stylesheet" href="../assets/css/app.css?t=' + Date.now() + '">');
+</script>
 <style>body{padding:20px}.ok{color:#7fb069}.bad{color:#e0685e}</style>
 </head>
 <body>
@@ -53,8 +57,16 @@ function run() {
     ok('відео створено', !!video);
     ok('відео беззвучне — інакше браузер не дасть автозапуск', !!video && video.muted === true);
     ok('відео грає всередині сторінки (playsInline)', !!video && video.playsInline === true);
-    ok('відео має висоту, а не нульову смужку',
-      !!video && parseFloat(getComputedStyle(video).height) > 100);
+    // Видно рівно те, що читається: з обрізанням (cover) людина цілиться в
+    // один кадр, а декодер отримує інший — і рамка прицілу починає брехати
+    ok('кадр показується без обрізання (object-fit: contain)',
+      !!video && getComputedStyle(video).objectFit === 'contain');
+    // Висоту міряємо лише там, де вікно справді розкладене: у тестовій панелі
+    // innerHeight буває 0, і 60vh чесно дає нуль
+    if (window.innerHeight > 200) {
+      ok('відео має висоту, а не нульову смужку',
+        parseFloat(getComputedStyle(video).height) > 100);
+    }
 
     ok('є кнопка «ввести руками» — коли камера не дає ради',
       !!box.querySelector('[data-cam-manual]'));

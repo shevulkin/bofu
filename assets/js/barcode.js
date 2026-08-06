@@ -86,10 +86,27 @@ window.BofuBarcode = (function () {
     return (10 - (sum % 10)) % 10 === digits[digits.length - 1];
   }
 
+  /**
+   * Швидке відкидання: чи схоже те, що йде після роздільника, на цифру.
+   *
+   * Кожна цифра — це рівно 7 модулів на чотири смужки. Якщо сума перших
+   * чотирьох смужок далека від 7 одиниць, розбирати їх по еталонах немає сенсу.
+   * Одне додавання замість двадцяти порівнянь: на шумному столі (дерево,
+   * тканина, тінь від жалюзі) хибних «роздільників» знаходяться сотні, і саме
+   * вони з'їдали пів секунди на кадр.
+   */
+  function plausible(runs, at, unit) {
+    var sum = runs[at] + runs[at + 1] + runs[at + 2] + runs[at + 3];
+    if (!(sum > 0)) return false;
+    var want = 7 * unit;
+    return sum > want * 0.65 && sum < want * 1.35;
+  }
+
   /** EAN-13, починаючи зі смужки at (вона має бути чорною) */
   function readEan13(runs, at) {
     var unit = (runs[at] + runs[at + 1] + runs[at + 2]) / 3;
     if (!guard(runs, at, 3, unit)) return null;
+    if (!plausible(runs, at + 3, unit)) return null;
     bump('guard');
 
     var digits = [], parity = '', i, d;
@@ -100,6 +117,10 @@ window.BofuBarcode = (function () {
       parity += d.set;
     }
     bump('left');
+    // Ширина смужки в пікселях — головне число для того, хто тримає етикетку:
+    // від нього прямо залежить, чи прочитається код. Записуємо його з тієї
+    // спроби, що дочитала пів коду, — там це вже точно справжній штрихкод.
+    if (stats) stats.unit = Math.round(unit * 10) / 10;
     var center = at + 3 + 24;
     if (!guard(runs, center, 5, unit)) return null;
     for (i = 0; i < 6; i++) {
@@ -122,6 +143,7 @@ window.BofuBarcode = (function () {
   function readEan8(runs, at) {
     var unit = (runs[at] + runs[at + 1] + runs[at + 2]) / 3;
     if (!guard(runs, at, 3, unit)) return null;
+    if (!plausible(runs, at + 3, unit)) return null;
 
     var digits = [], i, d;
     for (i = 0; i < 4; i++) {
@@ -153,7 +175,7 @@ window.BofuBarcode = (function () {
    */
   // Буфери на модуль, а не на виклик: ліній за кадр — під дві сотні, і
   // алокація масиву на кожну з них коштувала б більше, ніж саме читання.
-  var rowBuf = null, preBuf = null, minBuf = null, maxBuf = null;
+  var rowBuf = null, preBuf = null, minBuf = null, maxBuf = null, shpBuf = null;
 
   /**
    * Лічильники того, де саме читання зупинилось.
@@ -169,21 +191,45 @@ window.BofuBarcode = (function () {
 
   function runsOfLine(data, width, height, yCenter, slope) {
     if (!rowBuf || rowBuf.length < width) {
-      rowBuf = new Uint8Array(width);
+      rowBuf = new Float32Array(width);
       preBuf = new Float64Array(width + 1);
     }
     var row = rowBuf, n = 0, min = 255, max = 0, i, v;
     for (i = 0; i < width; i++) {
       var y = Math.round(yCenter + slope * (i - width / 2));
-      if (y < 0 || y >= height) continue;       // лінія вийшла за кадр — цей шматок пропускаємо
-      // зелений канал замість чесної яскравості: він і є більшість яскравості,
-      // а множень на кадр стає втричі менше
-      v = data[(y * width + i) * 4 + 1];
+      if (y < 2 || y >= height - 2) continue;   // лінія вийшла за кадр — цей шматок пропускаємо
+      // Беремо три пікселі по вертикалі, а не один. Смужка однакова по всій
+      // висоті, тож сусідні точки — це той самий сигнал, а шум у них різний:
+      // усереднення прибирає зернистість, майже не розмиваючи межі.
+      // Зелений канал замість чесної яскравості: він і є більшість яскравості,
+      // а множень на кадр стає втричі менше.
+      var base = (y * width + i) * 4 + 1;
+      v = (data[base - 2 * width * 4] + data[base] + data[base + 2 * width * 4]) / 3;
       row[n++] = v;
       if (v < min) min = v;
       if (v > max) max = v;
     }
     if (n < 60 || max - min < 40) return null;  // закоротка смуга або без контрасту
+
+    /**
+     * Повертаємо сигналу різкість.
+     *
+     * Розмиття не просто «розмазує» межі — сусідні тонкі смужки зливаються, і
+     * вузька біла щілина між двома чорними більше не піднімається над порогом.
+     * Її просто немає в підрахунку, тож цифри не складаються.
+     *
+     * Класичне підняття різкості (від сигналу віднімається його ж згладжена
+     * копія) повертає цю щілину над поріг. Положення самої межі при цьому не
+     * зсувається — ядро симетричне.
+     */
+    if (!shpBuf || shpBuf.length < n) shpBuf = new Float32Array(n);
+    for (i = 0; i < n; i++) {
+      var m2 = row[i > 1 ? i - 2 : 0], m1 = row[i > 0 ? i - 1 : 0];
+      var p1 = row[i < n - 1 ? i + 1 : n - 1], p2 = row[i < n - 2 ? i + 2 : n - 1];
+      var smooth = (m2 + 2 * m1 + 3 * row[i] + 2 * p1 + p2) / 9;
+      shpBuf[i] = row[i] + 1.3 * (row[i] - smooth);
+    }
+    row = shpBuf;
 
     /**
      * Поріг — середина між найтемнішим і найсвітлішим ПОРУЧ, а не одне число
@@ -204,9 +250,11 @@ window.BofuBarcode = (function () {
      */
     var win = Math.max(8, Math.round(n / 32));
     var blocks = Math.ceil(n / win);
+    // Float, а не байти: після підняття різкості значення виходять за 0…255,
+    // і в байтовому масиві вони мовчки обрізались би
     if (!minBuf || minBuf.length < blocks) {
-      minBuf = new Uint8Array(blocks + 2);
-      maxBuf = new Uint8Array(blocks + 2);
+      minBuf = new Float32Array(blocks + 2);
+      maxBuf = new Float32Array(blocks + 2);
     }
     var bi, from, to;
     for (bi = 0; bi < blocks; bi++) {
@@ -216,7 +264,20 @@ window.BofuBarcode = (function () {
       minBuf[bi] = lo; maxBuf[bi] = hi;
     }
 
-    var runs = [], count = 0, black = false, first = true;
+    /**
+     * Межі смужок шукаємо між пікселями, а не по пікселях.
+     *
+     * Рахувати пікселі можна лише тоді, коли їх багато. На звичайній вебкамері
+     * на найтоншу смужку припадає три-чотири пікселі, і кожна межа округлюється
+     * до цілого — похибка на смужку виходить чверть її ширини. Далі ці ширини
+     * порівнюються з еталоном 1:2:3:4, і цифри просто не складаються: код видно,
+     * роздільник знайдено, а прочитати не вдається.
+     *
+     * Тому беремо точку, де яскравість перетинає поріг, і рахуємо її дробово —
+     * лінійно між сусідніми пікселями. Ширини стають дробовими, а похибка
+     * падає в рази. Це та сама межа, тільки виміряна, а не округлена.
+     */
+    var edges = [], blacks = [], prevVal = row[0], prevThr = 0, prevBlack = false, thr;
     for (i = 0; i < n; i++) {
       bi = (i / win) | 0;
       var a = bi > 0 ? bi - 1 : 0, b2 = bi + 1 < blocks ? bi + 1 : blocks - 1;
@@ -227,17 +288,32 @@ window.BofuBarcode = (function () {
       }
       // Рівна ділянка без перепаду — це поле, а не смужки: інакше шум паперу
       // розпадався б на сотні «смужок» і збивав відлік
-      var isBlack = (hi2 - lo2) < 24 ? false : row[i] < (lo2 + hi2) / 2;
-      if (first) { black = isBlack; first = false; count = 1; continue; }
-      if (isBlack === black) { count++; continue; }
-      runs.push(count);
-      count = 1;
-      black = isBlack;
+      var flat = (hi2 - lo2) < 24;
+      thr = flat ? -1 : (lo2 + hi2) / 2;
+      var isBlack = !flat && row[i] < thr;
+
+      if (i === 0) { prevBlack = isBlack; prevVal = row[0]; prevThr = thr; continue; }
+      if (isBlack !== prevBlack) {
+        // Частка відрізка між i-1 та i, у якій сигнал перетнув поріг
+        var d0 = prevVal - (prevThr < 0 ? thr : prevThr);
+        var d1 = row[i] - thr;
+        var t = (d0 - d1) !== 0 ? d0 / (d0 - d1) : 0.5;
+        if (!(t >= 0 && t <= 1)) t = 0.5;
+        edges.push(i - 1 + t);
+        blacks.push(isBlack);
+        prevBlack = isBlack;
+      }
+      prevVal = row[i];
+      prevThr = thr;
     }
-    runs.push(count);
-    // Перша смужка має бути чорною: з білого поля відлік починати нема сенсу
-    if (!black || runs.length % 2 === 0) { /* нічого: чергування перевіряємо нижче */ }
-    if (!(row[0] < (minBuf[0] + maxBuf[0]) / 2 && (maxBuf[0] - minBuf[0]) >= 24)) runs.shift();
+    // Занадто багато меж — це не штрихкод, а фактура: дерево столу, тканина,
+    // тінь від жалюзі. У рядку через справжній код їх шість-сім десятків.
+    if (edges.length < 32 || edges.length > 400) return null;
+
+    // Відлік починаємо з першої чорної смужки: з білого поля рахувати нема сенсу
+    var start = blacks[0] ? 0 : 1;
+    var runs = [];
+    for (i = start; i + 1 < edges.length; i++) runs.push(edges[i + 1] - edges[i]);
     return runs.length < 30 ? null : runs;
   }
 
@@ -288,6 +364,22 @@ window.BofuBarcode = (function () {
   // і знайдеться з першої спроби, а не з пʼятої.
   var luckySlope = 0;
 
+  /**
+   * Висоти смуг — частками кадру, від середини до країв.
+   *
+   * Етикетку наводять у центр рамки, тож середня смуга найімовірніша. Коли
+   * пошук обривається за часом, устигає перевіритись саме те, що потрібно, а
+   * не верхній край кадру.
+   */
+  var ROWS = (function () {
+    var out = [0.5];
+    for (var d = 0.05; d <= 0.451; d += 0.05) out.push(0.5 - d, 0.5 + d);
+    return out;
+  })();
+
+  var now = (typeof performance !== 'undefined' && performance.now)
+    ? function () { return performance.now(); } : Date.now;
+
   return {
     /**
      * Прочитати штрихкод із кадру.
@@ -299,14 +391,28 @@ window.BofuBarcode = (function () {
      * @param {ImageData} img
      * @return {?string} код або null
      */
-    decode: function (img, statsOut) {
+    /**
+     * @param {ImageData} img
+     * @param {object}   [statsOut] лічильники, де читання зупинилось
+     * @param {number}   [budgetMs] стеля часу на кадр
+     */
+    decode: function (img, statsOut, budgetMs) {
       stats = statsOut || null;
-      var rows = 14;
+      // Кадр із кодом читається за одиниці мілісекунд. Довго думає лише кадр,
+      // де коду немає, — дерев'яний стіл, тканина, тінь від жалюзі дають сотні
+      // хибних «роздільників». Такий кадр не вартий нічого, а камера через
+      // нього стоїть, тож обриваємо пошук за розкладом, а не за впертістю.
+      var deadline = now() + (budgetMs || 25);
       var order = [luckySlope].concat(SLOPES.filter(function (s) { return s !== luckySlope; }));
+      var checked = 0;
       try {
         for (var s = 0; s < order.length; s++) {
-          for (var i = 1; i <= rows; i++) {
-            var y = img.height * i / (rows + 1);
+          // Рядки перебираємо від середини до країв: етикетку наводять у центр
+          // рамки, і найімовірніша лінія має перевірятись першою — тоді бюджету
+          // вистачає на те, що справді потрібно.
+          for (var k = 0; k < ROWS.length; k++) {
+            if ((++checked & 3) === 0 && now() > deadline) return null;
+            var y = img.height * ROWS[k];
             bump('lines');
             var runs = runsOfLine(img.data, img.width, img.height, y, order[s]);
             if (!runs) continue;
