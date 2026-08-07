@@ -120,6 +120,9 @@ $cell = function (string $kind, int $id, ?string $code, bool $dupe, string $titl
     <p class="dim">За цим фільтром нічого немає.
       <a href="<?= e(url('/admin/products/codes')) ?>">Показати всі позиції</a>.</p>
   <?php endif; ?>
+  <?php /* data-lbl на комірках — підпис колонки на вузькому екрані: там рядок
+           розгортається карткою, шапка ховається, і без підпису «Артикул» і
+           «Штрихкод» стають двома однаковими порожніми полями (див. app.css) */ ?>
   <table class="tbl tbl-codes">
     <tr>
       <th data-help-title="Товар"
@@ -153,9 +156,9 @@ $cell = function (string $kind, int $id, ?string $code, bool $dupe, string $titl
                    товару лише збивало б з пантелику */ ?>
           <td colspan="2" class="dim">коди — у фасовках нижче<?= count($vs) === 1 ? ' (фасовка одна, тож і код товару спрацює)' : '' ?></td>
         <?php else: ?>
-          <td><input type="text" name="p[<?= $pid ?>][sku]" value="<?= e($p['sku'] ?? '') ?>" autocomplete="off"
+          <td data-lbl="Артикул"><input type="text" name="p[<?= $pid ?>][sku]" value="<?= e($p['sku'] ?? '') ?>" autocomplete="off"
                      <?= $dupSku($p['sku']) ? 'style="border-color:var(--danger2)" title="Такий артикул уже є в іншого товару"' : '' ?>></td>
-          <td>
+          <td data-lbl="Штрихкод">
             <?= $cell('p', $pid, $p['barcode'], $dupBar($p['barcode']), (string)$p['name']) ?>
             <?php if ($deadCode): ?>
               <div class="code-bad">Код записаний на товарі, а фасовок <?= count($vs) ?> — сканер не знатиме, яку класти в чек.
@@ -167,9 +170,9 @@ $cell = function (string $kind, int $id, ?string $code, bool $dupe, string $titl
       <?php foreach ($vs as $v): $vid = (int)$v['id']; ?>
         <tr class="variant-sub">
           <td class="var-name muted"><?= e($v['name']) ?><?= $v['active'] ? '' : ' · вимкнена' ?></td>
-          <td><input type="text" name="v[<?= $vid ?>][sku]" value="<?= e($v['sku'] ?? '') ?>" autocomplete="off"
+          <td data-lbl="Артикул"><input type="text" name="v[<?= $vid ?>][sku]" value="<?= e($v['sku'] ?? '') ?>" autocomplete="off"
                      <?= $dupSku($v['sku']) ? 'style="border-color:var(--danger2)" title="Такий артикул уже є в іншої позиції"' : '' ?>></td>
-          <td><?= $cell('v', $vid, $v['barcode'], $dupBar($v['barcode']), $p['name'] . ', ' . $v['name']) ?></td>
+          <td data-lbl="Штрихкод"><?= $cell('v', $vid, $v['barcode'], $dupBar($v['barcode']), $p['name'] . ', ' . $v['name']) ?></td>
         </tr>
       <?php endforeach; ?>
     <?php endforeach; ?>
