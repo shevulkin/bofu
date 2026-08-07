@@ -10,6 +10,7 @@
       <a href="<?= e(url('/shop')) ?>">Магазин</a>
       <a href="<?= e(url('/diploma')) ?>">Диплом</a>
       <a href="<?= e(url('/social')) ?>">Соцмережі</a>
+      <a href="<?= e(url('/stores')) ?>">Де нас знайти</a>
     </div>
     <div class="nav-side">
       <?php if ($auth_user): ?>
@@ -43,6 +44,7 @@
     <a href="<?= e(url('/shop')) ?>">Магазин</a>
     <a href="<?= e(url('/diploma')) ?>">Диплом</a>
     <a href="<?= e(url('/social')) ?>">Соцмережі</a>
+    <a href="<?= e(url('/stores')) ?>">Де нас знайти</a>
     <?php if ($auth_user && Auth::isStaff()): ?>
       <a href="<?= e(url('/admin')) ?>"><?= Auth::isAdmin() ? 'Адмінпанель' : 'Кабінет продавця' ?></a>
     <?php elseif ($auth_user): ?>

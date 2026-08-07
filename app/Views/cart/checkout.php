@@ -82,6 +82,17 @@
             </select>
             <p class="dim" id="pickupNote" style="margin:8px 0 0;white-space:pre-line"></p>
           </div>
+          <?php /* Карта відповідає на те, чого список назв не каже: яка точка
+                   ближча. Клік по мітці обирає магазин, вибір у списку — веде
+                   карту до нього, тож обидва шляхи ведуть до одного поля.
+                   Немає ключа чи координат — блок просто не виводиться, і
+                   оформлення працює далі як працювало. */ ?>
+          <?php if ($map_key && $map_points): ?>
+            <div class="field">
+              <div class="store-map" id="pickupMap"></div>
+              <p class="dim" style="margin:8px 0 0;font-size:12.5px">Клацніть на мітку, щоб обрати цю точку.</p>
+            </div>
+          <?php endif; ?>
         </div>
 
         <div id="otherFields"<?= $selDelivery === 'other' ? '' : ' style="display:none"' ?>>
@@ -194,6 +205,8 @@
   </div>
 </section>
 <?php if ($np_enabled) echo View::partial('partials/np_autocomplete'); ?>
+<?php /* без defer: наш скрипт нижче звертається до BofuMap одразу */ ?>
+<?php if ($map_key && $map_points): ?><script src="<?= e(asset_v('js/map.js')) ?>"></script><?php endif; ?>
 <script>
 (function(){
   var np = document.getElementById('npFields'), pk = document.getElementById('pickupFields'), ot = document.getElementById('otherFields');
@@ -400,6 +413,24 @@
         ? 'У цьому магазині зараз немає:\n' + miss + '\nЗамовлення приймемо й так — узгодимо строки.'
         : '';
     });
+  }
+
+  // Карта й список — два входи в те саме поле, тож ведуть одне одного: клік по
+  // мітці обирає магазин у списку, вибір у списку веде карту до точки. Інакше
+  // людина обрала б мітку й не зрозуміла, чи вибір узагалі зарахувався.
+  var mapHost = document.getElementById('pickupMap');
+  if (mapHost && store && window.BofuMap) {
+    var ctl = window.BofuMap.render(mapHost, {
+      key: <?= json_js($map_key) ?>,
+      points: <?= json_js($map_points) ?>,
+      onPick: function (id) {
+        store.value = String(id);
+        // change програмній зміні value браузер не шле — а примітку про
+        // відсутні позиції має оновити саме він
+        store.dispatchEvent(new Event('change'));
+      }
+    });
+    if (ctl) store.addEventListener('change', function () { ctl.select(parseInt(store.value, 10) || 0); });
   }
 })();
 </script>
