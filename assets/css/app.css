@@ -582,12 +582,6 @@ footer{border-top:1px solid var(--line);padding:44px 0 60px;margin-top:40px}
 /* сума по варіантах — не поле, і не має вдавати його */
 .tbl-bulk .stock-sum{color:var(--muted);font-size:12.5px;background:var(--bg3);
   border-radius:10px;padding:2px 8px;white-space:nowrap}
-/* товар починає групу — відбиваємо його від попередньої */
-.tbl-bulk tr.row-product td{border-top:1px solid var(--line2)}
-/* вкладеність варіанта — рискою, а не символом: ↳ у шрифті інтерфейсу немає */
-.tbl-bulk tr.variant-sub td.var-name{padding-left:32px;position:relative;white-space:nowrap}
-.tbl-bulk tr.variant-sub td.var-name::before{content:'';position:absolute;left:14px;top:50%;
-  width:10px;height:1px;background:var(--line2)}
 /* Незворотна дія не має виглядати як звичайна галка: у спокої вона малюється
    хрестиком, тож колонку «Видалити» видно, ще не навівши на неї. Полем форми
    вона лишається навмисно — видалення відбувається не тут, а при збереженні,
@@ -766,9 +760,19 @@ body.help-on [data-help] *{pointer-events:none}
 .matrix th{white-space:nowrap}
 .matrix tr.sub th{font-size:10.5px;padding:6px 13px;color:var(--dim)}
 .matrix input{min-width:78px}
-/* рядок варіанта в масовому редагуванні */
+/* Товар і його фасовки — два поверхи одного, і це має бути видно з відстані,
+   а не з вичитування назв. Рядок товару відкриває групу суцільною лінією,
+   фасовки заходять уступом; між ними лінія пунктирна — межа всередині групи,
+   а не між групами. Правила спільні для обох екранів, де під товаром стоять
+   фасовки (ціни й коди): там однакова розмітка й однакове питання «це ще той
+   самий товар чи вже наступний». */
+.tbl tr.row-product td{border-top:1px solid var(--line2)}
 .tbl tr.variant-sub td{background:rgba(240,180,41,.035);border-top:1px dashed var(--bg3);font-size:13px}
 .tbl tr.variant-sub td:first-child{white-space:nowrap}
+/* вкладеність варіанта — рискою, а не символом: ↳ у шрифті інтерфейсу немає */
+.tbl tr.variant-sub td.var-name{padding-left:32px;position:relative}
+.tbl tr.variant-sub td.var-name::before{content:'';position:absolute;left:14px;top:50%;
+  width:10px;height:1px;background:var(--line2)}
 /* прихована кнопка сабміту: задає дію за замовчуванням для Enter у полях */
 .submit-default{position:absolute;width:0;height:0;padding:0;border:0;overflow:hidden;opacity:0}
 .attr-item summary{cursor:pointer;font-size:15px;line-height:1.5}
@@ -895,10 +899,16 @@ body.help-on [data-help] *{pointer-events:none}
    друкують і ріжуть на етикетки, тож код має бути видно поруч із полем */
 /* Поля тут — головне, з чим працюють, тож вони мають виглядати полями: у
    таблицях адмінки рамка ледь помітна, і порожній рядок читався як «сюди
-   нічого не ввести» */
-.tbl-codes input{border:1px solid var(--line2);background:var(--bg);border-radius:4px;padding:7px 9px}
-.tbl-codes input:focus{border-color:var(--gold);background:var(--bg3)}
+   нічого не ввести».
+   [type=text] у селекторі обовʼязково: спільне правило .tbl input[type=text]
+   вагоміше за .tbl-codes input і робило поля прозорими — на екрані, де
+   заповнюють саме їх, лишалися самі кнопки посеред порожнечі. */
+.tbl-codes input[type=text]{border:1px solid var(--line2);background:var(--bg);border-radius:4px}
 .tbl-codes td{vertical-align:top}
+/* Рядок росте від малюнка коду й буває вищим за назву втричі, тож риска-звʼязка
+   ловить перший рядок назви, а не середину комірки: інакше вона висіла б у
+   порожнечі під фасовкою, до якої веде. */
+.tbl-codes tr.variant-sub td.var-name::before{top:17px}
 .code-cell{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .code-input{width:180px;font-family:monospace;letter-spacing:.5px}
 .code-cell input.is-fresh{border-color:var(--gold)}
