@@ -893,18 +893,25 @@ body.help-on [data-help] *{pointer-events:none}
 .pos-who.is-bad .pos-who-icon{background:var(--danger2)}
 /* Поле штрихкоду з кнопкою камери й самим кодом малюнком: сторінку кодів
    друкують і ріжуть на етикетки, тож код має бути видно поруч із полем */
+/* Поля тут — головне, з чим працюють, тож вони мають виглядати полями: у
+   таблицях адмінки рамка ледь помітна, і порожній рядок читався як «сюди
+   нічого не ввести» */
+.tbl-codes input{border:1px solid var(--line2);background:var(--bg);border-radius:4px;padding:7px 9px}
+.tbl-codes input:focus{border-color:var(--gold);background:var(--bg3)}
+.tbl-codes td{vertical-align:top}
 .code-cell{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
-.code-cell input{flex:1;min-width:130px}
+.code-input{width:180px;font-family:monospace;letter-spacing:.5px}
 .code-cell input.is-fresh{border-color:var(--gold)}
-.code-pic{flex-basis:100%;line-height:0}
+.code-acts{display:inline-flex;gap:4px}
+/* Свій код має впізнаватись із першого погляду: саме його треба надрукувати */
+.code-tag{font-size:11px;color:var(--gold2);border:1px solid var(--line2);
+  border-radius:20px;padding:2px 9px;white-space:nowrap}
+/* Пояснення до збитого коду — поруч із самим полем, а не десь угорі сторінки */
+.code-bad{flex-basis:100%;color:var(--danger2);font-size:12px;line-height:1.35}
+.code-pic{flex-basis:100%;line-height:0;margin-top:4px}
 .code-pic svg{max-width:100%;height:auto}
-@media print{
-  /* На друк іде лише те, що ріжуть: коди з назвами */
-  .admin-side,.admin-mobilebar,.admin-save,.card-warn,.flash,.help-btn,.help-bar,
-  [data-code-scan],.code-cell input{display:none !important}
-  .admin-main{padding:0}
-  body{background:#fff;color:#000}
-}
+/* Наліпки друкуються з окремого вікна (див. codes.js), а не звідси: тут їх
+   довелося б різати разом із таблицею */
 
 /* Вікно камери. На весь екран навмисно: етикетку треба тримати в кадрі, а не
    цілитись у віконце розміром із марку. */

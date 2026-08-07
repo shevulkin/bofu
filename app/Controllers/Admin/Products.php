@@ -133,12 +133,18 @@ class Products
     public static function codes(): never
     {
         Auth::requireCap('products.manage');
-        $clean = fn($v) => (trim((string)$v) !== '' ? trim((string)$v) : null);
+
+        // Код для однієї позиції — окремою відповіддю, без перезавантаження
+        // сторінки. Нічого не змінює: код виводиться з номера позиції (див.
+        // Barcode::make), тож його можна порахувати скільки завгодно разів і
+        // отримати те саме. Записується він лише кнопкою «Зберегти».
+        $gen = trim((string)($_GET['gen'] ?? ''));
+        if ($gen !== '' && preg_match('/^([pv])(\d+)$/', $gen, $m)) {
+            json_response(['code' => Barcode::make($m[1], (int)$m[2])]);
+        }
 
         if (is_post()) {
-            // Спершу зберігаємо набране руками, і лише потім домальовуємо власні
-            // коди порожнім: інакше генерація затерла б те, що людина щойно
-            // ввела в сусідньому полі й не встигла зберегти.
+            $clean = fn($v) => (trim((string)$v) !== '' ? trim((string)$v) : null);
             foreach ((array)($_POST['p'] ?? []) as $id => $d) {
                 DB::update('products', [
                     'sku' => $clean($d['sku'] ?? ''), 'barcode' => $clean($d['barcode'] ?? ''),
@@ -150,70 +156,113 @@ class Products
                     'sku' => $clean($d['sku'] ?? ''), 'barcode' => $clean($d['barcode'] ?? ''),
                 ], 'id = ?', [(int)$id]);
             }
-            if (($_POST['_action'] ?? '') === 'generate') {
-                $made = self::generateBarcodes();
-                flash('success', $made
-                    ? 'Збережено. Своїх кодів створено: ' . $made . ' — надрукуйте й наклейте на товар'
-                    : 'Збережено. Порожніх штрихкодів не лишилось');
-            } else {
-                flash('success', 'Коди збережено');
-            }
-            redirect('/admin/products/codes');
+            flash('success', 'Коди збережено');
+            redirect('/admin/products/codes' . self::codesQuery());
         }
 
-        $products = DB::all('SELECT p.*, c.name AS cat_name FROM products p
-                             LEFT JOIN categories c ON c.id = p.category_id
-                             ORDER BY c.sort, p.name');
-        $variants = [];
-        foreach (DB::all('SELECT * FROM product_variants ORDER BY sort, id') as $v) {
-            $variants[(int)$v['product_id']][] = $v;
-        }
+        [$products, $variants] = self::codesRows(self::codesFilter());
 
         View::show('admin/products/codes', [
             'products' => $products, 'variants' => $variants,
+            'categories' => Catalog::categories(),
+            'f' => self::codesFilter(),
+            'query' => self::codesQuery(),
             'dupes' => self::duplicateCodes(),
             'page_title' => 'Коди й штрихкоди — адмінка',
         ], 'layouts/admin');
     }
 
-    /**
-     * Власні штрихкоди всім, у кого їх немає.
-     *
-     * Товару без фабричної етикетки код теж потрібен — інакше на касі його не
-     * просканувати ніколи. Беремо префікс, який стандарт лишив для внутрішніх
-     * кодів магазину (див. Barcode), тож наш код гарантовано не збігається з
-     * чужим товаром. Позиції з фасовками пропускаємо: код належить банці, а не
-     * «меду взагалі», і сканер має потрапляти саме у фасовку.
-     *
-     * @return int скільки кодів створено
-     */
-    private static function generateBarcodes(): int
+    /** Що зараз шукають на екрані кодів */
+    private static function codesFilter(): array
     {
-        $made = 0;
-        $empty = "(barcode IS NULL OR barcode = '')";
-
-        foreach (DB::all("SELECT id FROM products WHERE $empty") as $p) {
-            $pid = (int)$p['id'];
-            if (DB::val('SELECT 1 FROM product_variants WHERE product_id = ? AND active = 1 LIMIT 1', [$pid])) continue;
-            $code = Barcode::make('p', $pid);
-            if (self::codeTaken($code)) continue;   // такий уже хтось вписав руками
-            DB::update('products', ['barcode' => $code, 'updated_at' => now()], 'id = ?', [$pid]);
-            $made++;
-        }
-        foreach (DB::all("SELECT id FROM product_variants WHERE $empty") as $v) {
-            $vid = (int)$v['id'];
-            $code = Barcode::make('v', $vid);
-            if (self::codeTaken($code)) continue;
-            DB::update('product_variants', ['barcode' => $code], 'id = ?', [$vid]);
-            $made++;
-        }
-        return $made;
+        return [
+            'q' => trim((string)($_GET['q'] ?? '')),
+            'cat' => (int)($_GET['cat'] ?? 0),
+            // Заради чого сюди заходять: «кому ще не проставив», «де помилка»
+            'only' => in_array($_GET['only'] ?? '', ['nocode', 'code', 'bad', 'own'], true)
+                ? (string)$_GET['only'] : '',
+        ];
     }
 
-    private static function codeTaken(string $code): bool
+    /** Фільтр у адресі — щоб після збереження лишитись у тій самій добірці */
+    private static function codesQuery(): string
     {
-        return (bool)(DB::val('SELECT 1 FROM products WHERE barcode = ? LIMIT 1', [$code])
-            ?? DB::val('SELECT 1 FROM product_variants WHERE barcode = ? LIMIT 1', [$code]));
+        $f = array_filter(self::codesFilter(), fn($v) => $v !== '' && $v !== 0);
+        return $f ? '?' . http_build_query($f) : '';
+    }
+
+    /**
+     * Рядки під фільтр.
+     *
+     * Фільтруємо позиціями (товар без фасовок або окрема фасовка), а не самими
+     * товарами: питання «де немає коду» стосується саме тієї штуки, на яку
+     * клеять етикетку. Тому товар лишається у списку, поки під фільтр підпадає
+     * хоч одна його фасовка, — інакше рядок фасовки не було б де показати.
+     *
+     * @return array{0:array,1:array} товари та їхні фасовки
+     */
+    private static function codesRows(array $f): array
+    {
+        $where = ['1=1'];
+        $args = [];
+        if ($f['cat']) { $where[] = 'p.category_id = ?'; $args[] = $f['cat']; }
+        if ($f['q'] !== '') {
+            $like = '%' . $f['q'] . '%';
+            $where[] = '(p.name LIKE ? OR p.sku LIKE ? OR p.barcode LIKE ?
+                         OR EXISTS (SELECT 1 FROM product_variants v2 WHERE v2.product_id = p.id
+                                    AND (v2.name LIKE ? OR v2.sku LIKE ? OR v2.barcode LIKE ?)))';
+            array_push($args, $like, $like, $like, $like, $like, $like);
+        }
+
+        $products = DB::all('SELECT p.*, c.name AS cat_name FROM products p
+                             LEFT JOIN categories c ON c.id = p.category_id
+                             WHERE ' . implode(' AND ', $where) . '
+                             ORDER BY c.sort, p.name', $args);
+
+        $variants = [];
+        foreach (DB::all('SELECT * FROM product_variants ORDER BY sort, id') as $v) {
+            $variants[(int)$v['product_id']][] = $v;
+        }
+
+        if ($f['only'] === '') return [$products, $variants];
+
+        // Добірки рахуємо вже в PHP: «з помилкою» питає контрольну цифру, а її
+        // в SQL не порахуєш
+        $dupes = self::duplicateCodes();
+        $match = function (array $row) use ($f, $dupes): bool {
+            $code = trim((string)($row['barcode'] ?? ''));
+            return match ($f['only']) {
+                'nocode' => $code === '',
+                'code' => $code !== '',
+                'own' => $code !== '' && Barcode::isInternal($code),
+                'bad' => $code !== '' && (Barcode::problem($code) !== null
+                    || in_array(mb_strtolower($code), $dupes['barcode'], true)),
+                default => true,
+            };
+        };
+
+        $out = [];
+        foreach ($products as $p) {
+            $pid = (int)$p['id'];
+            $vs = $variants[$pid] ?? [];
+            if (!$vs) {
+                if ($match($p)) $out[] = $p;
+                continue;
+            }
+            $keep = array_values(array_filter($vs, $match));
+            // Код самого товару теж рахується: він лишається робочим, поки
+            // фасовка одна, і саме там ховаються помилки на кшталт «код на
+            // товарі, а фасовок кілька»
+            if ($keep || $match($p)) {
+                $variants[$pid] = $keep ?: $vs;
+                // Товар потрапив у добірку лише заради своїх фасовок — тоді його
+                // власний рядок лише заголовок. Інакше в добірці «без штрихкоду»
+                // висіли б поля з кодами, і незрозуміло, що ж саме знайдено.
+                $p['header_only'] = $keep && !$match($p);
+                $out[] = $p;
+            }
+        }
+        return [$out, $variants];
     }
 
     /**
