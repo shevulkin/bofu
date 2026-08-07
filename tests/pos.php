@@ -88,6 +88,13 @@ final class PosTest
             'price' => 250, 'sku' => 'TEST-POS-V05', 'barcode' => '4820000000027',
             'sort' => 0, 'active' => 1,
         ]);
+        // Друга фасовка потрібна, щоб вибір справді був вибором: на одній
+        // каса не питає нічого (і правильно робить — див. testCodes)
+        DB::insert('product_variants', [
+            'product_id' => $this->variantProduct, 'name' => '1 л',
+            'price' => 450, 'sku' => 'TEST-POS-V10', 'barcode' => '4820000000034',
+            'sort' => 1, 'active' => 1,
+        ]);
         DB::insert('store_stock', ['product_id' => $this->variantProduct, 'variant_id' => $this->variant,
                                    'store_id' => $this->store, 'qty' => 5]);
     }
@@ -215,9 +222,20 @@ final class PosTest
             ($simple['product_id'] ?? null) === $this->product && $simple['variant_id'] === null);
         $this->ok('його не треба доуточнювати', ($simple['pick'] ?? true) === false);
 
-        // Код товару, у якого є фасовки: додати «щось» не можна — невідомо, яку
+        // Код товару, у якого фасовок кілька: додати «щось» не можна — невідомо, яку
         $parent = Pos::byCode('4820000000010');
-        $this->ok('код товару з фасовками просить уточнити', ($parent['pick'] ?? false) === true);
+        $this->ok('код товару з кількома фасовками просить уточнити', ($parent['pick'] ?? false) === true);
+
+        // А от одна фасовка — це не вибір. Кошик на вітрині так само не питає
+        // про неї, і каса не має бути прискіпливішою за вітрину: інакше код,
+        // проставлений на товарі, не спрацював би нізащо.
+        DB::update('product_variants', ['active' => 0], 'product_id = ? AND name = ?',
+            [$this->variantProduct, '1 л']);
+        $single = Pos::byCode('4820000000010');
+        $this->ok('код товару з єдиною фасовкою кладе саме її',
+            ($single['variant_id'] ?? null) === $this->variant && ($single['pick'] ?? true) === false);
+        DB::update('product_variants', ['active' => 1], 'product_id = ? AND name = ?',
+            [$this->variantProduct, '1 л']);
 
         $this->ok('невідомий код нічого не знаходить', Pos::byCode('0000000000000') === null);
         $this->ok('порожній код нічого не знаходить', Pos::byCode('  ') === null);

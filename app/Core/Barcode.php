@@ -50,6 +50,39 @@ class Barcode
         return self::checkDigit(substr($code, 0, -1)) === substr($code, -1);
     }
 
+    /**
+     * Що не так із кодом — людськими словами. null — код придатний.
+     *
+     * Остання цифра штрихкоду не випадкова: вона рахується з попередніх саме
+     * для того, щоб описку було видно. Тож коли код вводять руками, ця
+     * перевірка ловить найдорожчу помилку — код, який виглядає правильним, але
+     * жоден сканер його не знайде. І одразу каже, яким він має бути.
+     */
+    public static function problem(string $code): ?string
+    {
+        $code = trim($code);
+        if ($code === '') return null;                  // порожнє поле — не помилка
+        if (!preg_match('/^\d+$/', $code)) return 'Штрихкод складається лише з цифр';
+
+        $len = strlen($code);
+        if ($len !== 8 && $len !== 13) {
+            return 'У штрихкоді 13 цифр (або 8 у короткому), а тут ' . $len;
+        }
+        if (self::valid($code)) return null;
+
+        $body = substr($code, 0, -1);
+        return 'Контрольна цифра не сходиться — схоже, має бути ' . $body . self::checkDigit($body);
+    }
+
+    /** Той самий код із виправленою останньою цифрою (порожньо — виправляти нічого) */
+    public static function fixed(string $code): string
+    {
+        $code = trim($code);
+        if (!preg_match('/^\d{8}$|^\d{13}$/', $code) || self::valid($code)) return '';
+        $body = substr($code, 0, -1);
+        return $body . self::checkDigit($body);
+    }
+
     /** Чи це наш внутрішній код (а не фабричний з етикетки) */
     public static function isInternal(string $code): bool
     {

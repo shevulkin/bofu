@@ -1,130 +1,197 @@
 <?php
 /**
- * Коди й штрихкоди. Екран заточений під одну дію: пройтись товарами й проставити
- * коди. Три способи, бо в житті трапляються всі три:
+ * Коди й штрихкоди.
  *
+ * Екран заточений під одну роботу: пройтись товарами й проставити коди. Тому
+ * тут фільтр («кому ще не проставив», «де помилка»), а не просто список: на
+ * сотні позицій без нього шукати очима.
+ *
+ * Три способи заповнити — бо в житті трапляються всі три:
  *   • на товарі є фабрична етикетка — USB-сканер або 📷 камера в рядку;
- *   • етикетки немає (своя банка меду) — кнопка «Придумати коди»;
+ *   • етикетки немає (своя банка меду) — кнопка ✨ у рядку: створить власний код;
  *   • код відомий із накладної — просто ввести руками.
  *
- * @var array $products @var array $variants @var array $dupes
+ * Свої коди впізнаються з першого погляду: вони починаються з 200 і позначені
+ * міткою «свій». Кожен можна одразу надрукувати наліпками.
+ *
+ * @var array $products @var array $variants @var array $dupes @var array $f @var string $query
  */
 $dupSku = fn(?string $c) => $c !== null && in_array(mb_strtolower(trim((string)$c)), $dupes['sku'], true);
 $dupBar = fn(?string $c) => $c !== null && in_array(mb_strtolower(trim((string)$c)), $dupes['barcode'], true);
+$broken = 0;
 
-/** Поле штрихкоду: саме поле, кнопка камери й малюнок коду для друку */
-$barcodeCell = function (string $name, ?string $code, bool $dupe): string {
-    $svg = $code ? Barcode::svg((string)$code) : '';
-    return '<div class="code-cell">'
-        . '<input type="text" name="' . e($name) . '" value="' . e($code ?? '') . '"'
-        . ' inputmode="numeric" autocomplete="off" data-code-input'
-        . ($dupe ? ' style="border-color:var(--danger2)" title="Такий штрихкод уже є в іншої позиції"' : '') . '>'
-        . '<button type="button" class="btn btn-line btn-xs" data-code-scan'
-        . ' title="Просканувати камерою">📷</button>'
-        . ($svg ? '<div class="code-pic">' . $svg . '</div>' : '')
-        . '</div>';
+/** Комірка штрихкоду: поле, кнопки (камера, згенерувати, друк), перевірка й малюнок */
+$cell = function (string $kind, int $id, ?string $code, bool $dupe, string $title) use (&$broken): string {
+    $code = trim((string)($code ?? ''));
+    $problem = Barcode::problem($code);
+    $fixed = Barcode::fixed($code);
+    if ($problem !== null) $broken++;
+    $ok = $code !== '' && $problem === null;
+    $svg = $ok ? Barcode::svg($code) : '';
+
+    $html = '<div class="code-cell" data-code-row="' . e($kind . $id) . '" data-code-title="' . e($title) . '">'
+        . '<input type="text" class="code-input" name="' . e($kind) . '[' . $id . '][barcode]"'
+        . ' value="' . e($code) . '" inputmode="numeric" autocomplete="off" data-code-input'
+        . (($dupe || $problem !== null) ? ' style="border-color:var(--danger2)"' : '')
+        . ($dupe ? ' title="Такий штрихкод уже є в іншої позиції"' : '') . '>'
+        . '<span class="code-acts">'
+        . '<button type="button" class="btn btn-line btn-xs" data-code-scan title="Прочитати камерою">📷</button>'
+        . '<button type="button" class="btn btn-line btn-xs" data-code-gen title="Створити власний код для цієї позиції">✨</button>'
+        . '<button type="button" class="btn btn-line btn-xs" data-code-print title="Надрукувати наліпки"'
+        . ($ok ? '' : ' disabled') . '>🖨</button>'
+        . '</span>';
+
+    if ($ok && Barcode::isInternal($code)) $html .= '<span class="code-tag">свій код</span>';
+    if ($problem !== null) {
+        $html .= '<div class="code-bad">' . e($problem)
+            . ($fixed !== '' ? ' <button type="button" class="btn btn-line btn-xs" data-code-fix="'
+                . e($fixed) . '">виправити</button>' : '')
+            . '</div>';
+    }
+    return $html . ($svg ? '<div class="code-pic">' . $svg . '</div>' : '') . '</div>';
 };
 ?>
 <div class="admin-head"><h1 class="h-serif">Коди й штрихкоди</h1>
-  <span class="dim">Станьте в поле й піднесіть сканер — або натисніть 📷 і наведіть камеру</span>
+  <span class="dim">Станьте в поле й піднесіть сканер · 📷 камера · ✨ свій код · 🖨 наліпки</span>
 </div>
 
-<div class="card-warn" style="margin-bottom:18px">
-  <b>Артикул</b> — ваш внутрішній код для обліку, придумуєте ви.
-  <b>Штрихкод</b> — те, що надруковано на етикетці й читає сканер на касі.
-  У товару з фасовками коди належать <b>фасовці</b>: етикетку клеять на банку, а не на «мед узагалі».
-  <br>Немає етикетки — натисніть <b>«Придумати коди»</b> внизу: створимо власні
-  (з тих, які стандарт лишив для внутрішнього вжитку магазину), намалюємо, і їх можна буде роздрукувати й наклеїти.
+<?php /* Фільтр окремою формою (GET) — усередині форми збереження він став би
+         її частиною й відправлявся б разом із кодами */ ?>
+<form class="admin-card bulk-filter" method="get" action="<?= e(url('/admin/products/codes')) ?>">
+  <div style="flex:1;min-width:150px" data-help-title="Пошук"
+       data-help="Шукає за назвою товару, назвою фасовки, артикулом і штрихкодом одночасно.
+
+Найшвидший спосіб знайти потрібну позицію: станьте в це поле й піднесіть сканер до етикетки — якщо код уже комусь проставлений, ви одразу побачите кому.">
+    <label>Пошук</label><input type="text" name="q" value="<?= e($f['q']) ?>" placeholder="Назва, артикул або код"></div>
+  <div data-help-title="Категорія" data-help="Показати лише товари однієї категорії — зручно проставляти коди партіями.">
+    <label>Категорія</label>
+    <select name="cat">
+      <option value="">Всі</option>
+      <?php foreach ($categories as $c): ?>
+        <option value="<?= (int)$c['id'] ?>" <?= $f['cat'] === (int)$c['id'] ? 'selected' : '' ?>><?= e($c['name']) ?></option>
+      <?php endforeach; ?>
+    </select>
+  </div>
+  <div data-help-title="Показати"
+       data-help="Готові добірки під те, заради чого сюди заходять:
+
+«Без штрихкоду» — кому ще не проставлено. Головна добірка: саме її проходять із товаром у руках.
+
+«З помилкою» — код зі збитою контрольною цифрою або однаковий у двох позицій. Такий код виглядає нормально, але каса його не знайде.
+
+«Свої коди» — ті, що ви створили кнопкою ✨ (починаються з 200). Їх треба надрукувати й наклеїти.">
+    <label>Показати</label>
+    <select name="only">
+      <option value="">Усі позиції</option>
+      <option value="nocode" <?= $f['only'] === 'nocode' ? 'selected' : '' ?>>Без штрихкоду</option>
+      <option value="code" <?= $f['only'] === 'code' ? 'selected' : '' ?>>Зі штрихкодом</option>
+      <option value="bad" <?= $f['only'] === 'bad' ? 'selected' : '' ?>>З помилкою</option>
+      <option value="own" <?= $f['only'] === 'own' ? 'selected' : '' ?>>Свої коди</option>
+    </select>
+  </div>
+  <button class="btn btn-gold btn-sm" type="submit">Знайти</button>
+  <?php if ($f['q'] !== '' || $f['cat'] || $f['only'] !== ''): ?>
+    <a class="btn btn-line btn-sm" href="<?= e(url('/admin/products/codes')) ?>">Скинути</a>
+  <?php endif; ?>
+</form>
+
+<div class="card-warn" style="margin-bottom:16px">
+  <b>Артикул</b> — ваш внутрішній код для обліку. <b>Штрихкод</b> — те, що надруковано на етикетці й читає сканер каси.
+  У товару з кількома фасовками код належить <b>фасовці</b>: етикетку клеять на банку, а не на «мед узагалі».
+  <br>Немає фабричної етикетки — натисніть <b>✨</b> у рядку: створимо власний код (такі коди починаються з <b>200</b>
+  — цей діапазон стандарт лишив магазинам для внутрішнього вжитку) і позначимо міткою «свій». Далі <b>🖨</b> — і наліпки на друк.
 </div>
 
 <?php if ($dupes['sku'] || $dupes['barcode']): ?>
   <div class="flash" style="padding:0;margin:0 0 16px"><div class="flash-error">
-    Є однакові коди — вони підсвічені нижче. Каса щоразу братиме той товар, який трапиться першим,
+    Є однакові коди — вони підсвічені. Каса щоразу братиме той товар, який трапиться першим,
     і продавець цього не помітить: у чек тихо ляже не та позиція.
   </div></div>
 <?php endif; ?>
 
-<form method="post" action="<?= e(url('/admin/products/codes')) ?>">
+<?php /* Таблицю збираємо в буфер: скільки кодів зі збитою контрольною цифрою,
+         стає відомо лише під час відмальовування, а попередити треба зверху */ ?>
+<?php ob_start(); ?>
+<form method="post" action="<?= e(url('/admin/products/codes' . $query)) ?>">
   <?= Csrf::field() ?>
-  <table class="tbl">
+  <?php if (!$products): ?>
+    <p class="dim">За цим фільтром нічого немає.
+      <a href="<?= e(url('/admin/products/codes')) ?>">Показати всі позиції</a>.</p>
+  <?php endif; ?>
+  <table class="tbl tbl-codes">
     <tr>
       <th>Товар</th>
-      <th style="width:190px" data-help-title="Артикул"
+      <th style="width:170px" data-help-title="Артикул"
           data-help="Ваш код для обліку: «MED-LIP-05». Пошук в адмінці й на касі знаходить товар і за ним.
 
-Якщо ведете склад у таблиці чи 1С — ставте той самий код, що й там.">Артикул</th>
+Якщо ведете склад у таблиці чи 1С — ставте той самий код, що й там. Штрихкод це не замінює: сканер читає саме штрихкод.">Артикул</th>
       <th data-help-title="Штрихкод"
-          data-help="Код із етикетки (EAN-13 — 13 цифр). Саме його читає сканер: на касі продавець підносить сканер до банки, і позиція сама лягає в чек.
+          data-help="Код із етикетки (EAN-13 — 13 цифр). Саме його читає сканер: продавець підносить сканер до банки, і позиція сама лягає в чек.
 
-Три способи заповнити: USB-сканером (станьте в поле й піднесіть), камерою (кнопка 📷 у рядку) або кнопкою «Придумати коди» внизу — для товарів без фабричної етикетки.
+📷 — прочитати камерою просто в цей рядок.
+✨ — створити власний код, коли фабричної етикетки немає.
+🖨 — надрукувати наліпки з цим кодом.
 
-Під полем показано сам код малюнком: сторінку можна роздрукувати (Ctrl+P), розрізати й наклеїти на товар.">Штрихкод</th>
+Остання цифра штрихкоду рахується з попередніх, тож описка одразу видно: поле червоніє й поруч пишеться, якою цифра має бути.">Штрихкод</th>
     </tr>
-    <?php foreach ($products as $p): $pid = (int)$p['id']; $vs = $variants[$pid] ?? []; ?>
+    <?php foreach ($products as $p): $pid = (int)$p['id']; $vs = $variants[$pid] ?? [];
+          $hasCode = trim((string)($p['barcode'] ?? '')) !== '';
+          $deadCode = $hasCode && count($vs) > 1; ?>
       <tr class="row-product">
         <td>
           <a href="<?= e(url('/admin/products/' . $pid)) ?>"><?= e($p['name']) ?></a>
           <div class="dim"><?= e($p['cat_name'] ?? '') ?><?= $p['active'] ? '' : ' · вимкнений' ?></div>
         </td>
-        <?php /* У товару з фасовками власні коди не мають сенсу: сканер має
-                 попасти в конкретну банку, а не в назву товару. Тому там поля
-                 закриті, а не просто порожні — інакше їх заповнять, і скан
-                 мовчки додаватиме «якийсь варіант». */ ?>
-        <?php if ($vs): ?>
-          <td colspan="2" class="dim">коди — у фасовках нижче</td>
+        <?php if (!empty($p['header_only'])): ?>
+          <?php /* Знайшлися фасовки, а не сам товар — його рядок лише заголовок */ ?>
+          <td colspan="2" class="dim">↓</td>
+        <?php elseif ($vs && !$hasCode): ?>
+          <?php /* Кілька фасовок — код належить кожній окремо; порожнє поле
+                   товару лише збивало б з пантелику */ ?>
+          <td colspan="2" class="dim">коди — у фасовках нижче<?= count($vs) === 1 ? ' (фасовка одна, тож і код товару спрацює)' : '' ?></td>
         <?php else: ?>
-          <td><input type="text" name="p[<?= $pid ?>][sku]" value="<?= e($p['sku'] ?? '') ?>"
-                     autocomplete="off" <?= $dupSku($p['sku']) ? 'style="border-color:var(--danger2)" title="Такий артикул уже є в іншого товару"' : '' ?>></td>
-          <td><?= $barcodeCell("p[$pid][barcode]", $p['barcode'], $dupBar($p['barcode'])) ?></td>
+          <td><input type="text" name="p[<?= $pid ?>][sku]" value="<?= e($p['sku'] ?? '') ?>" autocomplete="off"
+                     <?= $dupSku($p['sku']) ? 'style="border-color:var(--danger2)" title="Такий артикул уже є в іншого товару"' : '' ?>></td>
+          <td>
+            <?= $cell('p', $pid, $p['barcode'], $dupBar($p['barcode']), (string)$p['name']) ?>
+            <?php if ($deadCode): ?>
+              <div class="code-bad">Код записаний на товарі, а фасовок <?= count($vs) ?> — сканер не знатиме, яку класти в чек.
+                <button type="button" class="btn btn-line btn-xs" data-code-move>перенести в першу фасовку</button></div>
+            <?php endif; ?>
+          </td>
         <?php endif; ?>
       </tr>
       <?php foreach ($vs as $v): $vid = (int)$v['id']; ?>
         <tr class="variant-sub">
-          <td class="var-name muted"><?= e($v['name']) ?><?= $v['active'] ? '' : ' · вимкнений' ?></td>
-          <td><input type="text" name="v[<?= $vid ?>][sku]" value="<?= e($v['sku'] ?? '') ?>"
-                     autocomplete="off" <?= $dupSku($v['sku']) ? 'style="border-color:var(--danger2)" title="Такий артикул уже є в іншої позиції"' : '' ?>></td>
-          <td><?= $barcodeCell("v[$vid][barcode]", $v['barcode'], $dupBar($v['barcode'])) ?></td>
+          <td class="var-name muted"><?= e($v['name']) ?><?= $v['active'] ? '' : ' · вимкнена' ?></td>
+          <td><input type="text" name="v[<?= $vid ?>][sku]" value="<?= e($v['sku'] ?? '') ?>" autocomplete="off"
+                     <?= $dupSku($v['sku']) ? 'style="border-color:var(--danger2)" title="Такий артикул уже є в іншої позиції"' : '' ?>></td>
+          <td><?= $cell('v', $vid, $v['barcode'], $dupBar($v['barcode']), $p['name'] . ', ' . $v['name']) ?></td>
         </tr>
       <?php endforeach; ?>
     <?php endforeach; ?>
   </table>
   <div class="admin-save">
     <button class="btn btn-gold" type="submit">💾 Зберегти коди</button>
-    <?php /* Генерація йде тією ж кнопкою, що й збереження, — інакше введене
-             руками зникло б від натискання «Придумати». Порядок на сервері:
-             спершу зберегти набране, потім домалювати те, що лишилось порожнім. */ ?>
-    <button class="btn btn-line" type="submit" name="_action" value="generate"
-            data-help-title="Кнопка «Придумати коди»"
-            data-help="Створює власні штрихкоди всім позиціям, у яких поле порожнє. Уже заповнені не чіпає — фабричний код із етикетки завжди головніший.
-
-Коди беруться з діапазону, який стандарт лишив магазинам для внутрішнього вжитку, тож вони гарантовано не збігаються з жодним чужим товаром у світі.
-
-Код виводиться з номера позиції, тому повторне натискання нічого не переставляє.
-
-Далі їх треба надрукувати й наклеїти: малюнок кожного коду показаний просто тут, сторінка друкується через Ctrl+P.">✨ Придумати коди порожнім</button>
     <span class="admin-save-note"></span>
   </div>
 </form>
+<?php
+$table = ob_get_clean();
+if ($broken):
+?>
+  <div class="flash" style="padding:0;margin:0 0 16px"><div class="flash-error">
+    <b>Кодів зі збитою контрольною цифрою: <?= (int)$broken ?>.</b>
+    Остання цифра штрихкоду рахується з попередніх — саме щоб описку було видно.
+    Такий код виглядає правильним, але сканер не знайде його ніколи.
+    Біля кожного написано, яким він має бути, і є кнопка «виправити».
+  </div></div>
+<?php endif; ?>
+<?= $table ?>
 
 <script src="<?= e(asset_v('js/barcode.js')) ?>" defer></script>
 <script src="<?= e(asset_v('js/scan.js')) ?>" defer></script>
 <script>
-// Камера в рядку: прочитаний код лягає в те поле, біля якого натиснули 📷,
-// і вікно одразу закривається — тут сканують по одному, а не потоком.
-document.addEventListener('click', function (e) {
-  var btn = e.target.closest('[data-code-scan]');
-  if (!btn) return;
-  var input = btn.parentNode.querySelector('[data-code-input]');
-  if (!window.BofuScan || !input) return;
-  window.BofuScan.open(function (code, ui) {
-    input.value = code;
-    input.classList.add('is-fresh');
-    ui.close();
-    input.focus();
-  }, {
-    title: 'Наведіть камеру на штрихкод товару',
-    onError: function (m) { window.alert(m); },
-    onManual: function () { input.focus(); }
-  });
-});
+window.CODES = { genUrl: '<?= e(url('/admin/products/codes')) ?>' };
 </script>
+<script src="<?= e(asset_v('js/codes.js')) ?>" defer></script>

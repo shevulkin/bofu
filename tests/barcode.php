@@ -20,6 +20,7 @@ final class BarcodeTest
     public function run(): int
     {
         $this->testCheckDigit();
+        $this->testTypo();
         $this->testMake();
         $this->testUnique();
         $this->testPicture();
@@ -50,6 +51,33 @@ final class BarcodeTest
         $this->ok('EAN-8 теж перевіряється', Barcode::valid('96385074'));
         $this->ok('12 цифр — це не код', !Barcode::valid('400638133393'));
         $this->ok('літери — не код', !Barcode::valid('40063813a3931'));
+    }
+
+    /**
+     * Описка в останній цифрі. Саме заради неї контрольна цифра й існує:
+     * код виглядає бездоганно, а сканер не знайде його ніколи. Мовчки прийняти
+     * такий код — найдорожча помилка цього екрана, бо шукати її потім будуть
+     * у камері, у сканері й у декодері, тільки не в самому коді.
+     */
+    private function testTypo(): void
+    {
+        $this->group('описка в коді має бути видна одразу');
+        // Справжній випадок: на коробці 4820104880119, у картці набрали …118
+        $problem = (string)Barcode::problem('4820104880118');
+        $this->ok('описку впіймано', $problem !== '');
+        $this->ok('сказано, якою цифра має бути', str_contains($problem, '4820104880119'));
+        $this->ok('виправлення пропонується готовим', Barcode::fixed('4820104880118') === '4820104880119');
+
+        $this->ok('правильний код претензій не має', Barcode::problem('4820104880119') === null);
+        $this->ok('порожнє поле — не помилка', Barcode::problem('') === null);
+        $this->ok('виправляти правильний код нема чого', Barcode::fixed('4820104880119') === '');
+
+        $short = (string)Barcode::problem('482010488011');
+        $this->ok('коротший код: названо і потрібну довжину, і наявну',
+            str_contains($short, '13') && str_contains($short, '12'));
+        $this->ok('літери в штрихкоді відхиляються',
+            str_contains((string)Barcode::problem('4820104ABC19'), 'цифр'));
+        $this->ok('EAN-8 теж перевіряється', Barcode::problem('96385074') === null);
     }
 
     private function testMake(): void

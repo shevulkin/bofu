@@ -166,11 +166,44 @@ class Pos
             }
             $p = DB::row("SELECT id, name FROM products WHERE $field = ? AND active = 1 ORDER BY id LIMIT 1", [$code]);
             if ($p) {
-                return ['product_id' => (int)$p['id'], 'variant_id' => null, 'title' => (string)$p['name'],
-                        'pick' => Catalog::hasVariants((int)$p['id'])];
+                $pid = (int)$p['id'];
+                $variants = Catalog::variants($pid);
+                // Одна фасовка — це не вибір, а просто фасовка. Кошик на сайті
+                // так само не питає про неї (CartController::variantChosen), і
+                // каса не має бути прискіпливішою за вітрину.
+                if (count($variants) === 1) {
+                    return ['product_id' => $pid, 'variant_id' => (int)$variants[0]['id'],
+                            'title' => $p['name'] . ', ' . $variants[0]['name'], 'pick' => false];
+                }
+                return ['product_id' => $pid, 'variant_id' => null, 'title' => (string)$p['name'],
+                        'pick' => count($variants) > 1];
             }
         }
         return null;
+    }
+
+    /**
+     * Позиція, чий код відрізняється від сканованого лише останньою цифрою.
+     *
+     * Найчастіша причина «код не знайдено» — не сканер, а описка при введенні:
+     * остання цифра штрихкоду рахується з попередніх, і помилитись у ній
+     * найлегше. Замість глухого «немає такого» показуємо, де саме шукати.
+     *
+     * @return ?string назва позиції
+     */
+    public static function nearMiss(string $code): ?string
+    {
+        $code = trim($code);
+        if (!preg_match('/^\d{8}$|^\d{13}$/', $code)) return null;
+        $like = substr($code, 0, -1) . '_';
+
+        $v = DB::row('SELECT pv.name, p.name AS product_name FROM product_variants pv
+                      JOIN products p ON p.id = pv.product_id
+                      WHERE pv.barcode LIKE ? LIMIT 1', [$like]);
+        if ($v) return $v['product_name'] . ', ' . $v['name'];
+
+        $p = DB::val('SELECT name FROM products WHERE barcode LIKE ? LIMIT 1', [$like]);
+        return $p !== null ? (string)$p : null;
     }
 
     /**
