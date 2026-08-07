@@ -28,7 +28,9 @@ deployment:
     # ./ із скісною рискою — «вміст цієї теки», а не «тека всередину теки».
     # Без неї файли лягли б у public_html/bofu/bofu.
     - /usr/bin/rsync -a --exclude=.git --exclude=.gitignore --exclude=.cpanel.yml --exclude=tests --exclude=docker-compose.yml ./ $DEPLOYPATH/
-    # Права на теки, у які пише сам сайт. Клон їх не переносить: git зберігає
-    # лише прапорець «виконуваний», а не режим цілком.
-    - /bin/chmod -R 755 $DEPLOYPATH/storage $DEPLOYPATH/assets/uploads
+    # Права на теки, у які пише сам сайт. Без -R і навмисно: рекурсія накрила б
+    # і те, що всередині, а всередині storage лежать файли сесій — тобто діючі
+    # входи в адмінку. Роздавати їм 755 означало б зробити чужі сесії читабельними
+    # на рівні файлової системи. Самі файли створює PHP і виставляє їм 600.
+    - /bin/chmod 755 $DEPLOYPATH/storage $DEPLOYPATH/assets/uploads
     - /bin/echo "Розгорнуто в $DEPLOYPATH — відкрийте сайт, схема бази оновиться сама"
