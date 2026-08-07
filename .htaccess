@@ -4,7 +4,9 @@ Options -Indexes
   # Примусовий HTTPS (діє локально і на хостингу)
   RewriteCond %{HTTPS} !=on
   RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
-  RewriteCond %{REQUEST_URI} /app/|/storage/|/bin/|/migrations/|config
+  # /\.git — на випадок, якщо клон опиниться всередині public_html: там лежить
+  # уся історія проєкту, включно з тим, що колись видалили з файлів
+  RewriteCond %{REQUEST_URI} /app/|/storage/|/bin/|/migrations/|config|/\.git
   RewriteRule ^ - [F]
   RewriteCond %{REQUEST_FILENAME} !-f
   RewriteCond %{REQUEST_FILENAME} !-d
@@ -14,6 +16,18 @@ Options -Indexes
 # Заборони нижче навмисно дублюють RewriteRule вище: якщо mod_rewrite вимкнений
 # або AllowOverride обмежений, конфіг із паролями БД не має віддаватися жодним шляхом.
 <FilesMatch "\.(sqlite|log|md|lock|yml|yaml|ini|sh)$">
+  <IfModule mod_authz_core.c>
+    Require all denied
+  </IfModule>
+  <IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+  </IfModule>
+</FilesMatch>
+
+# Службові файли git: .gitignore розповідає, що саме ховають, а .gitattributes
+# і подібні нічого не дають відвідувачу
+<FilesMatch "^\.git">
   <IfModule mod_authz_core.c>
     Require all denied
   </IfModule>
