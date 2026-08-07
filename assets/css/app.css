@@ -775,8 +775,60 @@ body.help-on [data-help] *{pointer-events:none}
   width:10px;height:1px;background:var(--line2)}
 /* прихована кнопка сабміту: задає дію за замовчуванням для Enter у полях */
 .submit-default{position:absolute;width:0;height:0;padding:0;border:0;overflow:hidden;opacity:0}
-.attr-item summary{cursor:pointer;font-size:15px;line-height:1.5}
-.attr-item summary:hover{color:var(--gold)}
+/* ---------- словник характеристик ---------- */
+/* Форма створення згорнута в рядок-кнопку: вона потрібна зрідка, а розгорнутою
+   забирала перший екран — той самий, де мали б бути наявні характеристики */
+.attr-new{padding:0}
+.attr-new>summary{cursor:pointer;padding:14px 24px;color:var(--gold);font-weight:600}
+.attr-new>summary:hover{background:var(--bg3)}
+.attr-new[open]>summary{border-bottom:1px solid var(--line)}
+.attr-new>form{padding:0 24px 22px}
+
+/* Згорнутий рядок читають, а не переглядають: три поверхи з різною вагою —
+   назва, самі значення, і вже потім службові числа. Раніше тут стояв ланцюжок
+   фактів через крапку однаковим сірим, тож рангу не мав жоден. */
+.attr-item{padding:0}
+.attr-item>summary{cursor:pointer;padding:16px 22px;line-height:1.45}
+.attr-item>summary:hover{background:var(--bg3)}
+.attr-item[open]>summary{border-bottom:1px solid var(--line)}
+.attr-top{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.attr-name{font-size:16px;font-weight:600;color:var(--text)}
+.attr-item>summary:hover .attr-name{color:var(--gold)}
+/* Значення — те, заради чого сюди й заходять: подивитись, що вже заведено */
+.attr-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}
+.attr-chip{display:inline-flex;align-items:center;gap:6px;background:var(--bg3);
+  border:1px solid var(--line);border-radius:3px;padding:3px 9px;font-size:13px;color:var(--muted)}
+.attr-chip-rest{background:none;border-style:dashed;color:var(--dim)}
+/* Порожній словник — не дрібниця: обирати в картці товару буде ні з чого */
+.attr-none{margin-top:9px;font-size:13px;color:var(--dim);font-style:italic}
+.attr-meta{margin-top:9px;font-size:12.5px;color:var(--dim)}
+.attr-edit{padding:20px 22px 22px}
+.attr-flags{display:flex;gap:26px;flex-wrap:wrap}
+.attr-acts{display:flex;gap:12px;flex-wrap:wrap}
+
+/* Значення списком, а не таблицею: колонок було чотири, і на телефоні вони
+   їхали за екран. «Використань» — це підпис до самого значення, тож він стоїть
+   під ним, а не окремим стовпчиком. */
+.val-list{display:flex;flex-direction:column;gap:8px;margin-top:6px}
+.val-row{display:flex;align-items:flex-start;gap:10px}
+.val-main{flex:1;min-width:0}
+.val-main input{width:100%}
+.val-color{width:44px;height:38px;padding:2px;flex-shrink:0}
+.val-use{display:block;margin-top:3px;font-size:12px;color:var(--muted)}
+.val-use.is-none{color:var(--dim)}
+.val-del{flex-shrink:0;margin-top:2px}
+/* Телефон: картка й так вузька, тож поля віддаємо змісту, а не полям сторінки */
+@media (max-width:900px){
+  .attr-item>summary,.attr-new>summary{padding:14px 15px}
+  .attr-new>form{padding:0 15px 18px}
+  .attr-edit{padding:18px 15px}
+  /* 26px між галками читались як два різні блоки, коли вони стають одна під одною */
+  .attr-flags{flex-direction:column;gap:12px}
+  .attr-name{font-size:15.5px}
+  /* Значення однією колонкою: поле, під ним підпис, ✕ праворуч на тій же лінії */
+  .val-row{gap:8px}
+  .val-color{width:38px}
+}
 @media (max-width:900px){
   .admin-side{position:fixed;left:-240px;z-index:80;transition:left .2s;box-shadow:4px 0 24px rgba(0,0,0,.5)}
   .admin-side.open{left:0}
