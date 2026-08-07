@@ -48,6 +48,21 @@ class Home
     }
 
     /**
+     * Наші партнери.
+     *
+     * Лише активні: знята галка означає «взяли паузу», і показувати таке
+     * партнерство покупцю не можна — він піде за посиланням і не зрозуміє,
+     * чому там тиша.
+     */
+    public static function partners(): never
+    {
+        View::show('home/partners', [
+            'partners' => DB::all('SELECT * FROM partners WHERE active = 1 ORDER BY sort, name'),
+            'page_title' => 'Наші партнери — ' . cfg('app_name'),
+        ]);
+    }
+
+    /**
      * Де нас знайти: точки продажу на карті й списком.
      *
      * Лише активні (Catalog::stores) — закрита точка на карті означала б, що

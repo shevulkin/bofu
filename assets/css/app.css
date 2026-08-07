@@ -1028,6 +1028,33 @@ body.help-on [data-help] *{pointer-events:none}
   .store-cards{grid-template-columns:1fr}
 }
 
+/* ---------- наші партнери ---------- */
+/* Рівний ряд — те, заради чого сторінка існує: партнерів дивляться, а не
+   читають. Тому місце під лого однакове в усіх карток незалежно від того, яке
+   лого туди лягло й чи лягло взагалі. */
+.partner-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:16px}
+.partner{display:flex;flex-direction:column;align-items:center;text-align:center;
+  background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:26px 20px;
+  color:inherit;transition:border-color .15s,transform .15s}
+.partner.is-link:hover{border-color:var(--gold);transform:translateY(-2px)}
+.partner-logo{height:74px;display:flex;align-items:center;justify-content:center;margin-bottom:14px}
+.partner-logo img{max-height:74px;max-width:170px;object-fit:contain}
+/* Без лого картка не має провалюватись діркою в ряду — тримаємо ту саму висоту */
+.partner-initial{font-family:var(--serif);font-size:44px;line-height:1;color:var(--gold);opacity:.75}
+.partner-name{font-size:17px;font-weight:600;color:var(--text)}
+.partner-desc{margin:8px 0 0;font-size:13.5px;line-height:1.5;color:var(--muted)}
+.partner-go{margin-top:14px;font-size:13px;color:var(--gold)}
+@media (max-width:600px){
+  .partner-grid{grid-template-columns:1fr 1fr;gap:12px}
+  .partner{padding:18px 12px}
+  .partner-logo{height:56px;margin-bottom:10px}
+  .partner-logo img{max-height:56px}
+  .partner-name{font-size:15px}
+  /* На двох колонках опис перетворює ряд лого на стіну тексту — ховаємо його,
+     а повний опис лишається тому, хто відкриє сайт партнера */
+  .partner-desc{display:none}
+}
+
 /* Наліпки друкуються з окремого вікна (див. codes.js), а не звідси: тут їх
    довелося б різати разом із таблицею */
 

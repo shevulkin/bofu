@@ -60,6 +60,7 @@
         ]],
         ['Сайт', [
             ['/admin/content', 'Контент сайту', Auth::can('content.manage')],
+            ['/admin/partners', 'Партнери', Auth::can('content.manage')],
             ['/admin/media', 'Медіа-бібліотека', Auth::can('media.manage')],
             ['/admin/diplomas', 'Дипломи', Auth::can('diplomas.manage')],
         ]],
