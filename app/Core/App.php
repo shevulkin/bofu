@@ -126,6 +126,7 @@ class App
         if ($path === '/gallery') { Controllers\Home::gallery(); }
         if ($path === '/social') { Controllers\Home::social(); }
         if ($path === '/stores') { Controllers\Home::stores(); }
+        if ($path === '/partners') { Controllers\Home::partners(); }
         if ($path === '/diploma') { Controllers\Home::diploma(); }
         if ($path === '/diploma/check' && $method === 'POST') { RateLimit::guard('diploma', 40, 3600); Controllers\Home::diplomaCheck(); }
 
@@ -192,6 +193,7 @@ class App
             '/admin/categories'         => [$A.'Categories', 'index', 'catalog.manage'],
             '/admin/attributes'         => [$A.'Attributes', 'index', 'catalog.manage'],
             '/admin/brands'             => [$A.'Brands', 'index', 'catalog.manage'],
+            '/admin/partners'           => [$A.'Partners', 'index', 'content.manage'],
             '/admin/stores'             => [$A.'Stores', 'index', 'stores.manage'],
             '/admin/orders'             => [$A.'Orders', 'index', 'orders.view'],
             '/admin/orders/new'         => [$A.'Orders', 'pos', 'orders.create'],

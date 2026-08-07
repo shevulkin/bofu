@@ -7,7 +7,7 @@ declare(strict_types=1);
  */
 class Schema
 {
-    public const VERSION = 32;
+    public const VERSION = 33;
 
     /** Оновлення існуючої бази до поточної версії без втрати даних */
     public static function upgrade(): void
@@ -306,6 +306,9 @@ class Schema
             self::addColumn('stores', 'lat', 'geo null');
             self::addColumn('stores', 'lng', 'geo null');
         }
+        if ($ver < 33) {
+            self::createAll();   // partners
+        }
         Settings::set('schema_version', (string)self::VERSION);
     }
 
@@ -441,6 +444,16 @@ class Schema
                 'address' => 'str null', 'phone' => 'str null',
                 // мітка на карті; без них точка лишається в списку, але не на карті
                 'lat' => 'geo null', 'lng' => 'geo null',
+                'active' => 'bool default 1', 'sort' => 'int default 0',
+            ],
+            // Партнери — не бренди. Бренд відповідає на питання «чий це товар»
+            // і живе в картці товару; партнер нічого не виробляє для нас — це
+            // господарство, школа чи крамниця, з якою ми працюємо. Спільна
+            // таблиця змусила б кожен список фільтрувати прапорцем, а перший же
+            // забутий фільтр показав би партнера у виборі виробника.
+            'partners' => [
+                'id' => 'id', 'name' => 'str', 'slug' => 'str unique',
+                'logo' => 'str null', 'url' => 'str null', 'description' => 'text null',
                 'active' => 'bool default 1', 'sort' => 'int default 0',
             ],
             'seller_stores' => [ 'user_id' => 'int', 'store_id' => 'int' ],

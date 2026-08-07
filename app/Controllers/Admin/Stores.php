@@ -43,11 +43,25 @@ class Stores
             }
             redirect('/admin/stores');
         }
+        $stores = DB::all('SELECT * FROM stores ORDER BY sort, id');
         View::show('admin/stores', [
-            'stores' => DB::all('SELECT * FROM stores ORDER BY sort, id'),
+            'stores' => $stores,
             'maps_key' => Geo::key(),
+            // Звідки починати, коли в точки координат ще немає. Сусідня точка —
+            // майже завжди ближче до правди, ніж центр країни: філії відкривають
+            // там, де вже працюють. Немає жодної — показуємо Україну цілком.
+            'map_start' => self::mapStart($stores),
             'page_title' => 'Магазини — адмінка',
         ], 'layouts/admin');
+    }
+
+    /** @return array{lat:float,lng:float,zoom:int} */
+    private static function mapStart(array $stores): array
+    {
+        foreach ($stores as $s) {
+            if (Geo::has($s)) return ['lat' => (float)$s['lat'], 'lng' => (float)$s['lng'], 'zoom' => 12];
+        }
+        return ['lat' => 49.0, 'lng' => 31.5, 'zoom' => 6];
     }
 
     /**
