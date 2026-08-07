@@ -47,6 +47,25 @@ class Home
         View::show('home/social', ['page_title' => 'Соцмережі — ' . cfg('app_name')]);
     }
 
+    /**
+     * Де нас знайти: точки продажу на карті й списком.
+     *
+     * Лише активні (Catalog::stores) — закрита точка на карті означала б, що
+     * людина приїде до зачинених дверей. Список іде разом із картою, а не
+     * замість неї: адресу переписують у месенджер і диктують таксисту, а з
+     * карти цього не зробиш.
+     */
+    public static function stores(): never
+    {
+        $stores = Catalog::stores();
+        View::show('home/stores', [
+            'stores' => $stores,
+            'map_key' => \Geo::key(),
+            'map_points' => \Geo::points($stores),
+            'page_title' => 'Де нас знайти — ' . cfg('app_name'),
+        ]);
+    }
+
     public static function diploma(): never
     {
         View::show('home/diploma', ['result' => null, 'page_title' => 'Перевірка диплому — ' . cfg('app_name')]);

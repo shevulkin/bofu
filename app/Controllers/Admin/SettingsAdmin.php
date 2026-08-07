@@ -13,6 +13,10 @@ class SettingsAdmin
         'telegram_bot_token' => 'Telegram: токен бота',
         'viber_bot_token' => 'Viber: токен бота',
         'np_api_key' => 'Нова Пошта: API-ключ',
+        // Ключ Google Maps потрапляє в HTML сторінки — інакше карта не
+        // завантажиться. Тому обмеження за доменом у консолі Google не
+        // «бажано», а єдине, що заважає стороннім витрачати вашу квоту.
+        'google_maps_key' => 'Google Maps: ключ (обмежте його своїм доменом)',
         'youtube_channel' => 'YouTube: канал (@handle, посилання або UC-ID)',
         'mail_from' => 'Email відправника',
         'google_client_id' => 'Google OAuth: Client ID',

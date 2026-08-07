@@ -3,11 +3,11 @@ declare(strict_types=1);
 
 /**
  * Портативна схема БД: генерує SQL для MySQL та SQLite з одного опису.
- * Типи: id, int, num(10,2), str(255), text, bool, ts
+ * Типи: id, int, num(10,2), geo, str(255), text, bool, ts
  */
 class Schema
 {
-    public const VERSION = 31;
+    public const VERSION = 32;
 
     /** Оновлення існуючої бази до поточної версії без втрати даних */
     public static function upgrade(): void
@@ -297,6 +297,15 @@ class Schema
             self::addColumn('product_variants', 'barcode', 'str null');
             self::createAll();   // індекси по sku/barcode: за ними шукає каса
         }
+        if ($ver < 32) {
+            // Координати точки — окремо від адреси, а не замість неї. Адресу
+            // людина читає й називає таксисту; координати потрібні карті, і
+            // виводити їх з адреси щоразу означало б ходити в чуже API за тим,
+            // що не змінюється роками. Порожні координати — нормальний стан:
+            // точка тоді просто не має мітки на карті.
+            self::addColumn('stores', 'lat', 'geo null');
+            self::addColumn('stores', 'lng', 'geo null');
+        }
         Settings::set('schema_version', (string)self::VERSION);
     }
 
@@ -429,7 +438,10 @@ class Schema
             ],
             'stores' => [
                 'id' => 'id', 'name' => 'str', 'slug' => 'str unique', 'city' => 'str null',
-                'address' => 'str null', 'phone' => 'str null', 'active' => 'bool default 1', 'sort' => 'int default 0',
+                'address' => 'str null', 'phone' => 'str null',
+                // мітка на карті; без них точка лишається в списку, але не на карті
+                'lat' => 'geo null', 'lng' => 'geo null',
+                'active' => 'bool default 1', 'sort' => 'int default 0',
             ],
             'seller_stores' => [ 'user_id' => 'int', 'store_id' => 'int' ],
             // Ролі окремо від users: одна людина може мати кілька. Призначення магазинів
@@ -718,6 +730,11 @@ class Schema
         $sqlType = match (true) {
             $type === 'int' => $driver === 'sqlite' ? 'INTEGER' : 'BIGINT',
             $type === 'num' => $driver === 'sqlite' ? 'NUMERIC' : 'DECIMAL(12,2)',
+            // Координата. Окремо від num, бо там два знаки після коми — гроші.
+            // Для широти й довготи два знаки це похибка близько кілометра, тобто
+            // мітка стане не на магазин, а на сусідній квартал. Сім знаків —
+            // сантиметри, з запасом на будь-яку адресу.
+            $type === 'geo' => $driver === 'sqlite' ? 'REAL' : 'DECIMAL(10,7)',
             $type === 'str' => $driver === 'sqlite' ? 'TEXT' : 'VARCHAR(255)',
             $type === 'text' => $driver === 'sqlite' ? 'TEXT' : 'MEDIUMTEXT',
             $type === 'bool' => $driver === 'sqlite' ? 'INTEGER' : 'TINYINT(1)',

@@ -1,4 +1,13 @@
 <div class="admin-head"><h1 class="h-serif">Магазини</h1></div>
+<?php /* Координати без ключа — робота, яка нікому не видно. Кажемо про це тут,
+         а не в налаштуваннях: заповнюють координати саме на цьому екрані */ ?>
+<?php if ($maps_key === '' && array_filter($stores, fn($s) => Geo::has($s))): ?>
+  <div class="card-warn" style="margin-bottom:16px">
+    Координати заповнені, але <b>ключ Google Maps не заданий</b> — карта покупцю не показується.
+    Поки що замість неї він бачить адресу з кнопкою «прокласти маршрут»: це працює й без ключа.
+    Ключ вписується в <a href="<?= e(url('/admin/settings')) ?>">Налаштуваннях</a>.
+  </div>
+<?php endif; ?>
 <form class="admin-card" method="post" action="<?= e(url('/admin/stores')) ?>" style="display:flex;gap:14px;align-items:end;flex-wrap:wrap">
   <?= Csrf::field() ?><input type="hidden" name="_action" value="add">
   <div style="flex:1;min-width:160px" data-help-title="Назва магазину"
@@ -25,6 +34,13 @@
 
 Це номер магазину, а не ваш особистий: він показується на сайті. Сповіщення про замовлення на нього не надсилаються — вони налаштовуються окремо, у розділі «Сповіщення».">
     <label>Телефон</label><input type="text" name="phone"></div>
+  <div style="min-width:200px" data-help-title="Координати"
+       data-help="Точка на карті. Саме за нею магазин показується покупцю при самовивозі й на сторінці «Де нас знайти».
+
+Звідки взяти: відкрийте Google Maps, знайдіть свій вхід, клацніть по ньому правою кнопкою — у меню перший рядок і буде парою чисел. Клацніть по ньому: воно скопіюється. Сюди можна вставити або цю пару, або просто посилання на місце — розберемо обидва.
+
+Адресу це не замінює: адресу читає людина, координати потрібні карті. Порожнє поле — точка лишається в списку, але без мітки.">
+    <label>Координати (необов'язково)</label><input type="text" name="coords" placeholder="50.4501, 30.5234"></div>
   <button class="btn btn-gold btn-sm" type="submit" data-help-title="Кнопка «Додати»"
           data-help="Створює нову точку одразу активною — вона відразу зʼявиться на сайті у виборі магазину.
 
@@ -34,6 +50,14 @@
   <?= Csrf::field() ?><input type="hidden" name="_action" value="save">
   <table class="tbl">
     <tr><th>Назва</th><th>Місто</th><th>Адреса</th><th>Телефон</th>
+      <th style="width:220px" data-help-title="Колонка «Координати»"
+          data-help="Мітка точки на карті — у самовивозі й на сторінці «Де нас знайти».
+
+Вставляйте пару чисел «50.4501, 30.5234» або посилання з Google Maps: розберемо і те, і те. Кома як десятковий знак («50,4501, 30,5234») теж підійде — саме так копіює система з українською локаллю.
+
+Поруч із заповненим полем зʼявляється «перевірити»: воно відкриває цю точку в Google Maps. Клацніть після заповнення — це єдиний спосіб побачити, що мітка стала на ваш вхід, а не на сусідній квартал.
+
+Порожнє поле — точка лишається в списку самовивозу, але на карті її не буде.">Координати</th>
       <th class="col-mid" data-help-title="Колонка «Активний»"
           data-help="Чи працює точка на сайті просто зараз.
 
@@ -48,6 +72,16 @@
         <td><input type="text" name="store[<?= (int)$s['id'] ?>][city]" value="<?= e($s['city']) ?>"></td>
         <td><input type="text" name="store[<?= (int)$s['id'] ?>][address]" value="<?= e($s['address']) ?>"></td>
         <td><input type="text" name="store[<?= (int)$s['id'] ?>][phone]" value="<?= e($s['phone']) ?>"></td>
+        <td>
+          <input type="text" name="store[<?= (int)$s['id'] ?>][coords]" value="<?= e(Geo::format($s)) ?>"
+                 placeholder="50.4501, 30.5234">
+          <?php /* Перевірити мітку можна лише оком на самій карті: пара чисел
+                   виглядає правдоподібно й тоді, коли вказує на інший район */ ?>
+          <?php if (Geo::has($s)): ?>
+            <a class="dim" style="font-size:12px" target="_blank" rel="noopener"
+               href="<?= e('https://www.google.com/maps/search/?api=1&query=' . rawurlencode($s['lat'] . ',' . $s['lng'])) ?>">перевірити на карті →</a>
+          <?php endif; ?>
+        </td>
         <td class="col-mid"><input type="checkbox" name="store[<?= (int)$s['id'] ?>][active]" <?= $s['active'] ? 'checked' : '' ?>></td>
       </tr>
     <?php endforeach; ?>

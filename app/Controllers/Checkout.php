@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 namespace Controllers;
 
-use DB, View, Cart, Csrf, Auth, Catalog, OrderFlow, Settings, AuthTokens, Newsletter, RateLimit, Addresses, Promo;
+use DB, View, Cart, Csrf, Auth, Catalog, OrderFlow, Settings, AuthTokens, Newsletter, RateLimit, Addresses, Promo, Geo;
 
 class Checkout
 {
@@ -45,6 +45,9 @@ class Checkout
             'rows' => $rows,
             'totals' => Cart::total(null, self::promo()),
             'stores' => $stores, 'missing' => $missing,
+            // Карта самовивозу: питання «яка точка до мене ближча» списком назв
+            // не вирішується, а саме його й ставлять, обираючи самовивіз
+            'map_key' => Geo::key(), 'map_points' => Geo::points($stores),
             'promo' => self::promo(),
             'addresses' => $addresses,
             'sel' => $addresses[0] ?? null,   // основна (Addresses::forUser сортує її першою)

@@ -125,6 +125,7 @@ class App
         if ($path === '/courses') { Controllers\Home::courses(); }
         if ($path === '/gallery') { Controllers\Home::gallery(); }
         if ($path === '/social') { Controllers\Home::social(); }
+        if ($path === '/stores') { Controllers\Home::stores(); }
         if ($path === '/diploma') { Controllers\Home::diploma(); }
         if ($path === '/diploma/check' && $method === 'POST') { RateLimit::guard('diploma', 40, 3600); Controllers\Home::diplomaCheck(); }
 

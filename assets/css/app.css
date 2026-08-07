@@ -1003,6 +1003,31 @@ body.help-on [data-help] *{pointer-events:none}
   .tbl-codes input[type=text]{width:100%}
   .code-acts .btn{padding:9px 14px}
 }
+/* ---------- карта точок продажу ---------- */
+/* Висота задана до завантаження: Google будує карту в тому, що вже має розмір,
+   а в нульовому блоці вона намалювалась би нічим. Поки скрипт іде — підпис
+   замість порожнього прямокутника, бо сірий прямокутник читається як поломка. */
+.store-map{position:relative;height:340px;border:1px solid var(--line);border-radius:6px;
+  background:var(--bg2);overflow:hidden}
+.store-map::before{content:'Карта завантажується…';position:absolute;inset:0;display:flex;
+  align-items:center;justify-content:center;color:var(--dim);font-size:13px}
+.store-map.is-live::before{content:none}
+/* Хмарка мітки малюється на білому тлі Google, тож кольори тут не наші */
+.map-pop{color:#1c1c1c;font-size:13px;line-height:1.5;max-width:230px}
+.map-pop b{display:block;margin-bottom:3px;font-size:14px}
+.map-pop a{color:#0b57d0}
+/* Точка списком: те саме, що на карті, але словами — і працює без будь-яких
+   ключів, скриптів і мережі до чужого домену */
+.store-card{background:var(--bg2);border:1px solid var(--line);border-radius:6px;padding:16px 18px}
+.store-card h3{font-size:17px;margin-bottom:6px}
+.store-card p{margin:0 0 4px;color:var(--muted);font-size:14px}
+.store-card .dim{font-size:13px}
+.store-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;margin-top:20px}
+@media (max-width:600px){
+  .store-map{height:260px}
+  .store-cards{grid-template-columns:1fr}
+}
+
 /* Наліпки друкуються з окремого вікна (див. codes.js), а не звідси: тут їх
    довелося б різати разом із таблицею */
 
