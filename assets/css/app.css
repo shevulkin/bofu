@@ -920,6 +920,37 @@ body.help-on [data-help] *{pointer-events:none}
 .code-bad{flex-basis:100%;color:var(--danger2);font-size:12px;line-height:1.35}
 .code-pic{flex-basis:100%;line-height:0;margin-top:4px}
 .code-pic svg{max-width:100%;height:auto}
+/* Вузький екран. Решта таблиць адмінки їде вбік прокруткою — тут це не
+   працює: коди проставляють, тримаючи товар у другій руці, і возити таблицю
+   вбік, щоб дістатись поля, однією рукою не вийде. Тому рядок розгортається
+   карткою — назва зверху, поля під нею, — і сторінка гортається тільки вниз.
+   Підписи колонок переїжджають у самі комірки (data-lbl у codes.php): шапка
+   на картках лишилась би десь угорі, за екран від поля, яке пояснює. */
+@media (max-width:900px){
+  .tbl-codes{display:block;overflow:visible;white-space:normal;background:none;border:0}
+  .tbl-codes tbody,.tbl-codes tr,.tbl-codes td{display:block}
+  .tbl-codes tr:first-child{display:none}
+  .tbl-codes tr{background:var(--bg2);border:1px solid var(--line);border-radius:6px;
+    padding:12px 14px;margin-bottom:10px}
+  /* Обидва рядки перелічені навмисно: спільні правила ієрархії помічають
+     комірки через tr.row-product / tr.variant-sub, і коротшого селектора вони
+     переважили б — лінія-роздільник лишилась би посеред картки */
+  .tbl-codes td,.tbl-codes tr.row-product td,.tbl-codes tr.variant-sub td{
+    background:none;border:0;padding:8px 0 0;font-size:14px}
+  .tbl-codes td:first-child{padding-top:0;font-size:15px}
+  /* Підпис колонки — над полем, як у звичайній формі */
+  .tbl-codes td[data-lbl]::before{content:attr(data-lbl);display:block;margin-bottom:5px;
+    font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+  /* Уступ рискою тут не читається: картки й так стоять окремими блоками, тож
+     вкладеність показуємо зсувом самої картки й смужкою по її краю */
+  .tbl-codes tr.variant-sub{margin-left:16px;border-left:2px solid var(--line2)}
+  .tbl-codes tr.variant-sub td.var-name{padding-left:0;color:var(--text);white-space:normal}
+  .tbl-codes tr.variant-sub td.var-name::before{display:none}
+  /* Поле на всю ширину: 180px посеред картки читалися як «сюди влізе менше,
+     ніж треба», хоча код рівно 13 цифр */
+  .tbl-codes input[type=text]{width:100%}
+  .code-acts .btn{padding:9px 14px}
+}
 /* Наліпки друкуються з окремого вікна (див. codes.js), а не звідси: тут їх
    довелося б різати разом із таблицею */
 
