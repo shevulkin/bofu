@@ -1012,6 +1012,10 @@ body.help-on [data-help] *{pointer-events:none}
 .store-map::before{content:'Карта завантажується…';position:absolute;inset:0;display:flex;
   align-items:center;justify-content:center;color:var(--dim);font-size:13px}
 .store-map.is-live::before{content:none}
+/* Вікно вибору точки: карті потрібна ширина, інакше в неї не влазить квартал,
+   і людина шукає свій вхід у щілину */
+.modal-wide{max-width:760px}
+@media (max-width:600px){ .modal-wide{padding:20px 16px} .modal-wide .store-map{height:300px} }
 /* Хмарка мітки малюється на білому тлі Google, тож кольори тут не наші */
 .map-pop{color:#1c1c1c;font-size:13px;line-height:1.5;max-width:230px}
 .map-pop b{display:block;margin-bottom:3px;font-size:14px}

@@ -105,5 +105,74 @@
     return ctl;
   }
 
-  window.BofuMap = { render: render };
+  /**
+   * Карта для вибору точки: клацнули — мітка стала, потягнули — переїхала.
+   *
+   * Пошуку адреси тут навмисно немає. Він живе в окремому API Google з окремою
+   * оплатою, тобто коштував би грошей на кожному відкритті вікна — заради дії,
+   * яку роблять раз на магазин за все життя. Замість нього карта відкривається
+   * там, де вже стоїть мітка (або поруч із сусідньою точкою), а далі своє місто
+   * людина впізнає з двох рухів.
+   *
+   * @param {Element} host
+   * @param {Object}  cfg  {key, lat, lng, fallback:{lat,lng,zoom}, onMove(lat,lng)}
+   * @returns {Object} {focus(lat,lng)} — щоб вікно могло відкритись на новому місці
+   */
+  function pick(host, cfg) {
+    var ctl = { focus: function () {}, refresh: function () {} };
+    if (!host || !cfg.key) return ctl;
+
+    load(cfg.key).then(function (maps) {
+      host.classList.add('is-live');
+      var start = (cfg.lat != null && cfg.lng != null)
+        ? { lat: cfg.lat, lng: cfg.lng }
+        : { lat: cfg.fallback.lat, lng: cfg.fallback.lng };
+      var map = new maps.Map(host, {
+        center: start,
+        zoom: (cfg.lat != null ? 17 : cfg.fallback.zoom),
+        mapTypeControl: false, streetViewControl: false, fullscreenControl: false,
+        // Тут карта — головне на екрані, і жест по ній має рухати саме її
+        gestureHandling: 'greedy'
+      });
+      // Мітка зʼявляється лише коли точка задана: порожній магазин не має
+      // отримати мітку «десь у центрі України» просто від відкриття вікна
+      var mark = null;
+      function place(pos, tell) {
+        if (!mark) {
+          mark = new maps.Marker({ position: pos, map: map, draggable: true });
+          mark.addListener('dragend', function () {
+            var p = mark.getPosition();
+            if (cfg.onMove) cfg.onMove(p.lat(), p.lng());
+          });
+        } else {
+          mark.setPosition(pos);
+        }
+        if (tell && cfg.onMove) cfg.onMove(pos.lat, pos.lng);
+      }
+      if (cfg.lat != null && cfg.lng != null) place(start, false);
+
+      map.addListener('click', function (e) {
+        place({ lat: e.latLng.lat(), lng: e.latLng.lng() }, true);
+      });
+
+      ctl.focus = function (lat, lng) {
+        if (lat == null || lng == null) return;
+        map.setCenter({ lat: lat, lng: lng });
+        map.setZoom(17);
+        place({ lat: lat, lng: lng }, false);
+      };
+      // Вікно ховається через display:none, а прихований блок має нульовий
+      // розмір. Без цього карта після другого відкриття лишалась би сірою:
+      // вона памʼятає ті розміри, які бачила востаннє.
+      ctl.refresh = function () {
+        maps.event.trigger(map, 'resize');
+        if (mark) map.setCenter(mark.getPosition());
+      };
+      ctl.refresh();
+    }).catch(function () { host.hidden = true; });
+
+    return ctl;
+  }
+
+  window.BofuMap = { render: render, pick: pick };
 })();
