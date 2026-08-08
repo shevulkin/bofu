@@ -25,6 +25,13 @@ deployment:
   tasks:
     - export DEPLOYPATH=$HOME/public_html/bofu
     - /bin/mkdir -p $DEPLOYPATH
+    # Права на саму теку сайту. Це не перестраховка: public_html належить
+    # користувачу, але групі nobody — саме через групу до нього дістається
+    # веб-сервер. Підтеки ж створюються з групою користувача, і якщо на такій
+    # підтеці стоїть 0700 або 0750, сервер не може в неї увійти. Виглядає це
+    # як «File not found» на файл, який лежить на місці й має правильні права,
+    # — і шукати причину доводиться довго, бо всередині все справне.
+    - /bin/chmod 755 $DEPLOYPATH
     # ./ із скісною рискою — «вміст цієї теки», а не «тека всередину теки».
     # Без неї файли лягли б у public_html/bofu/bofu.
     - /usr/bin/rsync -a --exclude=.git --exclude=.gitignore --exclude=.cpanel.yml --exclude=tests --exclude=docker-compose.yml ./ $DEPLOYPATH/
