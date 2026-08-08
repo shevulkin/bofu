@@ -23,6 +23,7 @@ final class SecurityTest
     {
         $this->testCsp();
         $this->testCspNotWideOpen();
+        $this->testExternalImages();
         $this->testEscaping();
         $this->testJsonInScript();
         $this->testHstsGuard();
@@ -80,6 +81,28 @@ final class SecurityTest
         preg_match_all('~https?://[^\s;]+~', $csp, $m);
         $this->ok(!array_filter($m[0], fn($u) => str_starts_with($u, 'http://')),
             'жодного дозволу по незахищеному http');
+    }
+
+    /**
+     * Чужі картинки, які сайт справді показує, мають бути дозволені.
+     *
+     * Перевіряємо не список, переписаний руками, а сам код: домен беремо з
+     * YouTube.php, тобто звідти, де він і будується. Якщо його колись змінять
+     * на інший CDN, тест впаде — а не прев'ю на головній, мовчки й у продакшні,
+     * як це вже сталося одного разу.
+     */
+    private function testExternalImages(): void
+    {
+        echo "== чужі картинки дозволені ==\n";
+        $src = file_get_contents(BOFU_ROOT . '/app/Core/YouTube.php');
+        if (!preg_match("~'(https://[a-z0-9.-]+)/vi/~i", (string)$src, $m)) {
+            $this->ok(false, 'у YouTube.php знайдено домен прев\'ю');
+            return;
+        }
+        $host = $m[1];
+        $csp = $this->csp();
+        preg_match('~img-src([^;]*)~', $csp, $img);
+        $this->ok(str_contains($img[1] ?? '', $host), "img-src дозволяє $host (прев'ю відео)");
     }
 
     private function testEscaping(): void
