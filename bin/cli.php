@@ -14,6 +14,52 @@ switch ($cmd) {
         Schema::upgrade();
         echo "Міграції: таблиці створено/оновлено (схема " . Schema::VERSION . ")\n";
         break;
+    case 'wipe':
+        /*
+         * Порожня база одним рухом — щоб одразу за нею йшла міграція.
+         *
+         * Потрібно це рівно в одному випадку: коли на новому сервері сайт
+         * відкрили раніше, ніж створили таблиці, і App::dbReady() прийняв
+         * порожню базу за перший запуск та засіяв демо-дані. Прибирати їх
+         * руками через phpMyAdmin можна, але між очищенням і міграцією
+         * лишається вікно, у яке встигає будь-яка відкрита вкладка чи бот, —
+         * і демо-дані повертаються. Тому команда й існує: `wipe && migrate`
+         * не лишає такого вікна взагалі.
+         *
+         * Захист від випадкового запуску — назва бази аргументом. Не прапорець
+         * «--force», який дописують не читаючи, а саме назва: її треба свідомо
+         * подивитись і надрукувати, і на чужій базі вона не збігається.
+         */
+        $want = trim((string)($argv[2] ?? ''));
+        $real = (string)cfg('db.database', '');
+        if ($want === '' || $want !== $real) {
+            echo "Це видалить УСІ таблиці бази. Відновити буде нічим.\n"
+               . "Щоб підтвердити, вкажіть назву бази з config.local.php:\n\n"
+               . "    php bin/cli.php wipe {$real}\n\n"
+               . "Далі одразу створіть схему: php bin/cli.php migrate\n";
+            exit(1);
+        }
+        $driver = DB::driver();
+        // Порядок таблиць невідомий, а зовнішні ключі не дадуть видаляти
+        // «батьків» раніше за «дітей» — тож на час видалення знімаємо перевірку
+        if ($driver === 'mysql') DB::query('SET FOREIGN_KEY_CHECKS = 0');
+        // Беремо те, що реально є в базі, а не список зі схеми: у ній не буде
+        // таблиць, які лишились від старих версій, і вони пережили б очищення
+        $rows = $driver === 'sqlite'
+            ? DB::all("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
+            : DB::all('SHOW TABLES');
+        $n = 0;
+        foreach ($rows as $row) {
+            $t = (string)reset($row);
+            if ($t === '') continue;
+            DB::query('DROP TABLE IF EXISTS ' . ($driver === 'sqlite' ? '"' . $t . '"' : '`' . $t . '`'));
+            $n++;
+        }
+        if ($driver === 'mysql') DB::query('SET FOREIGN_KEY_CHECKS = 1');
+        echo "Базу «{$real}» очищено: видалено таблиць — {$n}.\n"
+           . "ОДРАЗУ виконайте: php bin/cli.php migrate\n"
+           . "Поки таблиць немає, перше ж відкриття сайту засіє демо-дані наново.\n";
+        exit(0);
     case 'grant-admin':
         /*
          * Перший адміністратор на новому сервері.
@@ -99,5 +145,5 @@ switch ($cmd) {
             . ($code === 0 ? "ВСІ НАБОРИ ПРОЙДЕНО ($files)" : "Є ПРОВАЛЕНІ НАБОРИ — дивіться вище") . "\n";
         exit($code);
     default:
-        echo "Використання: php bin/cli.php [migrate|seed|fresh|test|prod-check]\n";
+        echo "Використання: php bin/cli.php [migrate|seed|fresh|test|prod-check|wipe|grant-admin]\n";
 }
