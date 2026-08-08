@@ -60,15 +60,36 @@ class App
             } catch (Throwable $e2) {
                 http_response_code(503);
                 header('Content-Type: text/html; charset=utf-8');
-                echo '<!DOCTYPE html><html lang="uk"><body style="font-family:sans-serif;background:#141110;color:#f6ecd9;display:flex;align-items:center;justify-content:center;min-height:100vh;text-align:center">'
-                   . '<div><h1 style="color:#f0b429">База даних недоступна</h1>'
-                   . '<p>Запустіть базу даних командою:</p>'
-                   . '<p><code style="background:#241d15;padding:8px 14px;border-radius:4px">docker compose up -d</code></p>'
-                   . '<p style="color:#8a7a5c;font-size:13px">у папці проєкту (C:\\xampp\\htdocs\\bofu), зачекайте ~20 секунд і оновіть сторінку.<br>'
-                   // текст помилки PDO містить хост і користувача БД — показуємо лише в debug,
-                   // решті йде в лог
-                   . (cfg('debug') ? htmlspecialchars($e2->getMessage()) : 'Деталі — у storage/logs/app-error.log')
-                   . '</p></div></body></html>';
+                // Пошуковик має зрозуміти, що це тимчасово, і не викидати сторінки з індексу
+                header('Retry-After: 300');
+
+                /*
+                 * Дві різні сторінки для двох різних людей.
+                 *
+                 * Розробнику потрібна причина й команда. Покупцю — ні: він не
+                 * запускатиме docker, а слова «C:\xampp\htdocs\bofu» на чужому
+                 * сайті лише розкажуть стороннім, як влаштована наша машина.
+                 * Тому підказки видно рівно там, де debug увімкнений, тобто
+                 * локально, — а на бойовому сервері лишається одна фраза без
+                 * жодної технічної деталі.
+                 */
+                $body = cfg('debug')
+                    ? '<h1 style="color:#f0b429">База даних недоступна</h1>'
+                      . '<p>Запустіть базу даних командою:</p>'
+                      . '<p><code style="background:#241d15;padding:8px 14px;border-radius:4px">docker compose up -d</code></p>'
+                      . '<p style="color:#9a8a6b;font-size:13px">у папці проєкту (' . htmlspecialchars(BOFU_ROOT) . '),'
+                      . ' зачекайте ~20 секунд і оновіть сторінку.<br>'
+                      // текст помилки PDO містить хост і користувача БД — лише в debug
+                      . htmlspecialchars($e2->getMessage()) . '</p>'
+                    : '<h1 style="color:#f0b429">Сайт тимчасово недоступний</h1>'
+                      . '<p style="color:#9a8a6b">Ми вже про це знаємо. Спробуйте, будь ласка, за кілька хвилин.</p>';
+
+                echo '<!DOCTYPE html><html lang="uk"><head><meta charset="utf-8">'
+                   . '<meta name="viewport" content="width=device-width, initial-scale=1">'
+                   . '<title>Сайт тимчасово недоступний</title></head>'
+                   . '<body style="font-family:sans-serif;background:#141110;color:#f6ecd9;display:flex;'
+                   . 'align-items:center;justify-content:center;min-height:100vh;text-align:center;margin:0">'
+                   . '<div style="padding:20px">' . $body . '</div></body></html>';
                 @file_put_contents(BOFU_ROOT . '/storage/logs/app-error.log',
                     '[' . date('Y-m-d H:i:s') . '] DB: ' . $e2->getMessage() . "\n", FILE_APPEND);
                 return false;
