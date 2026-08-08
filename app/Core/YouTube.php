@@ -1,9 +1,21 @@
 <?php
 declare(strict_types=1);
 
-/** Останні відео каналу YouTube через публічний RSS (без API-ключів), кеш 1 година */
+/**
+ * Останні відео каналу YouTube через публічний RSS (без API-ключів), кеш 1 година.
+ *
+ * RSS віддає рівно 15 останніх завантажень — і Shorts у ньому лежать поряд зі
+ * звичайними відео. На каналі, де Shorts виходять частіше, вони займають майже
+ * всі 15 позицій, і довгих відео в стрічці лишається два-три. Саме тому список
+ * не будується щоразу з нуля: нові довгі відео **додаються** до вже відомих, і
+ * добірка наростає до потрібної кількості, замість залежати від того, скільки
+ * Shorts вийшло цього тижня.
+ */
 class YouTube
 {
+    /** Скільки відео тримаємо в пам'яті: більше за будь-який показ на сторінках */
+    private const KEEP = 12;
+
     public static function latest(int $limit = 3): array
     {
         $channel = trim((string)Settings::get('youtube_channel', ''));
@@ -13,16 +25,71 @@ class YouTube
         $fresh = (int)Settings::get('yt_cache_time', '0') > time() - 3600;
         // старий формат кешу (без is_short) вважаємо застарілим
         if (is_array($cache) && $cache && !array_key_exists('is_short', $cache[0])) $fresh = false;
-        if (is_array($cache) && $fresh) return array_slice($cache, 0, $limit);
+        if (is_array($cache) && $fresh) return self::pick($cache, $limit);
 
         $videos = self::fetch($channel);
         if ($videos) {
-            Settings::set('yt_cache', json_encode($videos, JSON_UNESCAPED_UNICODE));
+            $store = self::merge(is_array($cache) ? $cache : [], $videos);
+            Settings::set('yt_cache', json_encode($store, JSON_UNESCAPED_UNICODE));
             Settings::set('yt_cache_time', (string)time());
-            return array_slice($videos, 0, $limit);
+            return self::pick($store, $limit);
         }
         // мережа недоступна — віддаємо старий кеш, якщо був
-        return is_array($cache) ? array_slice($cache, 0, $limit) : [];
+        return is_array($cache) ? self::pick($cache, $limit) : [];
+    }
+
+    /**
+     * Що зберігаємо між оновленнями.
+     *
+     * Довгі відео накопичуємо: стрічка тримає лише 15 останніх завантажень, і
+     * новий Short витісняє звідти торішній огляд. Раз побачивши відео, ми його
+     * вже не втратимо.
+     *
+     * Shorts — навпаки, беремо лише ті, що у стрічці зараз. Накопичувати їх
+     * немає сенсу: вони виходять часто, і за місяць список складався б із самих
+     * Shorts, тобто рівно те, від чого ми йдемо.
+     *
+     * @param array $cached те, що вже знали   @param array $fetched те, що у стрічці зараз
+     */
+    public static function merge(array $cached, array $fetched): array
+    {
+        $long = $short = [];
+        // свіжі попереду: у них актуальна назва, якщо відео перейменували
+        foreach (array_merge($fetched, $cached) as $v) {
+            $id = (string)($v['id'] ?? '');
+            if ($id === '' || !empty($v['is_short'])) continue;
+            $long[$id] ??= $v;
+        }
+        foreach ($fetched as $v) {
+            $id = (string)($v['id'] ?? '');
+            if ($id === '' || empty($v['is_short'])) continue;
+            $short[$id] ??= $v;
+        }
+        $byDate = fn($a, $b) => strcmp((string)($b['published'] ?? ''), (string)($a['published'] ?? ''));
+        usort($long, $byDate);
+        usort($short, $byDate);
+        return array_merge(array_slice($long, 0, self::KEEP), array_slice($short, 0, self::KEEP));
+    }
+
+    /**
+     * Що показуємо.
+     *
+     * Спершу довгі відео — заради них на сторінку й заходять. Shorts ідуть лише
+     * тим, чого не вистачило до потрібної кількості: канал, де довгих відео вже
+     * шість, покаже шість довгих, і Shorts зникнуть самі, без жодного
+     * перемикача.
+     */
+    public static function pick(array $items, int $limit): array
+    {
+        $long = $short = [];
+        foreach ($items as $v) {
+            if (empty($v['is_short'])) $long[] = $v; else $short[] = $v;
+        }
+        $out = array_slice($long, 0, $limit);
+        if (count($out) < $limit) {
+            $out = array_merge($out, array_slice($short, 0, $limit - count($out)));
+        }
+        return $out;
     }
 
     private static function fetch(string $channel): array
@@ -39,17 +106,18 @@ class YouTube
             $yt = $e->children('http://www.youtube.com/xml/schemas/2015');
             $vid = (string)$yt->videoId;
             if (!$vid) continue;
-            // Пропускаємо шортси: /shorts/<id> віддає 200, звичайне відео — редірект
-            if (self::headStatus('https://www.youtube.com/shorts/' . $vid) === 200) continue;
+            // Shorts більше не відкидаємо, а позначаємо: вони згодяться, якщо
+            // довгих відео не набереться на весь ряд (див. pick()).
+            // Ознака: /shorts/<id> віддає 200, для звичайного відео — редірект.
+            $isShort = self::headStatus('https://www.youtube.com/shorts/' . $vid) === 200;
             $out[] = [
                 'id' => $vid,
                 'title' => (string)$e->title,
-                'url' => 'https://www.youtube.com/watch?v=' . $vid,
+                'url' => 'https://www.youtube.com/' . ($isShort ? 'shorts/' . $vid : 'watch?v=' . $vid),
                 'thumb' => 'https://i.ytimg.com/vi/' . $vid . '/hqdefault.jpg',
                 'published' => substr((string)$e->published, 0, 10),
-                'is_short' => false,
+                'is_short' => $isShort,
             ];
-            if (count($out) >= 8) break;
         }
         return $out;
     }
