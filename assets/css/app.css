@@ -444,9 +444,18 @@ input:disabled,select:disabled,textarea:disabled{opacity:.45;cursor:not-allowed}
 .diploma-result p{color:var(--muted);font-size:13.5px;margin-top:6px}
 
 /* ---------- футер ---------- */
+/* Один стовпчик по центру, а не логотип ліворуч і соцмережі праворуч. На широкому
+   екрані розкидані по краях блоки читаються як два різні кінці сторінки, між
+   якими порожньо; зібрані докупи вони стають одним підписом під сайтом.
+   Побічно це прибирає й окремий випадок для телефона: там колонка вже була, і
+   тепер вигляд однаковий на будь-якій ширині. */
 footer{border-top:1px solid var(--line);padding:44px 0 60px;margin-top:40px}
-.footer-inner{display:flex;justify-content:space-between;gap:24px;flex-wrap:wrap;color:var(--dim);font-size:13.5px}
+.footer-inner{display:flex;flex-direction:column;align-items:center;text-align:center;
+  gap:16px;color:var(--dim);font-size:13.5px}
 .footer-inner a{color:var(--muted)}
+/* Логотип із назвою — теж по центру: .brand за замовчуванням тягнеться вліво */
+.footer-inner .brand{justify-content:center}
+.footer-social{display:flex;gap:18px;align-items:center;flex-wrap:wrap;justify-content:center}
 
 /* ---------- модалка авторизації ---------- */
 .modal-back{position:fixed;inset:0;background:rgba(10,8,7,.8);z-index:100;display:none;align-items:center;justify-content:center;padding:20px}
