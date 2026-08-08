@@ -5,6 +5,9 @@ class App
 {
     public static function run(): void
     {
+        // Найпершими: заголовки мають піти навіть із тією відповіддю, яка
+        // впаде помилкою або редіректом. Усе, що нижче, вже може щось віддати.
+        Security::headers();
         if (!self::dbReady()) return;
         Auth::start();
         $path = request_path();
