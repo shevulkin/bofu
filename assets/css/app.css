@@ -456,6 +456,9 @@ footer{border-top:1px solid var(--line);padding:44px 0 60px;margin-top:40px}
 /* Логотип із назвою — теж по центру: .brand за замовчуванням тягнеться вліво */
 .footer-inner .brand{justify-content:center}
 .footer-social{display:flex;gap:18px;align-items:center;flex-wrap:wrap;justify-content:center}
+/* Правовий рядок — останній і найтихіший: його читають раз, і він не має
+   перебивати назву чи посилання, між якими стоїть решта футера */
+.footer-copy{margin:0;padding-top:4px;font-size:13px;color:var(--dim)}
 
 /* ---------- модалка авторизації ---------- */
 .modal-back{position:fixed;inset:0;background:rgba(10,8,7,.8);z-index:100;display:none;align-items:center;justify-content:center;padding:20px}
