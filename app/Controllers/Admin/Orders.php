@@ -631,7 +631,7 @@ class Orders
         // Накладна створюється на кожну частину окремо, тож і форма своя в
         // кожної: вага, післяплата й опис у різних магазинів різні
         $shipments = Shipments::forParent((int)$parent['id']);
-        $shipForm = []; $shipGaps = [];
+        $shipForm = []; $shipGaps = []; $shipSender = [];
         foreach ($children as $c) {
             $rows = OrderFlow::items((int)$c['id']);
             $items[(int)$c['id']] = $rows;
@@ -639,6 +639,9 @@ class Orders
             if (!isset($shipments[(int)$c['id']]) && (string)$parent['delivery'] === 'np') {
                 $shipForm[(int)$c['id']] = Shipments::defaults($c, $parent);
                 $shipGaps[(int)$c['id']] = Shipments::missing($c, $parent);
+                // Окремо від решти причин: відправника заповнюють у налаштуваннях,
+                // а не в картці, і сказати про це треба інакше — див. вигляд
+                $shipSender[(int)$c['id']] = Shipments::senderReady($c['store_id'] ? (int)$c['store_id'] : null);
             }
             foreach ($rows as $it) {
                 if (!$it['product_id']) continue;
@@ -669,6 +672,7 @@ class Orders
             'shipments' => $shipments,
             'ship_form' => $shipForm,
             'ship_gaps' => $shipGaps,
+            'ship_sender_ready' => $shipSender,
             'can_ship' => Auth::can('orders.ship'),
             // Доставка належить замовленню цілком, тож правити її може той, хто
             // веде хоч одну його частину: везти доведеться йому, і саме він
