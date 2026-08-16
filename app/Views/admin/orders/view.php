@@ -427,7 +427,7 @@
               : trim((string)($parent['np_office_ref'] ?? '')) === ''));
         $locked = (bool)$shipments;   // накладна вже виписана на цю адресу
       ?>
-      <?php if ($can_ship): ?>
+      <?php if ($can_edit_delivery): ?>
         <details style="margin-top:12px"<?= $needsRef && !$locked ? ' open' : '' ?>>
           <summary class="dim" style="cursor:pointer;font-size:13px">
             <?= $needsRef && !$locked ? '⚠️ Уточнити відділення для накладної' : 'Змінити доставку' ?>
@@ -614,7 +614,7 @@
 </div>
 
 <?php /* Форма доставки є лише в того, хто може її правити */ ?>
-<?php if ($can_ship && !$shipments): ?>
+<?php if ($can_edit_delivery && !$shipments): ?>
   <?php /* Підказки НП живуть окремо: без ключа їх немає, а форма працює й так */ ?>
   <?php if ($np_enabled) echo View::partial('partials/np_autocomplete'); ?>
   <script>
