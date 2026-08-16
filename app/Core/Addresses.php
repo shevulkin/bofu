@@ -48,8 +48,11 @@ class Addresses
         $same = DB::row('SELECT id FROM user_addresses
                          WHERE user_id = ? AND delivery = ?
                            AND COALESCE(city, \'\') = ? AND COALESCE(np_office, \'\') = ?
+                           AND COALESCE(np_type, \'warehouse\') = ?
+                           AND COALESCE(np_street, \'\') = ? AND COALESCE(np_house, \'\') = ?
                            AND COALESCE(address, \'\') = ? AND id <> ?',
             [$userId, $row['delivery'], (string)$row['city'], (string)$row['np_office'],
+             (string)$row['np_type'], (string)$row['np_street'], (string)$row['np_house'],
              (string)$row['address'], $id]);
         $target = $own ?: $same;
 
@@ -102,6 +105,13 @@ class Addresses
         $label = trim((string)($a['label'] ?? ''));
         if ($label !== '') return $label;
         if (($a['delivery'] ?? 'np') === 'np') {
+            // Курʼєрська адреса — це вулиця з будинком, а не відділення:
+            // показати замість неї порожнє «Київ» означало б список із
+            // кількох однакових рядків, серед яких не вибрати потрібний
+            if (($a['np_type'] ?? 'warehouse') === 'courier') {
+                $street = trim((string)($a['np_street'] ?? '') . ' ' . (string)($a['np_house'] ?? ''));
+                return trim((string)$a['city'] . ($street !== '' ? ', ' . $street : ''), ' ,') ?: 'Адреса';
+            }
             return trim((string)$a['city'] . ($a['np_office'] ? ', ' . $a['np_office'] : ''), ' ,') ?: 'Адреса';
         }
         return trim((string)($a['address'] ?? '')) ?: 'Адреса';
@@ -119,6 +129,8 @@ class Addresses
         $office = $cut($in['np_office'] ?? '', 200);
         $address = $cut($in['address'] ?? '', 200);
         $label = $cut($in['label'] ?? '', 60);
+        $type = ($in['np_type'] ?? 'warehouse') === 'courier' ? 'courier' : 'warehouse';
+        $street = $cut($in['np_street'] ?? '', 160);
 
         if ($delivery === 'np' && $city === '') return null;
         if ($delivery === 'other' && $address === '') return null;
@@ -127,9 +139,18 @@ class Addresses
             'delivery' => $delivery,
             'label' => $label === '' ? null : $label,
             'city' => $city === '' ? null : $city,
-            // ref міста Нової Пошти: з ним підказки відділень працюють одразу
+            // Ref-и з довідника Нової Пошти. Вони не для показу: з ними
+            // підказки працюють одразу, а головне — з них потім створюється
+            // накладна. Адреса без них лишається адресою, просто відділення
+            // доведеться обрати ще раз.
             'city_ref' => $cut($in['city_ref'] ?? '', 60) ?: null,
             'np_office' => $office === '' ? null : $office,
+            'np_office_ref' => $type === 'warehouse' ? ($cut($in['np_office_ref'] ?? '', 60) ?: null) : null,
+            'np_type' => $type,
+            'np_street' => $type === 'courier' && $street !== '' ? $street : null,
+            'np_street_ref' => $type === 'courier' ? ($cut($in['np_street_ref'] ?? '', 60) ?: null) : null,
+            'np_house' => $type === 'courier' ? ($cut($in['np_house'] ?? '', 20) ?: null) : null,
+            'np_flat' => $type === 'courier' ? ($cut($in['np_flat'] ?? '', 20) ?: null) : null,
             'address' => $address === '' ? null : $address,
         ];
     }

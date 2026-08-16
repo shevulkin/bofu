@@ -140,6 +140,25 @@ class Checkout
         if ($emailRaw !== '' && !$email) $errors[] = 'Email виглядає некоректним — виправте або залиште поле порожнім';
         if (!in_array($delivery, ['np', 'pickup', 'other'], true)) $delivery = 'other';
 
+        // Нова Пошта: у відділення чи курʼєром. Ref-и приймаємо лише схожі на
+        // справжні (НП роздає UUID) — підставлений рядок інакше ліг би в
+        // накладну й відмовив би вже на створенні, коли виправляти пізно.
+        $npType = ($_POST['np_type'] ?? 'warehouse') === 'courier' ? 'courier' : 'warehouse';
+        $uuid = static fn($v) => preg_match('/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i', trim((string)$v))
+            ? trim((string)$v) : null;
+        $npRef = $uuid($_POST['city_ref'] ?? '');
+        $npOfficeRef = $uuid($_POST['np_office_ref'] ?? '');
+        $npStreetRef = $uuid($_POST['np_street_ref'] ?? '');
+        if ($delivery === 'np') {
+            if (trim($_POST['np_city'] ?? '') === '') $errors[] = 'Вкажіть місто доставки';
+            if ($npType === 'courier') {
+                if (trim($_POST['np_street'] ?? '') === '') $errors[] = 'Вкажіть вулицю доставки';
+                if (trim($_POST['np_house'] ?? '') === '') $errors[] = 'Вкажіть номер будинку';
+            } elseif (trim($_POST['np_office'] ?? '') === '') {
+                $errors[] = 'Вкажіть відділення або поштомат';
+            }
+        }
+
         // Магазин впливає на ціну (store_prices + акції магазину), тож приймаємо лише
         // існуючий активний і лише для самовивозу — інакше id підбирається руками в POST
         $storeId = null;
@@ -194,6 +213,17 @@ class Checkout
             'city' => trim($_POST['np_city'] ?? '') ?: null,
             'np_office' => trim($_POST['np_office'] ?? '') ?: null,
             'address' => trim($_POST['address'] ?? '') ?: null,
+            // Посилання на довідник НП. Без них накладну потім не створити:
+            // API приймає Ref, а «Відділення №5» у місті буває не одне. Порожні
+            // вони лишаються, коли людина вписала адресу руками, не обравши
+            // підказку, — тоді відділення дообирає продавець у картці.
+            'city_ref' => $npRef,
+            'np_type' => $npType,
+            'np_office_ref' => $npType === 'warehouse' ? $npOfficeRef : null,
+            'np_street' => $npType === 'courier' ? (trim($_POST['np_street'] ?? '') ?: null) : null,
+            'np_street_ref' => $npType === 'courier' ? $npStreetRef : null,
+            'np_house' => $npType === 'courier' ? (trim($_POST['np_house'] ?? '') ?: null) : null,
+            'np_flat' => $npType === 'courier' ? (trim($_POST['np_flat'] ?? '') ?: null) : null,
             'comment' => trim($_POST['comment'] ?? '') ?: null,
             'store_id' => $storeId,
             'status' => 'new', 'promo_code' => $promo['code'] ?? null,
@@ -220,8 +250,14 @@ class Checkout
                 Addresses::save(Auth::id(), [
                     'delivery' => $delivery,
                     'city' => $_POST['np_city'] ?? '',
-                    'city_ref' => $_POST['city_ref'] ?? '',
+                    'city_ref' => $npRef ?? '',
                     'np_office' => $_POST['np_office'] ?? '',
+                    'np_office_ref' => $npOfficeRef ?? '',
+                    'np_type' => $npType,
+                    'np_street' => $_POST['np_street'] ?? '',
+                    'np_street_ref' => $npStreetRef ?? '',
+                    'np_house' => $_POST['np_house'] ?? '',
+                    'np_flat' => $_POST['np_flat'] ?? '',
                     'address' => $_POST['address'] ?? '',
                 ]);
             } elseif ($addrId) {
@@ -252,6 +288,11 @@ class Checkout
             'order' => $order,
             'children' => $children,
             'items' => self::itemsByOrder($children),
+            // Для гостя ця сторінка — єдиний спосіб подивитись, де посилка:
+            // кабінету в нього немає, а посилання з токеном лишається робочим.
+            // Одразу після оформлення накладних ще немає — блок просто не
+            // зʼявиться, а на повторному заході вже буде.
+            'shipments' => \Shipments::forParent((int)$order['id']),
             'page_title' => 'Замовлення прийнято — ' . cfg('app_name'),
         ]);
     }
@@ -267,8 +308,15 @@ class Checkout
             $children[$o['id']] = $kids;
             $items += self::itemsByOrder($kids);
         }
+        // Накладні одним запитом на всі замовлення: у людини їх бувають десятки,
+        // і запит на кожне перетворив би сторінку історії на найповільнішу в кабінеті
+        $shipments = [];
+        foreach (\Shipments::forParents(array_column($orders, 'id')) as $rows) {
+            foreach ($rows as $s) $shipments[(int)$s['order_id']] = $s;
+        }
         View::show('account/orders', [
             'orders' => $orders, 'children' => $children, 'items' => $items,
+            'shipments' => $shipments,
             'page_title' => 'Мої замовлення — ' . cfg('app_name'),
         ]);
     }

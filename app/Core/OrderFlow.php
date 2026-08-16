@@ -37,7 +37,10 @@ class OrderFlow
 
     /** Поля, які підзамовлення успадковує від головного (контакти й доставка не змінюються) */
     private const INHERITED = ['user_id', 'name', 'phone', 'email', 'delivery',
-        'city', 'np_office', 'address', 'comment', 'promo_code'];
+        'city', 'np_office', 'address', 'comment', 'promo_code',
+        // Ref-и Нової Пошти теж успадковуються: накладну створюють саме в
+        // підзамовленні, і бігати за адресою в головне довелося б щоразу
+        'city_ref', 'np_office_ref', 'np_type', 'np_street', 'np_street_ref', 'np_house', 'np_flat'];
 
     public static function statusLabel(?string $status): string
     { return self::STATUSES[$status] ?? (string)$status; }
@@ -57,8 +60,17 @@ class OrderFlow
      */
     public static function deliveryAddress(array $o): string
     {
-        $parts = ($o['delivery'] ?? '') === 'pickup' ? []
-            : [$o['city'] ?? '', $o['np_office'] ?? '', $o['address'] ?? ''];
+        if (($o['delivery'] ?? '') === 'pickup') return '';
+        // Курʼєр — це вулиця з будинком, а не відділення. Показати замість
+        // адреси саме місто означало б послати кур'єра в нікуди.
+        if (($o['delivery'] ?? '') === 'np' && ($o['np_type'] ?? 'warehouse') === 'courier') {
+            $house = trim((string)($o['np_house'] ?? ''));
+            $flat = trim((string)($o['np_flat'] ?? ''));
+            $parts = [$o['city'] ?? '', trim((string)($o['np_street'] ?? '') . ($house !== '' ? ', буд. ' . $house : ''))
+                . ($flat !== '' ? ', кв. ' . $flat : '')];
+        } else {
+            $parts = [$o['city'] ?? '', $o['np_office'] ?? '', $o['address'] ?? ''];
+        }
         return implode(', ', array_filter(array_map('trim', array_map('strval', $parts)), fn($p) => $p !== ''));
     }
 
@@ -343,7 +355,11 @@ class OrderFlow
             'created_by_user_id' => $head['created_by_user_id'] ?? null,
             'subtotal' => 0, 'discount' => 0, 'total' => 0,
             'created_at' => now()];
-        foreach (self::INHERITED as $f) $data[$f] = $head[$f] ?? null;
+        // Поля, яких у головному немає, не переписуємо на NULL, а лишаємо
+        // стовпцю його замовчування. Інакше кожен стовпець зі значенням за
+        // замовчуванням довелось би згадувати тут окремо — як це вже сталося
+        // з source вище, і як ледве не сталося з np_type.
+        foreach (self::INHERITED as $f) if (array_key_exists($f, $head)) $data[$f] = $head[$f];
         return DB::insert('orders', $data);
     }
 

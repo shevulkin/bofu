@@ -31,7 +31,7 @@ class Stores
                         'name' => $name, 'city' => trim($s['city'] ?? '') ?: null,
                         'address' => trim($s['address'] ?? '') ?: null, 'phone' => trim($s['phone'] ?? '') ?: null,
                         'active' => !empty($s['active']) ? 1 : 0,
-                    ], self::coords($s['coords'] ?? '', $bad)), 'id = ?', [(int)$id]);
+                    ], self::coords($s['coords'] ?? '', $bad), self::npSender($s)), 'id = ?', [(int)$id]);
                     if ($bad) $badNames[] = $name;
                 }
                 // Про нерозібрані координати кажемо поіменно: збереглося все інше,
@@ -53,6 +53,30 @@ class Stores
             'map_start' => self::mapStart($stores),
             'page_title' => 'Магазини — адмінка',
         ], 'layouts/admin');
+    }
+
+    /**
+     * Звідки точка відправляє посилки Новою Поштою.
+     *
+     * Місто й відділення приймаються лише разом і лише з довідника: відділення
+     * без міста (чи навпаки) — це накладна в нікуди, а назва без Ref нічого не
+     * варта для API. Половинчастий набір мовчки обнуляємо — тоді працює спільне
+     * відділення з налаштувань, і це чесніше за «збережено», після якого
+     * накладна не створюється.
+     */
+    private static function npSender(array $s): array
+    {
+        $cut = static fn($v, int $max) => mb_substr(trim((string)($v ?? '')), 0, $max);
+        $cityRef = $cut($s['np_city_ref'] ?? '', 60);
+        $whRef = $cut($s['np_warehouse_ref'] ?? '', 60);
+        $full = $cityRef !== '' && $whRef !== '';
+        return [
+            'np_city' => $full ? ($cut($s['np_city'] ?? '', 160) ?: null) : null,
+            'np_city_ref' => $full ? $cityRef : null,
+            'np_warehouse' => $full ? ($cut($s['np_warehouse'] ?? '', 200) ?: null) : null,
+            'np_warehouse_ref' => $full ? $whRef : null,
+            'np_sender_phone' => $cut($s['np_sender_phone'] ?? '', 30) ?: null,
+        ];
     }
 
     /** @return array{lat:float,lng:float,zoom:int} */

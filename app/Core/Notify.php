@@ -12,6 +12,7 @@ class Notify
         'order_new'      => 'Нове замовлення',
         'order_status'   => 'Зміна статусу замовлення',
         'order_customer' => 'Покупцю: рух його замовлення',
+        'order_shipment' => 'Покупцю: накладна й рух посилки',
         'user_new'       => 'Новий користувач',
         'stock_low'      => 'Закінчується товар',
         'stock_wanted'   => 'Просять повідомити про наявність',
@@ -31,6 +32,7 @@ class Notify
         'order_new'      => ['admins_sellers', true],
         'order_status'   => ['admins_sellers', false],
         'order_customer' => ['customer', true],
+        'order_shipment' => ['customer', true],
         'user_new'       => ['admins_sellers', false],
         'stock_low'      => ['admins_sellers', false],
         'stock_wanted'   => ['sellers', true],
@@ -61,6 +63,11 @@ class Notify
         // рухається лише частина, {part} називає магазин і перелічує саме її
         // товари, а коли ціле замовлення — обидва рядки порожні й зникають.
         'order_customer' => "📦 Замовлення {number} — {status}\n{part}\n{items}\nСума: {total} грн",
+        // Посилка. Номер накладної тут головне — саме його переписують у трекінг
+        // і називають у відділенні, тож він стоїть окремим рядком і першим після
+        // заголовка. {estimated}, {cod} і {part} порожніють самі, коли нема чого
+        // сказати: рядок із самих підстановок зникає (interpolate).
+        'order_shipment' => "🚚 Замовлення {number}\n{part}\nНакладна: {ttn}\n{status}\n{estimated}\n{cod}\n{url}",
         'user_new'     => "👤 Новий користувач: {name} ({email})",
         'stock_low'    => "⚠️ Товар «{product}» закінчується: залишилось {qty} шт. ({store})",
         // Це не побажання клієнта, а сигнал попиту: {waiting} відповідає на

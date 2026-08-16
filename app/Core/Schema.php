@@ -7,7 +7,7 @@ declare(strict_types=1);
  */
 class Schema
 {
-    public const VERSION = 33;
+    public const VERSION = 34;
 
     /** Оновлення існуючої бази до поточної версії без втрати даних */
     public static function upgrade(): void
@@ -309,7 +309,72 @@ class Schema
         if ($ver < 33) {
             self::createAll();   // partners
         }
+        if ($ver < 34) {
+            // Накладні Нової Пошти.
+            //
+            // Текстового «відділення» для накладної замало: НП приймає Ref, а не
+            // назву, і зіставити «Відділення №5» з довідником заднім числом не
+            // вийде — таких у місті буває кілька, у різних районах. Тому поруч із
+            // назвою, яку читає людина, тепер лежить ref, який читає API. Старі
+            // замовлення лишаються без ref: накладну по них створять, обравши
+            // відділення в самій картці.
+            self::addColumn('orders', 'city_ref', 'str null');
+            self::addColumn('orders', 'np_office_ref', 'str null');
+            self::addColumn('orders', 'np_type', "str default 'warehouse'"); // warehouse|courier
+            self::addColumn('orders', 'np_street', 'str null');
+            self::addColumn('orders', 'np_street_ref', 'str null');
+            self::addColumn('orders', 'np_house', 'str null');
+            self::addColumn('orders', 'np_flat', 'str null');
+            // Те саме в збережених адресах кабінету — інакше швидкий вибір
+            // підставляв би адресу, з якої накладну знову не створити
+            self::addColumn('user_addresses', 'np_office_ref', 'str null');
+            self::addColumn('user_addresses', 'np_type', "str default 'warehouse'");
+            self::addColumn('user_addresses', 'np_street', 'str null');
+            self::addColumn('user_addresses', 'np_street_ref', 'str null');
+            self::addColumn('user_addresses', 'np_house', 'str null');
+            self::addColumn('user_addresses', 'np_flat', 'str null');
+            // Відділення відправлення в магазину своє: посилку несуть у сусіднє,
+            // а не через пів країни. Порожньо — беремо загальне (Shipments::sender).
+            // Контрагента тут немає навмисно: він належить кабінету НП, а кабінет
+            // (тобто API-ключ) у сайту один на всі точки.
+            self::addColumn('stores', 'np_sender_phone', 'str null');
+            self::addColumn('stores', 'np_city', 'str null');
+            self::addColumn('stores', 'np_city_ref', 'str null');
+            self::addColumn('stores', 'np_warehouse', 'str null');
+            self::addColumn('stores', 'np_warehouse_ref', 'str null');
+            // Вага товару — щоб форма накладної не питала те, що ми вже знаємо.
+            // Порожня вага не заважає: тоді береться типова з налаштувань.
+            self::addColumn('products', 'weight', 'num null');
+            self::addColumn('product_variants', 'weight', 'num null');
+            self::createAll();   // shipments + індекси
+            self::seedRules();   // нова подія «накладна й рух посилки»
+        }
         Settings::set('schema_version', (string)self::VERSION);
+    }
+
+    /**
+     * Дописати правила нотифікацій для подій, яких у базі ще немає.
+     *
+     * Наявних не чіпає: адмін міг вимкнути подію чи переписати шаблон, і
+     * міграція, що це затирає, гірша за відсутню. Значення беремо з
+     * Notify::DEFAULT_RULES — з того самого місця, що й Seeder, інакше нова
+     * подія працювала б або лише на нових базах, або лише на оновлених.
+     */
+    private static function seedRules(): void
+    {
+        foreach (Notify::EVENTS as $event => $label) {
+            [$to, $on] = Notify::DEFAULT_RULES[$event] ?? ['admins_sellers', false];
+            foreach (array_keys(Notify::CHANNELS) as $channel) {
+                if (DB::row('SELECT id FROM notification_rules WHERE event = ? AND channel = ?',
+                    [$event, $channel])) continue;
+                DB::insert('notification_rules', [
+                    'event' => $event, 'channel' => $channel,
+                    'enabled' => $on ? 1 : 0,
+                    'recipients' => $to,
+                    'template' => Notify::DEFAULT_TEMPLATES[$event] ?? '',
+                ]);
+            }
+        }
     }
 
     /**
@@ -444,6 +509,11 @@ class Schema
                 'address' => 'str null', 'phone' => 'str null',
                 // мітка на карті; без них точка лишається в списку, але не на карті
                 'lat' => 'geo null', 'lng' => 'geo null',
+                // Звідки ця точка відправляє посилки. Порожньо — з відділення,
+                // вказаного в загальних налаштуваннях (див. Shipments::sender).
+                'np_sender_phone' => 'str null',
+                'np_city' => 'str null', 'np_city_ref' => 'str null',
+                'np_warehouse' => 'str null', 'np_warehouse_ref' => 'str null',
                 'active' => 'bool default 1', 'sort' => 'int default 0',
             ],
             // Партнери — не бренди. Бренд відповідає на питання «чий це товар»
@@ -483,6 +553,9 @@ class Schema
                 'active' => 'bool default 1', 'featured' => 'bool default 0',
                 'made_to_order' => 'bool default 1', // виробник: можна замовити без наявності
                 'low_stock_threshold' => 'int null', // ≤ цього — показуємо "закінчується" замість числа
+                // Вага однієї штуки, кг — щоб форма накладної не питала те, що
+                // ми вже знаємо. Порожньо — береться типова з налаштувань.
+                'weight' => 'num null',
                 'image' => 'str null',
                 'created_at' => 'ts', 'updated_at' => 'ts',
             ],
@@ -490,6 +563,9 @@ class Schema
                 'id' => 'id', 'product_id' => 'int', 'name' => 'str',
                 // Коди належать фасовці, а не товару: етикетку клеять на банку
                 'price' => 'num null', 'sku' => 'str null', 'barcode' => 'str null',
+                // Вага теж належить фасовці: «мед узагалі» не важить нічого,
+                // важить банка на 0.5 чи на 1.5 кг
+                'weight' => 'num null',
                 'sort' => 'int default 0', 'active' => 'bool default 1',
             ],
             'product_images' => [
@@ -558,6 +634,15 @@ class Schema
                 'name' => 'str', 'phone' => 'str', 'email' => 'str null',
                 'delivery' => 'str', 'city' => 'str null', 'np_office' => 'str null',
                 'address' => 'str null', 'comment' => 'text null',
+                // Адреса Нової Пошти двома шарами: назви для людини й Ref-и для
+                // API. Без Ref-ів накладну не створити — «Відділення №5» у місті
+                // буває не одне, і вгадувати, яке з них мали на увазі, ніхто не
+                // стане. np_type розводить два різні маршрути: у відділення
+                // (тоді працює np_office_ref) чи курʼєром (тоді вулиця з будинком).
+                'city_ref' => 'str null', 'np_office_ref' => 'str null',
+                'np_type' => "str default 'warehouse'", // warehouse|courier
+                'np_street' => 'str null', 'np_street_ref' => 'str null',
+                'np_house' => 'str null', 'np_flat' => 'str null',
                 'store_id' => 'int null',
                 // Звідки замовлення: сайт, дзвінок продавцю чи продаж у точці.
                 // created_by_user_id — продавець, який його завів (у сайтових порожньо).
@@ -577,6 +662,12 @@ class Schema
                 'label' => 'str null',              // «Дім», «Робота» — необовʼязкова мітка
                 'delivery' => "str default 'np'",   // np|other; самовивіз адреси не потребує
                 'city' => 'str null', 'city_ref' => 'str null', 'np_office' => 'str null',
+                // Ті самі поля, що й у замовленні: збережена адреса має бути
+                // придатною до накладної, інакше швидкий вибір лише економить
+                // друкування, а відділення все одно доводиться обирати заново
+                'np_office_ref' => 'str null', 'np_type' => "str default 'warehouse'",
+                'np_street' => 'str null', 'np_street_ref' => 'str null',
+                'np_house' => 'str null', 'np_flat' => 'str null',
                 'address' => 'str null',
                 'is_default' => 'bool default 0',
                 'used_at' => 'str null', 'created_at' => 'ts',
@@ -590,11 +681,52 @@ class Schema
                 // облік, тоді поводимось як раніше й вважаємо, що взяли все.
                 'stock_taken' => 'int null',
             ],
+            /**
+             * Накладна Нової Пошти.
+             *
+             * Одна на підзамовлення, а не на замовлення: кожен магазин відправляє
+             * свою частину зі свого відділення, і фізично це різні посилки з
+             * різними номерами. Одного номера на дві коробки з різних міст не
+             * буває, тож і в базі його немає.
+             *
+             * Рядок лишається й після доставки — це історія відправлення, а не
+             * стан. Видаляється лише разом зі скасуванням накладної в НП.
+             */
+            'shipments' => [
+                'id' => 'id',
+                'order_id' => 'int',                    // підзамовлення (parent_id IS NOT NULL)
+                'parent_id' => 'int',                   // головне — щоб кабінет читав одним запитом
+                // Перевізник поки один, але поле є: додати «Укрпошту» дешевше,
+                // ніж потім розводити дві таблиці з однаковим змістом.
+                'carrier' => "str default 'np'",
+                'number' => 'str',                      // ТТН — те, що покупець вводить у трекінг
+                'doc_ref' => 'str null',                // Ref накладної в НП; у вписаних руками порожній
+                'source' => "str default 'api'",        // api|manual — звідки номер
+                'service' => "str default 'warehouse'", // warehouse|courier
+                'payer' => "str default 'Recipient'",   // хто платить за доставку
+                'payment' => "str default 'Cash'",      // Cash|NonCash
+                'cod' => 'num default 0',               // післяплата: скільки грошей везуть назад
+                'weight' => 'num default 0', 'seats' => 'int default 1',
+                'description' => 'str null',            // опис вантажу для накладної
+                'cost' => 'num default 0',              // оголошена вартість
+                'delivery_cost' => 'num default 0',     // скільки НП порахувала за доставку
+                'estimated_at' => 'str null',           // орієнтовна дата доставки
+                // Останнє, що сказала НП. phase — той самий статус, зведений до
+                // шести станів, якими користується решта коду (див. NovaPoshta).
+                'status_code' => 'int null', 'status_text' => 'str null',
+                'phase' => "str default 'new'",
+                'tracked_at' => 'str null', 'delivered_at' => 'str null',
+                // Про що покупцю вже сказали: без цього кожен прохід трекінгу
+                // слав би «посилка у відділенні» повторно, поки її не заберуть.
+                'notified_phase' => 'str null',
+                'created_by_user_id' => 'int null',
+                'created_at' => 'ts', 'updated_at' => 'str null',
+            ],
             // Історія замовлення: розділення, зміни статусів, передачі позицій між магазинами.
             // parent_id — завжди головне замовлення, щоб уся стрічка читалась одним запитом.
             'order_events' => [
                 'id' => 'id', 'parent_id' => 'int', 'order_id' => 'int null', 'user_id' => 'int null',
-                'type' => 'str', // created|status|transfer|note
+                'type' => 'str', // created|status|transfer|note|shipment
                 'role' => 'str null', // роль, у якій діяли
                 'message' => 'text null', 'created_at' => 'ts',
             ],
@@ -686,6 +818,9 @@ class Schema
             'store_stock' => ['product_id', 'store_id', 'variant_id'],
             'orders' => ['status', 'store_id', 'user_id', 'token', 'parent_id'],
             'order_events' => ['parent_id'],
+            // number — за ним шукає трекінг, phase — за нею відбираються ті
+            // накладні, які ще має сенс перепитувати
+            'shipments' => ['order_id', 'parent_id', 'number', 'phase'],
             'rate_hits' => ['action', 'ident', 'created_at'],
             'subscribers' => ['token'],
             'order_items' => ['order_id'],

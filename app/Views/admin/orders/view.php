@@ -167,6 +167,180 @@
             <?php endif; ?>
           </div>
         </div>
+
+        <?php /* Відправлення. Блок є лише в частин, які їдуть Новою Поштою:
+                 самовивозу накладна ні до чого, і порожня форма там лише
+                 збивала б з пантелику. Показуємо всім, хто бачить замовлення,
+                 — номер потрібен і тому, хто просто відповідає на дзвінок, —
+                 а кнопки лишаємо тому, хто веде цю частину. */ ?>
+        <?php if ($parent['delivery'] === 'np'): $sh = $shipments[$cid] ?? null; ?>
+          <div class="ship-box" style="margin-top:14px;padding-top:14px;border-top:1px solid var(--bg3)">
+            <?php if ($sh): $phase = (string)$sh['phase']; ?>
+              <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
+                <div>
+                  <div class="dim" style="font-size:12.5px">Накладна Нової Пошти</div>
+                  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:2px">
+                    <b style="font-family:var(--serif);font-size:18px;letter-spacing:.5px"><?= e($sh['number']) ?></b>
+                    <a class="dim" style="font-size:12.5px" target="_blank" rel="noopener"
+                       href="<?= e(Shipments::trackUrl($sh['number'])) ?>">відстежити →</a>
+                    <?php if ($sh['source'] === 'manual'): ?>
+                      <span class="dim" style="font-size:12px">вписано вручну</span>
+                    <?php endif; ?>
+                  </div>
+                  <div style="margin-top:6px">
+                    <span class="status-pill st-<?= $phase === 'done' ? 'done' : ($phase === 'problem' ? 'canceled' : 'shipped') ?>">
+                      <?= e(Shipments::statusLabel($sh)) ?></span>
+                    <?php if ($sh['estimated_at'] && $phase !== 'done'): ?>
+                      <span class="dim" style="font-size:12.5px">орієнтовно <?= e(date('d.m.Y', strtotime($sh['estimated_at']))) ?></span>
+                    <?php endif; ?>
+                    <?php if ($sh['tracked_at']): ?>
+                      <span class="dim" style="font-size:12px">· перевірено <?= e(date('d.m H:i', strtotime($sh['tracked_at']))) ?></span>
+                    <?php endif; ?>
+                  </div>
+                  <div class="dim" style="font-size:12.5px;margin-top:6px">
+                    <?= e(Shipments::SERVICE[$sh['service']] ?? $sh['service']) ?>
+                    · платить <?= e(mb_strtolower($ship_payers[$sh['payer']] ?? $sh['payer'])) ?>
+                    <?php if ((float)$sh['weight'] > 0): ?> · <?= e(num_val($sh['weight'])) ?> кг<?php endif; ?>
+                    <?php if ((int)$sh['seats'] > 1): ?> · місць: <?= (int)$sh['seats'] ?><?php endif; ?>
+                    <?php if ((float)$sh['delivery_cost'] > 0): ?> · доставка <?= e(price_fmt($sh['delivery_cost'])) ?><?php endif; ?>
+                    <?php if ((float)$sh['cod'] > 0): ?>
+                      · <b style="color:var(--gold)">післяплата <?= e(price_fmt($sh['cod'])) ?></b>
+                    <?php endif; ?>
+                  </div>
+                </div>
+                <?php if ($mine && $can_ship): ?>
+                  <div style="display:flex;gap:8px;flex-wrap:wrap">
+                    <form method="post" action="<?= e(url('/admin/orders/' . $order['id'])) ?>">
+                      <?= Csrf::field() ?>
+                      <input type="hidden" name="action" value="ship_refresh">
+                      <input type="hidden" name="order_id" value="<?= $cid ?>">
+                      <button class="btn btn-line btn-xs" type="submit"
+                              data-help-title="Оновити статус"
+                              data-help="Питає Нову Пошту, де зараз посилка, і оновлює статус тут-таки.
+
+Робити це щоразу не треба: статуси й так підтягуються самі за розкладом. Кнопка — для випадку «покупець дзвонить просто зараз і питає».
+
+Коли посилка прибуває у відділення чи її отримують, покупець дізнається сам — йому йде повідомлення.">↻ Статус</button>
+                    </form>
+                    <form method="post" action="<?= e(url('/admin/orders/' . $order['id'])) ?>"
+                          onsubmit="return confirm('Відкріпити накладну <?= e($sh['number']) ?> від замовлення? Якщо посилку ще не прийняли у відділенні, вона буде скасована в Новій Пошті.')">
+                      <?= Csrf::field() ?>
+                      <input type="hidden" name="action" value="ship_remove">
+                      <input type="hidden" name="order_id" value="<?= $cid ?>">
+                      <button class="btn btn-line btn-xs" type="submit"
+                              data-help-title="Відкріпити накладну"
+                              data-help="Прибирає номер із замовлення й пробує скасувати накладну в Новій Пошті.
+
+Скасувати вдається, лише поки посилку не прийняли у відділенні. Якщо вже прийняли — номер відкріпиться тут, але посилка їхатиме далі, і повертати її доведеться через НП. Про це скажемо прямо.
+
+Потрібне, коли накладну створили помилково: не на ту частину, не на те відділення, не з тією вагою.">✕ Накладна</button>
+                    </form>
+                  </div>
+                <?php endif; ?>
+              </div>
+
+            <?php elseif ($mine && $can_ship): $gaps = $ship_gaps[$cid] ?? []; $f = $ship_form[$cid] ?? null; ?>
+              <?php if ($gaps): ?>
+                <div class="dim" style="font-size:13px">
+                  <b>Накладну поки не створити.</b> Бракує: <?= e(implode('; ', $gaps)) ?>.
+                </div>
+                <?php /* Найчастіша причина — відділення без Ref: старе замовлення
+                         або покупець вписав назву руками. Це лагодиться тут-таки,
+                         а не в базі, тож поруч із причиною — куди по неї йти.
+                         Перевіряємо самі поля, а не текст причини: підпис колись
+                         перепишуть, і мовчазно зникла підказка гірша за незручну. */ ?>
+                <?php
+                  $noRef = trim((string)($parent['city_ref'] ?? '')) === ''
+                    || (($parent['np_type'] ?? 'warehouse') === 'courier'
+                        ? trim((string)($parent['np_street_ref'] ?? '')) === ''
+                        : trim((string)($parent['np_office_ref'] ?? '')) === '');
+                ?>
+                <?php if ($np_enabled && $noRef): ?>
+                  <p class="dim" style="font-size:12.5px;margin:8px 0 0">
+                    Відділення дообирається у блоці «Доставка» — праворуч на цій сторінці.
+                  </p>
+                <?php endif; ?>
+                <details style="margin-top:10px">
+                  <summary class="dim" style="cursor:pointer;font-size:13px">Вписати номер накладної вручну</summary>
+                  <?php include __DIR__ . '/_ship_attach.php'; ?>
+                </details>
+              <?php else: ?>
+                <form method="post" action="<?= e(url('/admin/orders/' . $order['id'])) ?>">
+                  <?= Csrf::field() ?>
+                  <input type="hidden" name="action" value="ship_create">
+                  <input type="hidden" name="order_id" value="<?= $cid ?>">
+                  <div class="dim" style="font-size:12.5px;margin-bottom:8px">Відправлення Новою Поштою</div>
+                  <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+                    <div style="width:110px">
+                      <label class="dim" style="font-size:12px">Вага, кг</label>
+                      <input type="text" name="ship[weight]" value="<?= e(num_val($f['weight'])) ?>"
+                             data-help-title="Вага посилки"
+                             data-help="Порахована з ваг товарів (вага × кількість). Де ваги в товарі не проставлено, узято типову з Налаштувань.
+
+Звірте з реальною: за вагою Нова Пошта рахує гроші, і занижена означає доплату у відділенні.">
+                    </div>
+                    <div style="width:90px">
+                      <label class="dim" style="font-size:12px">Місць</label>
+                      <input type="text" name="ship[seats]" value="<?= (int)$f['seats'] ?>">
+                    </div>
+                    <div style="width:120px">
+                      <label class="dim" style="font-size:12px">Оцінка, грн</label>
+                      <input type="text" name="ship[cost]" value="<?= e(num_val($f['cost'])) ?>"
+                             data-help-title="Оголошена вартість"
+                             data-help="Скільки коштує вміст посилки. На цю суму НП страхує відправлення — і саме з неї рахує страховий збір.
+
+За замовчуванням дорівнює сумі частини замовлення. Занижувати не варто: у разі втрати повернуть рівно оголошене.">
+                    </div>
+                    <div style="width:140px">
+                      <label class="dim" style="font-size:12px">Післяплата, грн</label>
+                      <input type="text" name="ship[cod]" value="<?= e(num_val($f['cod'])) ?>"
+                             data-help-title="Післяплата"
+                             data-help="Скільки покупець платить при отриманні. Гроші НП перекаже вам.
+
+0 — покупець уже заплатив або платитиме інакше. Ставте суму лише тоді, коли грошей за це замовлення ви ще не бачили: забута післяплата означає віддану задарма посилку.">
+                    </div>
+                    <div style="flex:1;min-width:180px">
+                      <label class="dim" style="font-size:12px">Опис вантажу</label>
+                      <input type="text" name="ship[description]" value="<?= e($f['description']) ?>" maxlength="120">
+                    </div>
+                    <div style="width:150px">
+                      <label class="dim" style="font-size:12px">Платить за доставку</label>
+                      <select name="ship[payer]">
+                        <?php foreach ($ship_payers as $key => $label): ?>
+                          <option value="<?= e($key) ?>"<?= $f['payer'] === $key ? ' selected' : '' ?>><?= e($label) ?></option>
+                        <?php endforeach; ?>
+                      </select>
+                    </div>
+                    <div style="width:150px">
+                      <label class="dim" style="font-size:12px">Оплата</label>
+                      <select name="ship[payment]">
+                        <?php foreach ($ship_payments as $key => $label): ?>
+                          <option value="<?= e($key) ?>"<?= $f['payment'] === $key ? ' selected' : '' ?>><?= e($label) ?></option>
+                        <?php endforeach; ?>
+                      </select>
+                    </div>
+                    <button class="btn btn-gold btn-sm" type="submit"
+                            data-help-title="Створити накладну"
+                            data-help="Створює справжню експрес-накладну в Новій Пошті — з номером, за який відповідаєте ви.
+
+Одразу після цього: частина переходить у «В дорозі», покупцю йде номер із посиланням на відстеження, а статус посилки далі оновлюється сам.
+
+Помилились — накладну можна відкріпити, поки її не прийняли у відділенні.
+
+Куди везти, беремо з замовлення: покупець обрав відділення сам, і міняти це за нього тут не можна.">📦 Створити накладну</button>
+                  </div>
+                </form>
+                <details style="margin-top:10px">
+                  <summary class="dim" style="cursor:pointer;font-size:13px">Накладна вже створена в кабінеті НП — вписати номер</summary>
+                  <?php include __DIR__ . '/_ship_attach.php'; ?>
+                </details>
+              <?php endif; ?>
+
+            <?php else: ?>
+              <div class="dim" style="font-size:13px">Накладної ще немає.</div>
+            <?php endif; ?>
+          </div>
+        <?php endif; ?>
       </div>
     <?php endforeach; ?>
 
@@ -224,10 +398,77 @@
       <?php endif; ?>
       <p class="muted" style="margin-top:12px">
         <?= e(OrderFlow::deliveryLabel($parent['delivery'])) ?>
-        <?= $parent['city'] ? '<br>Місто: ' . e($parent['city']) : '' ?>
-        <?= $parent['np_office'] ? '<br>Відділення: ' . e($parent['np_office']) : '' ?>
+        <?php if ($parent['delivery'] === 'np' && ($parent['np_type'] ?? 'warehouse') === 'courier'): ?>
+          <br>Курʼєром: <?= e(OrderFlow::deliveryAddress($parent)) ?>
+        <?php else: ?>
+          <?= $parent['city'] ? '<br>Місто: ' . e($parent['city']) : '' ?>
+          <?= $parent['np_office'] ? '<br>Відділення: ' . e($parent['np_office']) : '' ?>
+        <?php endif; ?>
         <?= $parent['address'] ? '<br>Адреса: ' . e($parent['address']) : '' ?>
       </p>
+
+      <?php /* Адреса без Ref-ів довідника — це адреса, за якою не створюється
+               накладна: НП приймає посилання, а «Відділення №5» у місті буває
+               не одне. Таке трапляється зі старими замовленнями й з тими, де
+               покупець вписав відділення руками. Лагодиться тут-таки: інакше
+               продавцю лишалось би оформлювати посилку в кабінеті НП. */ ?>
+      <?php if ($parent['delivery'] === 'np' && $can_ship && $np_enabled): ?>
+        <?php
+          $needsRef = trim((string)($parent['city_ref'] ?? '')) === ''
+            || (($parent['np_type'] ?? 'warehouse') === 'courier'
+                ? trim((string)($parent['np_street_ref'] ?? '')) === ''
+                : trim((string)($parent['np_office_ref'] ?? '')) === '');
+        ?>
+        <details style="margin-top:12px"<?= $needsRef ? ' open' : '' ?>>
+          <summary class="dim" style="cursor:pointer;font-size:13px">
+            <?= $needsRef ? '⚠️ Уточнити відділення для накладної' : 'Змінити відділення доставки' ?>
+          </summary>
+          <?php if ($needsRef): ?>
+            <p class="dim" style="font-size:12.5px;margin:8px 0">
+              Адреса записана текстом, без звʼязку з довідником Нової Пошти — накладну за нею не створити.
+              Оберіть місто й відділення з підказок: покупцю нічого робити не треба, адреса та сама.
+            </p>
+          <?php endif; ?>
+          <form method="post" action="<?= e(url('/admin/orders/' . $order['id'])) ?>" style="margin-top:8px">
+            <?= Csrf::field() ?>
+            <input type="hidden" name="action" value="np_address">
+            <div class="field" style="margin-bottom:8px">
+              <label class="dim" style="font-size:12px">Куди</label>
+              <select name="np_type" id="npAddrType">
+                <option value="warehouse"<?= ($parent['np_type'] ?? 'warehouse') !== 'courier' ? ' selected' : '' ?>>У відділення / поштомат</option>
+                <option value="courier"<?= ($parent['np_type'] ?? '') === 'courier' ? ' selected' : '' ?>>Курʼєром на адресу</option>
+              </select>
+            </div>
+            <div class="field" style="margin-bottom:8px">
+              <label class="dim" style="font-size:12px">Місто</label>
+              <input type="text" name="np_city" id="npCity" value="<?= e($parent['city'] ?? '') ?>"
+                     autocomplete="new-password" data-lpignore="true" data-1p-ignore spellcheck="false">
+              <input type="hidden" name="city_ref" id="npCityRef" value="<?= e($parent['city_ref'] ?? '') ?>">
+            </div>
+            <div class="field" style="margin-bottom:8px" data-np-wh>
+              <label class="dim" style="font-size:12px">Відділення</label>
+              <input type="text" name="np_office" id="npOffice" value="<?= e($parent['np_office'] ?? '') ?>"
+                     autocomplete="new-password" data-lpignore="true" data-1p-ignore spellcheck="false">
+              <input type="hidden" name="np_office_ref" id="npOfficeRef" value="<?= e($parent['np_office_ref'] ?? '') ?>">
+            </div>
+            <div data-np-courier hidden>
+              <div class="field" style="margin-bottom:8px">
+                <label class="dim" style="font-size:12px">Вулиця</label>
+                <input type="text" name="np_street" id="npStreet" value="<?= e($parent['np_street'] ?? '') ?>"
+                       autocomplete="new-password" data-lpignore="true" data-1p-ignore spellcheck="false">
+                <input type="hidden" name="np_street_ref" id="npStreetRef" value="<?= e($parent['np_street_ref'] ?? '') ?>">
+              </div>
+              <div style="display:flex;gap:8px">
+                <div class="field" style="flex:1"><label class="dim" style="font-size:12px">Будинок</label>
+                  <input type="text" name="np_house" value="<?= e($parent['np_house'] ?? '') ?>" maxlength="20"></div>
+                <div class="field" style="flex:1"><label class="dim" style="font-size:12px">Квартира</label>
+                  <input type="text" name="np_flat" value="<?= e($parent['np_flat'] ?? '') ?>" maxlength="20"></div>
+              </div>
+            </div>
+            <button class="btn btn-line btn-sm" type="submit">Зберегти доставку</button>
+          </form>
+        </details>
+      <?php endif; ?>
       <?php if ($parent['comment']): ?><p style="margin-top:12px" class="dim">Коментар: <?= e($parent['comment']) ?></p><?php endif; ?>
     </div>
 
@@ -316,3 +557,25 @@
     <?php endif; ?>
   </div>
 </div>
+
+<?php /* Підказки НП потрібні лише тому, хто може правити доставку */ ?>
+<?php if ($parent['delivery'] === 'np' && $can_ship && $np_enabled): ?>
+  <?= View::partial('partials/np_autocomplete') ?>
+  <script>
+  (function(){
+    if (window.npAutocomplete) {
+      window.npAutocomplete({city: 'npCity', office: 'npOffice', ref: 'npCityRef',
+                             officeRef: 'npOfficeRef', street: 'npStreet', streetRef: 'npStreetRef'});
+    }
+    var sel = document.getElementById('npAddrType');
+    if (!sel) return;
+    var sync = function(){
+      var courier = sel.value === 'courier';
+      document.querySelectorAll('[data-np-wh]').forEach(function(el){ el.hidden = courier; });
+      document.querySelectorAll('[data-np-courier]').forEach(function(el){ el.hidden = !courier; });
+    };
+    sel.addEventListener('change', sync);
+    sync();
+  })();
+  </script>
+<?php endif; ?>

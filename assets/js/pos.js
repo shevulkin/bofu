@@ -260,6 +260,20 @@
   sync();
 
   if (window.npAutocomplete) {
-    window.npAutocomplete({ city: 'npCity', office: 'npOffice', ref: 'npCityRef' });
+    window.npAutocomplete({ city: 'npCity', office: 'npOffice', ref: 'npCityRef',
+                            officeRef: 'npOfficeRef', street: 'npStreet', streetRef: 'npStreetRef' });
+  }
+
+  // Відділення чи курʼєр: показуємо тільки потрібні поля. Різниця не косметична —
+  // курʼєрська накладна вимагає вулиці з довідника, а не адреси рядком.
+  var npType = document.getElementById('posNpType');
+  if (npType) {
+    var syncNpType = function () {
+      var courier = npType.value === 'courier';
+      document.querySelectorAll('[data-pos-np-wh]').forEach(function (el) { el.hidden = courier; });
+      document.querySelectorAll('[data-pos-np-courier]').forEach(function (el) { el.hidden = !courier; });
+    };
+    npType.addEventListener('change', syncNpType);
+    syncNpType();
   }
 })();

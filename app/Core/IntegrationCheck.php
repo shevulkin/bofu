@@ -28,6 +28,7 @@ class IntegrationCheck
             self::telegram(trim((string)($v['telegram_bot_token'] ?? ''))),
             self::viber(trim((string)($v['viber_bot_token'] ?? ''))),
             self::novaPoshta(trim((string)($v['np_api_key'] ?? ''))),
+            self::npSender(trim((string)($v['np_api_key'] ?? ''))),
             self::google($v),
             self::email(trim((string)($v['mail_from'] ?? ''))),
             self::botSite(trim((string)($v['bot_site_url'] ?? ''))),
@@ -119,6 +120,39 @@ class IntegrationCheck
         }
         $found = $resp['data'][0]['Addresses'][0]['Present'] ?? '';
         return self::row('Нова Пошта', 'ok', 'Ключ робочий' . ($found !== '' ? ' — тестовий пошук знайшов «' . $found . '»' : ''));
+    }
+
+    /**
+     * Чи можна створювати накладні. Робочий ключ цього ще не означає: ключ
+     * відкриває довідники, а накладну підписує контрагент-відправник, якого
+     * треба обрати окремо. Без цієї перевірки перша ж спроба створити ТТН
+     * закінчилась би відмовою НП тоді, коли продавець стоїть із коробкою.
+     *
+     * Самих накладних не створюємо — вони справжні й коштують грошей. Тому
+     * перевіряємо заповненість і кажемо прямо, чого це не доводить.
+     */
+    private static function npSender(string $key): array
+    {
+        if ($key === '') return [];   // без ключа нема про що говорити — скаже перевірка вище
+
+        $gaps = [];
+        if ((string)Settings::get('np_sender_ref', '') === '') $gaps[] = 'контрагент-відправник';
+        if ((string)Settings::get('np_sender_contact_ref', '') === '') $gaps[] = 'контактна особа';
+        if (NovaPoshta::phone((string)Settings::get('np_sender_phone', '')) === '') $gaps[] = 'телефон відправника';
+        if ((string)Settings::get('np_sender_city_ref', '') === '') $gaps[] = 'місто відправлення';
+        if ((string)Settings::get('np_sender_warehouse_ref', '') === '') $gaps[] = 'відділення відправлення';
+
+        if ($gaps) {
+            return self::row('НП: відправник', 'warn',
+                'Накладні поки не створюються — не заповнено: ' . implode(', ', $gaps),
+                'Підказки міст і відділень у checkout працюють і без цього. А от кнопка «Створити накладну» '
+                . 'у замовленні скаже те саме, що й тут. Заповнюється в картці «Нова Пошта: відправник» нижче.');
+        }
+        return self::row('НП: відправник', 'ok',
+            'Відправник заповнений: ' . (Settings::get('np_sender_name', '') ?: 'контрагент обрано')
+            . ', ' . (Settings::get('np_sender_warehouse', '') ?: 'відділення обрано'),
+            'Це перевірка заповненості, а не дійсності: чи прийме НП саме цього відправника, '
+            . 'з’ясується на першій справжній накладній. Тестових ми не створюємо — вони коштують грошей.');
     }
 
     private static function google(array $v): array

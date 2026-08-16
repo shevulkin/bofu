@@ -33,6 +33,34 @@
                       <span><?= e(price_fmt($it['sum'])) ?></span>
                     </div>
                   <?php endforeach; ?>
+
+                  <?php /* Посилка. Номер накладної — найголовніше тут: його
+                           диктують у відділенні й вставляють у трекінг, тому він
+                           великий, окремим рядком і з кнопкою «копіювати».
+                           Показуємо, лише коли накладна є: рядок «накладної
+                           немає» нічого покупцю не дає, а тривоги додає. */ ?>
+                  <?php $sh = $shipments[(int)$c['id']] ?? null; if ($sh): $phase = (string)$sh['phase']; ?>
+                    <div style="margin-top:12px;padding:12px 14px;border:1px solid var(--bg3);border-radius:8px">
+                      <div class="dim" style="font-size:12.5px">Нова Пошта</div>
+                      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:3px">
+                        <b style="font-family:var(--serif);font-size:18px;letter-spacing:.5px" data-ttn><?= e($sh['number']) ?></b>
+                        <button type="button" class="btn btn-line btn-xs" data-copy-ttn="<?= e($sh['number']) ?>">Копіювати</button>
+                        <a class="btn btn-line btn-xs" target="_blank" rel="noopener"
+                           href="<?= e(Shipments::trackUrl($sh['number'])) ?>">Відстежити →</a>
+                      </div>
+                      <div style="margin-top:8px;font-size:14px">
+                        <?= e(Shipments::statusLabel($sh)) ?>
+                        <?php if ($sh['estimated_at'] && $phase !== 'done'): ?>
+                          <span class="dim">· орієнтовно <?= e(date('d.m.Y', strtotime($sh['estimated_at']))) ?></span>
+                        <?php endif; ?>
+                      </div>
+                      <?php if ((float)$sh['cod'] > 0 && $phase !== 'done'): ?>
+                        <div style="margin-top:6px;font-size:14px">
+                          До сплати при отриманні: <b><?= e(price_fmt($sh['cod'])) ?></b>
+                        </div>
+                      <?php endif; ?>
+                    </div>
+                  <?php endif; ?>
                 </div>
               <?php endforeach; ?>
 
@@ -47,3 +75,16 @@
     <?php endif; ?>
   </div>
 </section>
+<script>
+// Номер накладної переписують у трекінг або диктують у відділенні — з екрана
+// телефона це чотирнадцять цифр поспіль, у яких легко збитись
+document.querySelectorAll('[data-copy-ttn]').forEach(function (btn) {
+  btn.addEventListener('click', function () {
+    var was = btn.textContent;
+    navigator.clipboard.writeText(btn.dataset.copyTtn).then(function () {
+      btn.textContent = 'Скопійовано';
+      setTimeout(function () { btn.textContent = was; }, 1500);
+    }).catch(function () { btn.textContent = 'Не вийшло — виділіть вручну'; });
+  });
+});
+</script>

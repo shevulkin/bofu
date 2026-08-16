@@ -3,25 +3,24 @@ declare(strict_types=1);
 
 namespace Controllers;
 
-use DB, Auth, Csrf, Settings, WebPush, Viber;
+use DB, Auth, Csrf, Settings, WebPush, Viber, NovaPoshta;
 
 class Api
 {
-    /** Пошук міст Нової Пошти (потрібен API-ключ у налаштуваннях) */
+    /**
+     * Довідники Нової Пошти для підказок у формах.
+     *
+     * Усі три відповідають однаково — [['ref','label']], — бо однаково й
+     * використовуються: людина бачить label, а в приховане поле лягає ref.
+     * Без ref накладну потім не створити: НП приймає посилання, а не назву,
+     * і зіставити «Відділення №5» з довідником заднім числом не вийде —
+     * таких у місті буває кілька, у різних районах.
+     */
     public static function npCities(): never
     {
         $q = trim($_GET['q'] ?? '');
-        $key = Settings::get('np_api_key');
-        if (!$key || mb_strlen($q) < 2) json_response(['items' => []]);
-        $resp = self::np($key, 'Address', 'searchSettlements', ['CityName' => $q, 'Limit' => '10']);
-        $items = [];
-        foreach (($resp['data'][0]['Addresses'] ?? []) as $a) {
-            // Ref населеного пункту, а не DeliveryCity: за DeliveryCity getWarehouses
-            // для частини міст (напр. Кривого Рогу) віддає порожній список
-            if (empty($a['Ref'])) continue;
-            $items[] = ['ref' => $a['Ref'], 'label' => $a['Present'] ?? ''];
-        }
-        json_response(['items' => $items]);
+        if (!NovaPoshta::enabled() || mb_strlen($q) < 2) json_response(['items' => []]);
+        json_response(['items' => NovaPoshta::settlements($q)]);
     }
 
     /** Відділення й поштомати обраного міста; ?q — фільтр за номером чи адресою */
@@ -29,36 +28,61 @@ class Api
     {
         $ref = trim($_GET['city'] ?? '');
         $q = trim($_GET['q'] ?? '');
-        $key = Settings::get('np_api_key');
-        if (!$key || !$ref) json_response(['items' => []]);
-        // Без FindByString довелося б викачувати місто цілком: у Києві це 7700+ точок,
-        // і будь-який ліміт обрізав список на перших відділеннях — поштоматів у ньому
-        // не було взагалі. Тепер шукає сама Нова Пошта — і по номеру, і по вулиці.
-        $props = ['SettlementRef' => $ref, 'Limit' => '50', 'Page' => '1'];
-        if ($q !== '') $props['FindByString'] = $q;
-        $resp = self::np($key, 'Address', 'getWarehouses', $props);
-        $items = [];
-        foreach (($resp['data'] ?? []) as $w) {
-            if (!empty($w['Description'])) $items[] = $w['Description'];
-        }
-        json_response(['items' => $items]);
+        if (!NovaPoshta::enabled() || $ref === '') json_response(['items' => []]);
+        json_response(['items' => NovaPoshta::warehouses($ref, $q)]);
     }
 
-    private static function np(string $key, string $model, string $method, array $props): array
+    /** Вулиці міста — для доставки курʼєром на адресу */
+    public static function npStreets(): never
     {
-        $ch = curl_init('https://api.novaposhta.ua/v2.0/json/');
-        curl_setopt_array($ch, [
-            CURLOPT_POST => true,
-            CURLOPT_POSTFIELDS => json_encode([
-                'apiKey' => $key, 'modelName' => $model, 'calledMethod' => $method, 'methodProperties' => $props,
-            ]),
-            CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
-            CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 8,
-        ]);
-        $resp = curl_exec($ch);
-        curl_close($ch);
-        $json = json_decode((string)$resp, true);
-        return is_array($json) ? $json : [];
+        $ref = trim($_GET['city'] ?? '');
+        $q = trim($_GET['q'] ?? '');
+        if (!NovaPoshta::enabled() || $ref === '' || mb_strlen($q) < 2) json_response(['items' => []]);
+        json_response(['items' => NovaPoshta::streets($ref, $q)]);
+    }
+
+    /**
+     * Контрагенти-відправники кабінету НП і їхні контактні особи.
+     *
+     * Лише для тих, хто налаштовує сайт: це вміст чужого особистого кабінету,
+     * і показувати його покупцям нема жодних підстав. Ключ беремо з форми,
+     * якщо він там є, — інакше довідник неможливо було б підтягнути, поки
+     * новий ключ ще не збережено.
+     */
+    public static function npSenders(): never
+    {
+        // Не requireCap(): той відповів би перенаправленням, а тут на іншому
+        // кінці fetch — йому потрібен зрозумілий код, а не сторінка входу
+        if (!Auth::can('settings.manage')) json_response(['ok' => false, 'error' => 'Немає прав', 'items' => []], 403);
+        Csrf::verify();
+        $key = trim((string)($_POST['key'] ?? '')) ?: NovaPoshta::key();
+        if ($key === '') json_response(['ok' => false, 'error' => 'Спершу вкажіть API-ключ', 'items' => []]);
+
+        $r = NovaPoshta::call('Counterparty', 'getCounterparties',
+            ['CounterpartyProperty' => 'Sender', 'Page' => '1'], $key);
+        if (!$r['ok']) json_response(['ok' => false, 'error' => $r['error'], 'items' => []]);
+
+        $items = [];
+        foreach ($r['data'] as $c) {
+            if (empty($c['Ref'])) continue;
+            $contacts = [];
+            $cr = NovaPoshta::call('Counterparty', 'getCounterpartyContactPersons',
+                ['Ref' => (string)$c['Ref'], 'Page' => '1'], $key);
+            foreach ($cr['data'] as $p) {
+                if (empty($p['Ref'])) continue;
+                $contacts[] = [
+                    'ref' => (string)$p['Ref'],
+                    'label' => (string)($p['Description'] ?? ''),
+                    'phone' => (string)($p['Phones'] ?? ''),
+                ];
+            }
+            $items[] = [
+                'ref' => (string)$c['Ref'],
+                'label' => (string)($c['Description'] ?? $c['Ref']),
+                'contacts' => $contacts,
+            ];
+        }
+        json_response(['ok' => true, 'error' => '', 'items' => $items]);
     }
 
     /** Webhook від Viber (реєструється автоматично при збереженні токена) */

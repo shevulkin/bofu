@@ -176,6 +176,112 @@
     <p class="dim">Нова Пошта: безкоштовний API-ключ у особистому кабінеті novaposhta.ua → Налаштування → Безпека.</p>
     <p class="dim">Web Push: ключі згенеровано автоматично. Пуші на телефоні запрацюють після переносу на HTTPS-домен.</p>
   </div>
+
+  <?php /* Відправник накладних. Це не «ще одна інтеграція», а те, що надрукують
+           на кожній посилці, — тому окремою карткою й із поясненням, звідки
+           беруться значення. Без цих полів кнопка «створити накладну» в
+           замовленні чесно скаже, чого бракує, замість мовчазної відмови НП. */ ?>
+  <div class="admin-card">
+    <h2 class="h-serif" data-help-title="Відправник Нової Пошти"
+        data-help="Дані, з якими створюються експрес-накладні: хто відправник, хто контактна особа, з якого відділення несуть посилки.
+
+Контрагента й контактну особу беремо з вашого кабінету НП — натисніть «Підтягнути», і списки заповняться самі. Вручну ці поля не вигадують: у накладній має стояти саме той контрагент, від імені якого ви відправляєте.
+
+Місто й відділення відправлення — те, куди ви фізично приносите посилки.
+
+Магазин може мати власне відділення відправлення (Магазини → правка точки). Тоді ці налаштування для нього не діють — посилку понесуть у сусіднє відділення, а не через пів країни.">
+      Нова Пошта: відправник</h2>
+    <p class="dim" style="margin-bottom:16px">
+      Ці дані друкуються на кожній накладній. Контрагента й контактну особу підтягніть із кабінету НП —
+      вигадати їх не можна, накладна створюється саме від їхнього імені.
+      <?php if (!$np_enabled): ?><br><b>Спершу впишіть API-ключ вище й збережіть.</b><?php endif; ?>
+    </p>
+
+    <div class="check-bar" style="margin-bottom:16px">
+      <button class="btn btn-line btn-sm" type="button" id="npLoadBtn">⬇️ Підтягнути з Нової Пошти</button>
+      <span class="dim" id="npLoadNote">Читає список відправників вашого кабінету. Нічого не змінює.</span>
+    </div>
+
+    <div class="form-grid">
+      <div class="field">
+        <label>Контрагент-відправник</label>
+        <select name="np[np_sender_ref]" id="npSenderRef">
+          <option value="<?= e(Settings::get('np_sender_ref', '')) ?>">
+            <?= e(Settings::get('np_sender_name', '') ?: (Settings::get('np_sender_ref', '') ? 'Збережений відправник' : '— не обрано —')) ?>
+          </option>
+        </select>
+        <input type="hidden" name="np[np_sender_name]" id="npSenderName" value="<?= e(Settings::get('np_sender_name', '')) ?>">
+      </div>
+      <div class="field">
+        <label>Контактна особа</label>
+        <select name="np[np_sender_contact_ref]" id="npContactRef">
+          <option value="<?= e(Settings::get('np_sender_contact_ref', '')) ?>">
+            <?= e(Settings::get('np_sender_contact_name', '') ?: (Settings::get('np_sender_contact_ref', '') ? 'Збережена особа' : '— не обрано —')) ?>
+          </option>
+        </select>
+        <input type="hidden" name="np[np_sender_contact_name]" id="npContactName" value="<?= e(Settings::get('np_sender_contact_name', '')) ?>">
+      </div>
+      <div class="field">
+        <label>Телефон відправника</label>
+        <input type="text" name="np[np_sender_phone]" id="npSenderPhone" value="<?= e(Settings::get('np_sender_phone', '')) ?>" placeholder="0501234567">
+      </div>
+      <div class="field">
+        <label>Місто відправлення</label>
+        <input type="text" name="np[np_sender_city]" id="npCity" value="<?= e(Settings::get('np_sender_city', '')) ?>" placeholder="Почніть вводити місто…" autocomplete="new-password" data-lpignore="true" data-1p-ignore data-form-type="other" spellcheck="false">
+        <input type="hidden" name="np[np_sender_city_ref]" id="npCityRef" value="<?= e(Settings::get('np_sender_city_ref', '')) ?>">
+      </div>
+      <div class="field" style="grid-column:1/-1">
+        <label>Відділення відправлення</label>
+        <input type="text" name="np[np_sender_warehouse]" id="npOffice" value="<?= e(Settings::get('np_sender_warehouse', '')) ?>" placeholder="Номер або адреса відділення" autocomplete="new-password" data-lpignore="true" data-1p-ignore data-form-type="other" spellcheck="false">
+        <input type="hidden" name="np[np_sender_warehouse_ref]" id="npOfficeRef" value="<?= e(Settings::get('np_sender_warehouse_ref', '')) ?>">
+        <p class="field-hint">Обирайте зі списку — накладна створюється за посиланням на відділення, а не за його назвою.</p>
+      </div>
+    </div>
+
+    <h3 class="h-serif" style="font-size:16px;margin:22px 0 12px">Типова накладна</h3>
+    <p class="dim" style="margin-bottom:14px">Чим заповнюється форма відправлення. Продавець може змінити будь-що перед створенням.</p>
+    <div class="form-grid">
+      <div class="field">
+        <label>Хто платить за доставку</label>
+        <select name="np[np_payer]">
+          <?php foreach ($np_payers as $key => $label): ?>
+            <option value="<?= e($key) ?>"<?= Settings::get('np_payer', 'Recipient') === $key ? ' selected' : '' ?>><?= e($label) ?></option>
+          <?php endforeach; ?>
+        </select>
+      </div>
+      <div class="field">
+        <label>Спосіб оплати</label>
+        <select name="np[np_payment]">
+          <?php foreach ($np_payments as $key => $label): ?>
+            <option value="<?= e($key) ?>"<?= Settings::get('np_payment', 'Cash') === $key ? ' selected' : '' ?>><?= e($label) ?></option>
+          <?php endforeach; ?>
+        </select>
+      </div>
+      <div class="field">
+        <label>Опис вантажу</label>
+        <input type="text" name="np[np_description]" value="<?= e(Settings::get('np_description', 'Продукти бджільництва')) ?>" maxlength="120">
+      </div>
+      <div class="field">
+        <label>Вага за замовчуванням, кг</label>
+        <input type="text" name="np[np_weight_default]" value="<?= e(Settings::get('np_weight_default', '0.5')) ?>" placeholder="0.5">
+        <p class="field-hint">Береться, лише коли в товарах не проставлена власна вага (Каталог → товар → Вага).</p>
+      </div>
+      <div class="field">
+        <label>Місць у відправленні</label>
+        <input type="text" name="np[np_seats_default]" value="<?= e(Settings::get('np_seats_default', '1')) ?>" placeholder="1">
+      </div>
+    </div>
+    <label class="toggle" style="margin-top:14px"
+           data-help-title="Післяплата за замовчуванням"
+           data-help="Форма накладної одразу підставить суму частини замовлення як післяплату — покупець заплатить при отриманні.
+
+Вмикайте, якщо у вас так возять більшість посилок: інакше продавець вписуватиме суму щоразу руками, а забута післяплата означає віддану без грошей посилку.
+
+Це лише передзаповнення — обнулити поле перед створенням накладної можна завжди.">
+      <input type="checkbox" name="np_cod_default" value="1"<?= Settings::bool('np_cod_default', false) ? ' checked' : '' ?>>
+      <span class="tr"></span> Післяплата за замовчуванням (сума замовлення)
+    </label>
+  </div>
   <div class="admin-card">
     <h2 class="h-serif" data-help-title="Тексти бота при вході"
         data-help="Що саме бот пише людині, яка входить на сайт через Telegram чи Viber.
@@ -214,3 +320,76 @@
     <span class="admin-save-note"></span>
   </div>
 </form>
+
+<?= View::partial('partials/np_autocomplete') ?>
+<script>
+(function(){
+  // Місто й відділення відправника — той самий віджет, що й у покупця: люди
+  // однаково не памʼятають точних назв відділень, з якого б боку прилавка не стояли
+  if (window.npAutocomplete) {
+    window.npAutocomplete({city: 'npCity', office: 'npOffice', ref: 'npCityRef', officeRef: 'npOfficeRef'});
+  }
+
+  /**
+   * Контрагент і контактна особа — з кабінету НП, а не з рук.
+   *
+   * Вручну ці поля не заповнюють: у накладній має стояти саме той контрагент,
+   * від імені якого відправляють, а його Ref ніде, крім API, не побачити.
+   * Ключ передаємо з форми — інакше довідник неможливо підтягнути, поки
+   * новий ключ ще не збережено.
+   */
+  var btn = document.getElementById('npLoadBtn'), note = document.getElementById('npLoadNote');
+  var senderSel = document.getElementById('npSenderRef'), contactSel = document.getElementById('npContactRef');
+  if (!btn || !senderSel || !contactSel) return;
+  var senders = [];
+
+  function fill(sel, items, keep){
+    var was = keep || sel.value;
+    sel.innerHTML = '';
+    if (!items.length) {
+      sel.appendChild(new Option('— порожньо —', ''));
+      return;
+    }
+    items.forEach(function(it){ sel.appendChild(new Option(it.label, it.ref)); });
+    // збережений вибір лишається обраним, якщо він досі є в кабінеті
+    if (was && items.some(function(it){ return it.ref === was })) sel.value = was;
+    sel.dispatchEvent(new Event('change'));
+  }
+  function syncNames(){
+    document.getElementById('npSenderName').value = senderSel.selectedOptions[0] ? senderSel.selectedOptions[0].text : '';
+    document.getElementById('npContactName').value = contactSel.selectedOptions[0] ? contactSel.selectedOptions[0].text : '';
+  }
+  senderSel.addEventListener('change', function(){
+    var s = senders.find(function(x){ return x.ref === senderSel.value });
+    if (s) fill(contactSel, s.contacts);
+    syncNames();
+    // телефон контактної особи — найчастіше саме той, що має стояти в накладній
+    var c = s && s.contacts.find(function(x){ return x.ref === contactSel.value });
+    var phone = document.getElementById('npSenderPhone');
+    if (c && c.phone && !phone.value.trim()) phone.value = c.phone;
+  });
+  contactSel.addEventListener('change', syncNames);
+
+  btn.addEventListener('click', function(){
+    btn.disabled = true;
+    note.textContent = 'Питаємо Нову Пошту…';
+    var body = new FormData();
+    body.append('_csrf', '<?= e(Csrf::token()) ?>');
+    var keyField = document.querySelector('[name="text[np_api_key]"]');
+    // поле з ключем показане крапками: порожнє означає «не міняли», тоді
+    // сервер візьме збережений
+    if (keyField && keyField.value.trim() && keyField.value.indexOf('•') === -1) body.append('key', keyField.value.trim());
+    fetch('<?= e(url('/api/np/senders')) ?>', {method: 'POST', body: body, credentials: 'same-origin'})
+      .then(function(r){ return r.json() })
+      .then(function(d){
+        btn.disabled = false;
+        if (!d.ok) { note.textContent = 'Не вдалося: ' + (d.error || 'невідома причина'); return; }
+        senders = d.items || [];
+        if (!senders.length) { note.textContent = 'У кабінеті немає жодного відправника — заведіть його на novaposhta.ua'; return; }
+        fill(senderSel, senders);
+        note.textContent = 'Знайдено відправників: ' + senders.length + '. Оберіть потрібного й збережіть налаштування.';
+      })
+      .catch(function(){ btn.disabled = false; note.textContent = 'Не вдалося звʼязатися з сервером'; });
+  });
+})();
+</script>

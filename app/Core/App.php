@@ -185,6 +185,10 @@ class App
         // проксі до Нової Пошти витрачає наш API-ключ — не даємо викачувати довідник
         if ($path === '/api/np/cities') { RateLimit::guard('np', 300, 3600, null, true); Controllers\Api::npCities(); }
         if ($path === '/api/np/warehouses') { RateLimit::guard('np', 300, 3600, null, true); Controllers\Api::npWarehouses(); }
+        if ($path === '/api/np/streets') { RateLimit::guard('np', 300, 3600, null, true); Controllers\Api::npStreets(); }
+        // Довідник відправників — вміст особистого кабінету НП, тож лише персоналу
+        // й лише POST: право перевіряється всередині разом із CSRF
+        if ($path === '/api/np/senders' && $method === 'POST') { Controllers\Api::npSenders(); }
         if ($path === '/api/push/subscribe' && $method === 'POST') { Controllers\Api::pushSubscribe(); }
         if ($path === '/api/viber/webhook' && $method === 'POST') { Controllers\Api::viberWebhook(); }
 

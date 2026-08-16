@@ -3,7 +3,8 @@ declare(strict_types=1);
 
 namespace Controllers\Admin;
 
-use DB, View, Auth, Cart, Catalog, Customers, OrderFlow, AuthTokens, Newsletter, Pos, Promo, Settings;
+use DB, View, Auth, Cart, Catalog, Customers, OrderFlow, AuthTokens, Newsletter, Pos, Promo, Settings,
+    Shipments, NovaPoshta, RateLimit;
 
 /**
  * Адмінка замовлень.
@@ -58,6 +59,35 @@ class Orders
         else                      $where = 'o.parent_id IS NOT NULL AND o.store_id IN (' . implode(',', array_map('intval', $mine)) . ')';
         if ($status !== 'all' && isset(self::STATUSES[$status])) { $where .= ' AND o.status = ?'; $params[] = $status; }
 
+        /*
+         * Фільтр за станом посилки — питання, які продавець ставить собі
+         * щоранку: що ще не відправлено і що вже чекає на покупця. Статус
+         * замовлення на них не відповідає: «В дорозі» стоїть і в тієї частини,
+         * що годину як виїхала, і в тієї, що третій день лежить у відділенні.
+         *
+         * Рахується по підзамовленнях (накладна належить їм), тому для адміна,
+         * який дивиться головні, умова йде через EXISTS по частинах.
+         */
+        $ship = (string)($_GET['ship'] ?? 'all');
+        // Адмін дивиться головні замовлення, продавець — свої частини; накладна
+        // ж лежить завжди на частині. Тому й звʼязок різний: у головного — по
+        // всіх його частинах, у частини — по ній самій.
+        $link = $mine === null ? 'sh.parent_id = o.id' : 'sh.order_id = o.id';
+        $has = static fn(string $cond) => "EXISTS (SELECT 1 FROM shipments sh WHERE $link" . ($cond !== '' ? " AND $cond" : '') . ')';
+        if ($ship === 'none') {
+            // «без накладної» — лише те, що взагалі мало б їхати поштою:
+            // самовивіз і закрите тут лише заважали б
+            $where .= " AND o.delivery = 'np' AND o.status NOT IN ('done','canceled') AND NOT " . $has('');
+        } elseif ($ship === 'transit') {
+            $where .= ' AND ' . $has("sh.phase IN ('new','transit')");
+        } elseif ($ship === 'arrived') {
+            $where .= ' AND ' . $has("sh.phase = 'arrived'");
+        } elseif ($ship === 'problem') {
+            $where .= ' AND ' . $has("sh.phase = 'problem'");
+        } else {
+            $ship = 'all';
+        }
+
         $orders = DB::all(
             "SELECT o.*, s.name AS store_name, p.number AS parent_number, au.name AS assigned_name
              FROM orders o
@@ -73,8 +103,20 @@ class Orders
             if (!$o['parent_id']) $children[$id] = OrderFlow::children($id);
         }
 
+        // Накладні одним запитом на всю сторінку. Ключ — підзамовлення, тож
+        // і адмінський рядок (де під ним частини), і продавецький (де рядок
+        // і є частина) беруть звідси однаково.
+        $shipments = [];
+        $parentIds = [];
+        foreach ($orders as $o) $parentIds[] = (int)($o['parent_id'] ?: $o['id']);
+        foreach (Shipments::forParents($parentIds) as $rows) {
+            foreach ($rows as $s) $shipments[(int)$s['order_id']] = $s;
+        }
+
         View::show('admin/orders/index', [
             'orders' => $orders, 'items' => $items, 'children' => $children,
+            'shipments' => $shipments,
+            'ship' => $ship,
             'status' => $status, 'statuses' => self::STATUSES,
             'is_seller_view' => $mine !== null,
             'my_store_ids' => $mine ?? [],
@@ -217,6 +259,14 @@ class Orders
             'city' => trim((string)($_POST['np_city'] ?? '')),
             'city_ref' => trim((string)($_POST['city_ref'] ?? '')),
             'np_office' => trim((string)($_POST['np_office'] ?? '')),
+            // Ref відділення — те, з чого потім створюється накладна. Без нього
+            // замовлення з каси довелося б доадресовувати руками в картці.
+            'np_office_ref' => trim((string)($_POST['np_office_ref'] ?? '')),
+            'np_type' => ($_POST['np_type'] ?? 'warehouse') === 'courier' ? 'courier' : 'warehouse',
+            'np_street' => trim((string)($_POST['np_street'] ?? '')),
+            'np_street_ref' => trim((string)($_POST['np_street_ref'] ?? '')),
+            'np_house' => trim((string)($_POST['np_house'] ?? '')),
+            'np_flat' => trim((string)($_POST['np_flat'] ?? '')),
             'address' => trim((string)($_POST['address'] ?? '')),
             'comment' => trim((string)($_POST['comment'] ?? '')),
             'promo_code' => Promo::fromInput($_POST['promo_code'] ?? ''),
@@ -464,6 +514,16 @@ class Orders
                 'city' => $form['city'] ?: null,
                 'np_office' => $form['np_office'] ?: null,
                 'address' => $form['address'] ?: null,
+                // Довідникові посилання Нової Пошти — лише для доставки нею:
+                // у самовивозі вони порожні, і накладна там ні до чого
+                'city_ref' => $form['delivery'] === 'np' ? ($form['city_ref'] ?: null) : null,
+                'np_type' => $form['np_type'],
+                'np_office_ref' => $form['delivery'] === 'np' && $form['np_type'] === 'warehouse'
+                    ? ($form['np_office_ref'] ?: null) : null,
+                'np_street' => $form['np_type'] === 'courier' ? ($form['np_street'] ?: null) : null,
+                'np_street_ref' => $form['np_type'] === 'courier' ? ($form['np_street_ref'] ?: null) : null,
+                'np_house' => $form['np_type'] === 'courier' ? ($form['np_house'] ?: null) : null,
+                'np_flat' => $form['np_type'] === 'courier' ? ($form['np_flat'] ?: null) : null,
                 'comment' => $form['comment'] ?: null,
                 // Магазин у головному — це місце самовивозу, як і на вітрині.
                 // Виконавцем він стає окремо, третім аргументом place().
@@ -568,10 +628,18 @@ class Orders
         $children = OrderFlow::children((int)$parent['id']);
 
         $items = []; $stock = []; $manage = [];
+        // Накладна створюється на кожну частину окремо, тож і форма своя в
+        // кожної: вага, післяплата й опис у різних магазинів різні
+        $shipments = Shipments::forParent((int)$parent['id']);
+        $shipForm = []; $shipGaps = [];
         foreach ($children as $c) {
             $rows = OrderFlow::items((int)$c['id']);
             $items[(int)$c['id']] = $rows;
             $manage[(int)$c['id']] = self::canManage($c);
+            if (!isset($shipments[(int)$c['id']]) && (string)$parent['delivery'] === 'np') {
+                $shipForm[(int)$c['id']] = Shipments::defaults($c, $parent);
+                $shipGaps[(int)$c['id']] = Shipments::missing($c, $parent);
+            }
             foreach ($rows as $it) {
                 if (!$it['product_id']) continue;
                 $stock[(int)$it['id']] = Catalog::stockByStore((int)$it['product_id'], $it['variant_id'] ? (int)$it['variant_id'] : null);
@@ -598,6 +666,13 @@ class Orders
             'notes' => $notes,
             'can_note' => Auth::can('orders.note'),
             'can_assign' => Auth::can('orders.assign'),
+            'shipments' => $shipments,
+            'ship_form' => $shipForm,
+            'ship_gaps' => $shipGaps,
+            'can_ship' => Auth::can('orders.ship'),
+            'ship_payers' => Shipments::PAYERS,
+            'ship_payments' => Shipments::PAYMENTS,
+            'np_enabled' => NovaPoshta::enabled(),
             'statuses' => self::STATUSES,
             'can_manage_parent' => Auth::can('orders.manage'),
             'page_title' => 'Замовлення ' . $order['number'] . ' — адмінка',
@@ -661,6 +736,20 @@ class Orders
             redirect($back);
         }
 
+        // Адреса доставки належить замовленню цілком, а не частині: усі
+        // магазини везуть в одне й те саме відділення. Тому окремо від
+        // ship_*, які працюють з однією частиною.
+        if ($action === 'np_address') {
+            self::npAddress($order, $parent, $back);
+        }
+
+        // Накладні. Дії згруповані, бо перевірка прав у них спільна: накладну
+        // веде той, хто веде саму частину (свій магазин), плюс окреме право
+        // orders.ship — вона коштує грошей і створюється від імені магазину.
+        if (str_starts_with((string)$action, 'ship_')) {
+            self::shipment($action, $tree, $parent, $back);
+        }
+
         if ($action === 'transfer') {
             $item = DB::row('SELECT * FROM order_items WHERE id = ?', [(int)($_POST['item_id'] ?? 0)]);
             $src = $item ? ($tree[(int)$item['order_id']] ?? null) : null;
@@ -682,6 +771,130 @@ class Orders
             flash('success', ($target['parent_id'] ? 'Статус частини ' . $target['number'] : 'Статус замовлення')
                 . ' оновлено: ' . OrderFlow::statusLabel($new));
         }
+        redirect($back);
+    }
+
+    /**
+     * Дообрати відділення з довідника НП.
+     *
+     * Потрібне для замовлень, у яких є назва, але немає Ref: старі (до цієї
+     * інтеграції) та ті, де покупець вписав відділення руками, не торкнувшись
+     * підказки. Без цього такі замовлення назавжди лишились би без накладної,
+     * а продавцю лишалось би оформлювати їх у кабінеті НП і вписувати номер.
+     *
+     * Пишемо і в головне, і в частини: адреса успадковується при створенні, а
+     * далі живе своєю копією в кожному підзамовленні (див. OrderFlow::INHERITED).
+     */
+    private static function npAddress(array $order, array $parent, string $back): never
+    {
+        Auth::requireCap('orders.ship');
+        // Правити адресу може той, хто веде хоч одну частину цього замовлення:
+        // везти доведеться йому, і саме він телефонує покупцю уточнити
+        $mine = false;
+        foreach (OrderFlow::children((int)$parent['id']) as $c) if (self::canManage($c)) { $mine = true; break; }
+        if (!$mine) { flash('error', 'Немає прав правити доставку цього замовлення.'); redirect($back); }
+        if ((string)$parent['delivery'] !== 'np') { flash('error', 'Замовлення не на Нову Пошту.'); redirect($back); }
+
+        $uuid = static fn($v) => preg_match('/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i', trim((string)$v))
+            ? trim((string)$v) : null;
+        $type = ($_POST['np_type'] ?? 'warehouse') === 'courier' ? 'courier' : 'warehouse';
+        $cityRef = $uuid($_POST['city_ref'] ?? '');
+        $city = trim((string)($_POST['np_city'] ?? ''));
+        if (!$cityRef || $city === '') {
+            flash('error', 'Оберіть місто зі списку підказок — саме за ним створюється накладна.');
+            redirect($back);
+        }
+        $patch = [
+            'city' => $city, 'city_ref' => $cityRef, 'np_type' => $type,
+            'np_office' => null, 'np_office_ref' => null,
+            'np_street' => null, 'np_street_ref' => null, 'np_house' => null, 'np_flat' => null,
+        ];
+        if ($type === 'courier') {
+            $streetRef = $uuid($_POST['np_street_ref'] ?? '');
+            $house = trim((string)($_POST['np_house'] ?? ''));
+            if (!$streetRef || $house === '') {
+                flash('error', 'Оберіть вулицю зі списку й вкажіть будинок.');
+                redirect($back);
+            }
+            $patch['np_street'] = trim((string)($_POST['np_street'] ?? ''));
+            $patch['np_street_ref'] = $streetRef;
+            $patch['np_house'] = $house;
+            $patch['np_flat'] = trim((string)($_POST['np_flat'] ?? '')) ?: null;
+        } else {
+            $officeRef = $uuid($_POST['np_office_ref'] ?? '');
+            $office = trim((string)($_POST['np_office'] ?? ''));
+            if (!$officeRef || $office === '') {
+                flash('error', 'Оберіть відділення зі списку підказок — назви для накладної замало.');
+                redirect($back);
+            }
+            $patch['np_office'] = $office;
+            $patch['np_office_ref'] = $officeRef;
+        }
+
+        DB::update('orders', $patch, 'id = ? OR parent_id = ?', [(int)$parent['id'], (int)$parent['id']]);
+        OrderFlow::log((int)$parent['id'], null, 'shipment',
+            'доставку уточнено: ' . OrderFlow::deliveryAddress($patch + ['delivery' => 'np']), Auth::id());
+        flash('success', 'Адресу доставки уточнено — тепер накладну можна створити.');
+        redirect($back);
+    }
+
+    /**
+     * Накладні Нової Пошти з картки замовлення.
+     *
+     * Усі дії стосуються ОДНІЄЇ частини — тієї, чий магазин веде цей продавець.
+     * Тому перевірка одна на всіх: частина має бути з відкритого замовлення
+     * (tree) і в межах прав людини (canManage). Право orders.ship понад те:
+     * дивитись і вести замовлення можна й без нього.
+     */
+    private static function shipment(string $action, array $tree, array $parent, string $back): never
+    {
+        Auth::requireCap('orders.ship');
+        $child = $tree[(int)($_POST['order_id'] ?? 0)] ?? null;
+        if (!$child || !$child['parent_id'] || !self::canManage($child)) {
+            flash('error', 'Немає прав керувати відправленням цієї частини.');
+            redirect($back);
+        }
+        $shipment = Shipments::forOrder((int)$child['id']);
+
+        if ($action === 'ship_create') {
+            // Кожна накладна — це справжня посилка й гроші. Ліміт тут не від
+            // ботів, а від подвійного натискання й від нетерплячого F5.
+            RateLimit::guard('np_ttn', 60, 3600);
+            $r = Shipments::create($child, $parent, (array)($_POST['ship'] ?? []), Auth::id());
+            flash($r['ok'] ? 'success' : 'error', $r['ok']
+                ? 'Накладну створено: ' . $r['shipment']['number']
+                : 'Накладну не створено. ' . $r['error']);
+            redirect($back);
+        }
+
+        if ($action === 'ship_attach') {
+            $r = Shipments::attach($child, $parent, (string)($_POST['ttn'] ?? ''), Auth::id());
+            flash($r['ok'] ? 'success' : 'error', $r['ok']
+                ? 'Накладну ' . $r['shipment']['number'] . ' прикріплено.'
+                : $r['error']);
+            redirect($back);
+        }
+
+        if (!$shipment) { flash('error', 'Накладної для цієї частини немає.'); redirect($back); }
+
+        if ($action === 'ship_refresh') {
+            RateLimit::guard('np_track', 120, 3600);
+            $changed = Shipments::refresh([$shipment], Auth::id());
+            $fresh = Shipments::forOrder((int)$child['id']);
+            flash('success', $changed
+                ? 'Статус оновлено: ' . Shipments::statusLabel($fresh ?: $shipment)
+                : 'Нова Пошта відповіла те саме: ' . Shipments::statusLabel($fresh ?: $shipment));
+            redirect($back);
+        }
+
+        if ($action === 'ship_remove') {
+            $r = Shipments::remove($shipment, Auth::id());
+            flash($r['note'] !== '' ? 'error' : 'success',
+                'Накладну ' . $shipment['number'] . ' відкріплено.' . ($r['note'] !== '' ? ' ' . $r['note'] : ''));
+            redirect($back);
+        }
+
+        flash('error', 'Невідома дія з накладною.');
         redirect($back);
     }
 

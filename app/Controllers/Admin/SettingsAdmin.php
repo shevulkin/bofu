@@ -24,6 +24,22 @@ class SettingsAdmin
         'bot_site_url' => 'Адреса сайту для кнопки в боті (напр. https://bofu.ua)',
     ];
 
+    /**
+     * Відправник для накладних Нової Пошти.
+     *
+     * Окремо від TEXT_KEYS, бо це не «ключ інтеграції», а те, що друкується на
+     * кожній посилці: контрагент, контактна особа, звідки відправляємо. Поля
+     * зберігаються парами «ref + назва»: ref потрібен API, назву читає людина
+     * в налаштуваннях, і без неї список показував би UUID.
+     */
+    private const NP_KEYS = [
+        'np_sender_ref', 'np_sender_name',
+        'np_sender_contact_ref', 'np_sender_contact_name', 'np_sender_phone',
+        'np_sender_city', 'np_sender_city_ref',
+        'np_sender_warehouse', 'np_sender_warehouse_ref',
+        'np_description', 'np_weight_default', 'np_seats_default',
+    ];
+
     private const TOGGLES = [
         'notify_all_enabled' => 'Усі сповіщення (головний вимикач)',
         'notify_telegram_enabled' => 'Канал Telegram',
@@ -68,6 +84,19 @@ class SettingsAdmin
             $store = (int)($_POST['default_store_id'] ?? 0);
             $valid = $store && in_array($store, OrderFlow::activeStoreIds(), true);
             Settings::set('default_store_id', $valid ? (string)$store : '');
+            // Нова Пошта: відправник і типові значення накладної. Списки
+            // приймаємо лише зі своїх — підставлений «платник» чи «спосіб
+            // оплати» НП відхилила б уже при створенні накладної, тобто тоді,
+            // коли продавець стоїть із коробкою у відділенні.
+            foreach (self::NP_KEYS as $key) {
+                if (isset($_POST['np'][$key])) Settings::set($key, trim((string)$_POST['np'][$key]));
+            }
+            $payer = (string)($_POST['np']['np_payer'] ?? '');
+            Settings::set('np_payer', isset(\Shipments::PAYERS[$payer]) ? $payer : 'Recipient');
+            $payment = (string)($_POST['np']['np_payment'] ?? '');
+            Settings::set('np_payment', isset(\Shipments::PAYMENTS[$payment]) ? $payment : 'Cash');
+            Settings::set('np_cod_default', isset($_POST['np_cod_default']) ? '1' : '0');
+
             $oldViber = Settings::get('viber_bot_token', '');
             foreach (self::TEXT_KEYS as $key => $label) {
                 if (isset($_POST['text'][$key])) Settings::set($key, trim($_POST['text'][$key]));
@@ -103,6 +132,8 @@ class SettingsAdmin
             'default_store_id' => OrderFlow::defaultStoreId(),
             'default_store_set' => Settings::get('default_store_id', '') !== '',
             'bot_texts' => BotAuth::TEXTS, 'bot_site' => BotAuth::siteUrl(),
+            'np_enabled' => \NovaPoshta::enabled(),
+            'np_payers' => \Shipments::PAYERS, 'np_payments' => \Shipments::PAYMENTS,
             'vapid_public' => $vapidPub,
             'page_title' => 'Налаштування — адмінка',
         ], 'layouts/admin');

@@ -83,6 +83,12 @@ class Profile
                 'city' => $_POST['np_city'] ?? '',   // див. коментар у формі: назва не «city» через Chrome
                 'city_ref' => $_POST['city_ref'] ?? '',
                 'np_office' => $_POST['np_office'] ?? '',
+                'np_office_ref' => $_POST['np_office_ref'] ?? '',
+                'np_type' => $_POST['np_type'] ?? 'warehouse',
+                'np_street' => $_POST['np_street'] ?? '',
+                'np_street_ref' => $_POST['np_street_ref'] ?? '',
+                'np_house' => $_POST['np_house'] ?? '',
+                'np_flat' => $_POST['np_flat'] ?? '',
                 'address' => $_POST['address'] ?? '',
             ], $id);
             if ($saved) flash('success', 'Адресу збережено');

@@ -7,6 +7,18 @@ use DB, View, Auth, Barcode, Catalog, Images, Attrs, StockWatch;
 
 class Products
 {
+    /**
+     * Вага з форми, кг. Порожньо й нуль — це «не знаю», а не «нуль грамів»:
+     * такий товар має брати типову вагу з налаштувань, а не робити всю посилку
+     * невагомою. Кома як десятковий знак приймається — саме її дає українська
+     * розкладка, і вимагати крапку означало б ловити «0,5» як нуль.
+     */
+    private static function weight($raw): ?float
+    {
+        $v = (float)str_replace(',', '.', trim((string)$raw));
+        return $v > 0 ? round(min($v, 1000), 3) : null;
+    }
+
     public static function index(): never
     {
         $q = trim($_GET['q'] ?? '');
@@ -369,6 +381,8 @@ class Products
                 'featured' => isset($_POST['featured']) ? 1 : 0,
                 'made_to_order' => isset($_POST['made_to_order']) ? 1 : 0,
                 'low_stock_threshold' => ($_POST['low_stock_threshold'] ?? '') === '' ? null : (int)$_POST['low_stock_threshold'],
+                // Вага однієї штуки — за нею форма накладної рахує вагу посилки
+                'weight' => self::weight($_POST['weight'] ?? ''),
                 'created_at' => now(), 'updated_at' => now(),
             ]);
             self::syncBrands($id, (array)($_POST['brand_ids'] ?? []));
@@ -544,6 +558,7 @@ class Products
                 'featured' => isset($_POST['featured']) ? 1 : 0,
                 'made_to_order' => isset($_POST['made_to_order']) ? 1 : 0,
                 'low_stock_threshold' => ($_POST['low_stock_threshold'] ?? '') === '' ? null : (int)$_POST['low_stock_threshold'],
+                'weight' => self::weight($_POST['weight'] ?? ''),
                 'updated_at' => now(),
             ], 'id = ?', [$id]);
             self::syncBrands($id, (array)($_POST['brand_ids'] ?? []));
@@ -562,6 +577,9 @@ class Products
                     'price' => ($v['price'] ?? '') === '' ? null : (float)$v['price'],
                     'sku' => trim($v['sku'] ?? '') ?: null,
                     'barcode' => trim($v['barcode'] ?? '') ?: null,
+                    // Вага належить фасовці: банка на 0.5 і на 1.5 кг — це
+                    // різні посилки, хоч мед у них однаковий
+                    'weight' => self::weight($v['weight'] ?? ''),
                     'active' => !empty($v['active']) ? 1 : 0,
                     'sort' => $sort++,
                 ];
@@ -576,6 +594,7 @@ class Products
                     'price' => ($v['price'] ?? '') === '' ? null : (float)$v['price'],
                     'sku' => trim($v['sku'] ?? '') ?: null,
                     'barcode' => trim($v['barcode'] ?? '') ?: null,
+                    'weight' => self::weight($v['weight'] ?? ''),
                     'active' => !empty($v['active']) ? 1 : 0,
                     'sort' => $sort++,
                 ]);
