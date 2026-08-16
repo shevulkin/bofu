@@ -1,11 +1,19 @@
 <?php
 /**
- * Каса. Ліворуч — те, з чого набирають чек (сканер, пошук, плитка товарів),
- * праворуч — сам чек: покупець, позиції, підсумок, кнопка оформлення.
+ * Каса: три кроки — покупець, товари, отримання.
  *
- * Дрібні дії (додати, змінити кількість, знайти покупця) ходять на сервер
- * без перезавантаження — у продажу їх по десятку, і кожна не має коштувати
- * мигання екрана. Перемальовує чек pos.js.
+ * Було одним екраном, і на ньому все справді вміщалось, але дивитись доводилось
+ * усюди одразу: телефон покупця, плитка, доставка й кнопка оформлення в різних
+ * кутах. Продаж — послідовна розмова («хто ви» → «що берете» → «як віддаємо»),
+ * і екран тепер іде тим самим порядком.
+ *
+ * Кроки перемикаються в браузері, а не запитами: чек живе в сесії, і бігати за
+ * ним на сервер щоразу, коли людина натиснула «Далі», нема потреби. Форма
+ * лишається ОДНА на всі три кроки — оформлення відправляє все разом, тож поля
+ * попередніх кроків нікуди не діваються й не потребують проміжного зберігання.
+ *
+ * Швидкість набору не постраждала: сканер, пошук і плитка живуть на другому
+ * кроці разом і працюють як раніше — тап по плитці, скан, Enter.
  */
 ?>
 <div class="admin-head"><h1 class="h-serif">Каса</h1>
@@ -29,27 +37,110 @@
   </div></div>
 <?php endif; ?>
 
-<div class="pos-wrap">
-  <!-- ---------------------------------------------------------------- товари -->
-  <div class="pos-goods">
-    <div class="admin-card" style="padding:16px">
-      <div class="pos-top">
-        <div style="min-width:170px" data-help-title="Точка продажу"
-             data-help="Магазин, від імені якого йде продаж: з його складу спишеться товар і йому дістанеться замовлення.
+<?php /* Стрічка кроків. Це не прикраса: під кожним підписом стоїть те, що на
+         цьому кроці вже вирішено, — кого записали, скільки позицій і на яку
+         суму. Так продавцю не треба вертатись, щоб пригадати. */ ?>
+<nav class="pos-steps" data-pos-steps>
+  <button type="button" class="pos-step" data-go="1">
+    <span class="pos-step-n">1</span>
+    <span class="pos-step-t">Покупець</span>
+    <span class="pos-step-s" data-sum-customer><?= e($customer['name'] !== '' ? $customer['name']
+        : ($customer['phone'] !== '' ? $customer['phone'] : 'анонімний')) ?></span>
+  </button>
+  <button type="button" class="pos-step" data-go="2">
+    <span class="pos-step-n">2</span>
+    <span class="pos-step-t">Товари</span>
+    <span class="pos-step-s" data-sum-goods><?= $lines
+        ? count($lines) . ' поз. · ' . e(price_fmt($totals['total']))
+        : 'чек порожній' ?></span>
+  </button>
+  <button type="button" class="pos-step" data-go="3">
+    <span class="pos-step-n">3</span>
+    <span class="pos-step-t">Отримання</span>
+    <span class="pos-step-s" data-sum-delivery><?= e($source === 'offline' ? 'видача в точці' : 'доставка') ?></span>
+  </button>
+</nav>
+
+<form method="post" action="<?= e(url('/admin/orders/new')) ?>" id="posForm">
+  <?= Csrf::field() ?>
+  <?php /* Крок памʼятається між перезавантаженнями: їх тут два — зміна точки
+           продажу й повернення з помилкою оформлення. В обох випадках кидати
+           людину на початок означало б відбирати зроблене. */ ?>
+  <input type="hidden" name="step" id="posStep" value="<?= (int)$step ?>">
+
+  <!-- ═══════════════════════════════════════════════ крок 1: покупець ═══ -->
+  <section class="pos-pane" data-pane="1">
+    <div class="admin-card" style="padding:18px">
+      <h2 class="h-serif" style="font-size:19px;margin:0 0 4px">Хто покупець</h2>
+      <p class="dim" style="margin:0 0 16px">
+        Номер не обовʼязковий: продаж на місці цілком може бути анонімним.
+        Якщо він є — покупка потрапить в історію цієї людини.
+      </p>
+
+      <div class="form-grid">
+        <div data-help-title="Телефон покупця"
+             data-help="Необовʼязково — і це головне в цьому полі. Продаж на місці цілком може бути анонімним: людина зайшла, купила, пішла.
+
+Якщо номер є, натисніть «Знайти»: знайдемо акаунт — замовлення потрапить в історію покупок цієї людини; не знайдемо — заведемо новий акаунт при оформленні, і покупець зможе увійти на сайт цим самим номером.
+
+Номер можна вписати будь-коли: тут, посеред набору чи перед самим оформленням — просто поверніться на цей крок.">
+          <label>Телефон</label>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input type="text" name="phone" id="posPhone" value="<?= e($customer['phone']) ?>"
+                   placeholder="+380…" autocomplete="off" style="flex:1">
+            <button type="button" class="btn btn-line btn-sm" data-pos-find>Знайти</button>
+          </div>
+        </div>
+        <div>
+          <label>Імʼя</label>
+          <input type="text" name="name" id="posName" value="<?= e($customer['name']) ?>" autocomplete="off">
+        </div>
+      </div>
+
+      <?php /* Стан покупця словами, а не кольором поля: «знайдено», «створимо
+               акаунт» і «анонім» — три різні речі, і плутати їх дорого. Той
+               самий блок повторюється на кроці оформлення, бо рішення ухвалюють
+               саме там, а не тут. */ ?>
+      <div class="pos-who is-<?= e($customer['state']) ?>" data-pos-note>
+        <span class="pos-who-icon" data-pos-icon><?= e($customer['icon']) ?></span>
+        <span data-pos-text><?= e($customer['note']) ?></span>
+      </div>
+    </div>
+
+    <div class="admin-card" style="padding:18px">
+      <h2 class="h-serif" style="font-size:19px;margin:0 0 4px">Від якої точки продаємо</h2>
+      <p class="dim" style="margin:0 0 14px">
+        З її складу спишеться товар, її ціни й акції побачить покупець, і їй дістанеться замовлення.
+      </p>
+      <div style="max-width:340px" data-help-title="Точка продажу"
+           data-help="Магазин, від імені якого йде продаж: з його складу спишеться товар і йому дістанеться замовлення.
 
 Ціни теж його — у точки може бути власний цінник і власна акція, тому після зміни магазину плитка й чек перераховуються.
 
 Поки чек порожній, точку можна міняти вільно; коли товар уже набрано — краще не чіпати.">
-          <label>Магазин</label>
-          <select name="store_id" form="posForm" data-pos-store>
-            <?php foreach ($stores as $s): ?>
-              <option value="<?= (int)$s['id'] ?>" <?= (int)$store_id === (int)$s['id'] ? 'selected' : '' ?>>
-                <?= e($s['name'] . ($s['city'] ? ' — ' . $s['city'] : '')) ?></option>
-            <?php endforeach; ?>
-          </select>
-        </div>
-        <div class="np-wrap" style="flex:1;min-width:220px" data-help-title="Сканер і пошук"
-             data-help="Поле працює трьома способами.
+        <select name="store_id" data-pos-store>
+          <?php foreach ($stores as $s): ?>
+            <option value="<?= (int)$s['id'] ?>" <?= (int)$store_id === (int)$s['id'] ? 'selected' : '' ?>>
+              <?= e($s['name'] . ($s['city'] ? ' — ' . $s['city'] : '')) ?></option>
+          <?php endforeach; ?>
+        </select>
+      </div>
+    </div>
+
+    <div class="pos-nav">
+      <span class="dim">Крок 1 із 3</span>
+      <button type="button" class="btn btn-gold" data-go="2">Далі: товари →</button>
+    </div>
+  </section>
+
+  <!-- ═════════════════════════════════════════════════ крок 2: товари ═══ -->
+  <section class="pos-pane" data-pane="2">
+    <div class="pos-wrap">
+      <div class="pos-goods">
+        <div class="admin-card" style="padding:16px">
+          <div class="pos-top">
+            <div class="np-wrap" style="flex:1;min-width:220px" data-help-title="Сканер і пошук"
+                 data-help="Поле працює трьома способами.
 
 USB-СКАНЕР: піднесіть сканер до етикетки — він сам надрукує код і натисне Enter, позиція одразу ляже в чек. Тримайте курсор у цьому полі, і більше нічого робити не треба: сканер для компʼютера — це просто клавіатура.
 
@@ -58,217 +149,230 @@ USB-СКАНЕР: піднесіть сканер до етикетки — ві
 ПОШУК: наберіть частину назви — нижче зʼявиться список фасовок із цінами й залишками, клік додає в чек.
 
 Щоб сканування взагалі щось знаходило, у товарів мають бути заповнені коди: «Каталог → Коди й штрихкоди».">
-          <label>Сканер або пошук</label>
-          <input type="text" id="posScan" autocomplete="off" autofocus
-                 placeholder="код зі сканера або назва товару">
+              <label>Сканер або пошук</label>
+              <input type="text" id="posScan" autocomplete="off"
+                     placeholder="код зі сканера або назва товару">
+            </div>
+            <button type="button" class="btn btn-line btn-sm" id="posCam">📷 Камера</button>
+          </div>
+          <p class="dim" id="posMsg" style="margin:10px 0 0;min-height:18px"></p>
+          <?php if (!$has_codes): ?>
+            <?php /* Сканер, якому нема чого знаходити, виглядає зламаним. Кажемо
+                     прямо й ведемо туди, де це чинять — одним кліком. */ ?>
+            <p class="field-hint is-bad" style="margin-top:6px">
+              Жоден товар ще не має коду — сканер поки не знайде нічого.
+              <a href="<?= e(url('/admin/products/codes')) ?>">Заповнити коди й штрихкоди</a>
+            </p>
+          <?php endif; ?>
         </div>
-        <button type="button" class="btn btn-line btn-sm" id="posCam">📷 Камера</button>
-      </div>
-      <p class="dim" id="posMsg" style="margin:10px 0 0;min-height:18px"></p>
-      <?php if (!$has_codes): ?>
-        <?php /* Сканер, якому нема чого знаходити, виглядає зламаним. Кажемо
-                 прямо й ведемо туди, де це чинять — одним кліком. */ ?>
-        <p class="field-hint is-bad" style="margin-top:6px">
-          Жоден товар ще не має коду — сканер поки не знайде нічого.
-          <a href="<?= e(url('/admin/products/codes')) ?>">Заповнити коди й штрихкоди</a>
-        </p>
-      <?php endif; ?>
-    </div>
 
-    <?php if ($cats): ?>
-      <div class="cat-chips" style="margin-bottom:12px">
-        <a class="chip <?= $cat ? '' : 'active' ?>" href="<?= e(url('/admin/orders/new')) ?>">Усі</a>
-        <?php foreach ($cats as $c): ?>
-          <a class="chip <?= $cat === (int)$c['id'] ? 'active' : '' ?>"
-             href="<?= e(url('/admin/orders/new?cat=' . (int)$c['id'])) ?>"><?= e($c['name']) ?></a>
-        <?php endforeach; ?>
-      </div>
-    <?php endif; ?>
+        <?php if ($cats): ?>
+          <div class="cat-chips" style="margin-bottom:12px">
+            <a class="chip <?= $cat ? '' : 'active' ?>" href="<?= e(url('/admin/orders/new')) ?>">Усі</a>
+            <?php foreach ($cats as $c): ?>
+              <a class="chip <?= $cat === (int)$c['id'] ? 'active' : '' ?>"
+                 href="<?= e(url('/admin/orders/new?cat=' . (int)$c['id'])) ?>"><?= e($c['name']) ?></a>
+            <?php endforeach; ?>
+          </div>
+        <?php endif; ?>
 
-    <?php /* Плитка: тап = +1 у чек. На кількох десятках позицій це швидше за
-             будь-який пошук, і саме так влаштовані каси в невеликих магазинах. */ ?>
-    <div class="pos-tiles" data-help-title="Плитка товарів"
-         data-help="Кожна плитка — одна фасовка. Тап додає одну штуку в чек; тапнули двічі — буде дві.
+        <?php /* Плитка: тап = +1 у чек. На кількох десятках позицій це швидше за
+                 будь-який пошук, і саме так влаштовані каси в невеликих магазинах. */ ?>
+        <div class="pos-tiles" data-help-title="Плитка товарів"
+             data-help="Кожна плитка — одна фасовка. Тап додає одну штуку в чек; тапнули двічі — буде дві.
 
 Ціна й залишок показані для вибраної точки. Нуль не забороняє продаж (товар можуть виготовити під замовлення), але означає, що склад розійшовся з дійсністю — краще виправити залишок.
 
 Плитку можна звузити категорією вгорі.">
-      <?php foreach ($tiles as $t): ?>
-        <button type="button" class="pos-tile<?= $t['stock'] <= 0 ? ' is-empty' : '' ?>"
-                data-pos-add data-product="<?= $t['product_id'] ?>" data-variant="<?= $t['variant_id'] ?>">
-          <span class="pos-tile-photo" style="background-image:url('<?= e(asset($t['photo'])) ?>')"></span>
-          <span class="pos-tile-name"><?= e($t['title']) ?></span>
-          <?php if ($t['variant_name'] !== ''): ?>
-            <span class="pos-tile-var"><?= e($t['variant_name']) ?></span>
-          <?php endif; ?>
-          <span class="pos-tile-foot">
-            <b><?= e(price_fmt($t['price'])) ?></b>
-            <span class="<?= $t['stock'] > 0 ? 'dim' : 'pos-tile-zero' ?>">
-              <?= $t['stock'] > 0 ? (int)$t['stock'] . ' шт.' : ($t['made_to_order'] ? 'під замовлення' : 'немає') ?>
-            </span>
-          </span>
-        </button>
-      <?php endforeach; ?>
-      <?php if (!$tiles): ?><p class="dim">У цій категорії немає активних товарів.</p><?php endif; ?>
-    </div>
-  </div>
-
-  <!-- ---------------------------------------------------------------- чек -->
-  <form class="pos-check" method="post" action="<?= e(url('/admin/orders/new')) ?>" id="posForm">
-    <?= Csrf::field() ?>
-
-    <div class="admin-card" style="padding:16px">
-      <h2 class="h-serif" style="font-size:18px;margin-bottom:12px">Покупець</h2>
-      <div style="display:flex;gap:8px;align-items:end">
-        <div style="flex:1" data-help-title="Телефон покупця"
-             data-help="Необовʼязково — і це головне в цьому полі. Продаж на місці цілком може бути анонімним: людина зайшла, купила, пішла.
-
-Якщо номер є, натисніть «Знайти»: знайдемо акаунт — замовлення потрапить в історію покупок цієї людини; не знайдемо — заведемо новий акаунт при оформленні, і покупець зможе увійти на сайт цим самим номером.
-
-Номер можна вписати будь-коли: на початку, посеред набору чи перед самим оформленням.">
-          <label>Телефон</label>
-          <input type="text" name="phone" id="posPhone" value="<?= e($customer['phone']) ?>"
-                 placeholder="+380…" autocomplete="off">
+          <?php foreach ($tiles as $t): ?>
+            <button type="button" class="pos-tile<?= $t['stock'] <= 0 ? ' is-empty' : '' ?>"
+                    data-pos-add data-product="<?= $t['product_id'] ?>" data-variant="<?= $t['variant_id'] ?>">
+              <span class="pos-tile-photo" style="background-image:url('<?= e(asset($t['photo'])) ?>')"></span>
+              <span class="pos-tile-name"><?= e($t['title']) ?></span>
+              <?php if ($t['variant_name'] !== ''): ?>
+                <span class="pos-tile-var"><?= e($t['variant_name']) ?></span>
+              <?php endif; ?>
+              <span class="pos-tile-foot">
+                <b><?= e(price_fmt($t['price'])) ?></b>
+                <span class="<?= $t['stock'] > 0 ? 'dim' : 'pos-tile-zero' ?>">
+                  <?= $t['stock'] > 0 ? (int)$t['stock'] . ' шт.' : ($t['made_to_order'] ? 'під замовлення' : 'немає') ?>
+                </span>
+              </span>
+            </button>
+          <?php endforeach; ?>
+          <?php if (!$tiles): ?><p class="dim">У цій категорії немає активних товарів.</p><?php endif; ?>
         </div>
-        <button type="button" class="btn btn-line btn-sm" data-pos-find>Знайти</button>
       </div>
-      <div style="margin-top:10px">
-        <label>Імʼя</label>
-        <input type="text" name="name" id="posName" value="<?= e($customer['name']) ?>" autocomplete="off">
-      </div>
-      <?php /* Стан покупця словами, а не кольором поля: «знайдено», «створимо
-               акаунт» і «анонім» — три різні речі, і плутати їх дорого. Той
-               самий блок повторюється біля кнопки оформлення, бо рішення
-               ухвалюють саме там, а не тут. */ ?>
-      <div class="pos-who is-<?= e($customer['state']) ?>" data-pos-note>
-        <span class="pos-who-icon" data-pos-icon><?= e($customer['icon']) ?></span>
-        <span data-pos-text><?= e($customer['note']) ?></span>
+
+      <div class="pos-check">
+        <div class="admin-card pos-lines-card" style="padding:16px">
+          <h2 class="h-serif" style="font-size:18px;margin-bottom:12px">Чек</h2>
+          <table class="tbl pos-lines" id="posLines">
+            <?php foreach ($lines as $r): ?>
+              <tr>
+                <td>
+                  <?= e($r['product']['name']) ?>
+                  <?php if ($r['variant']): ?><div class="dim"><?= e($r['variant']['name']) ?></div><?php endif; ?>
+                </td>
+                <td class="num" style="white-space:nowrap">
+                  <button type="button" class="pos-qty-btn" data-pos-qty="<?= e($r['key']) ?>" data-to="<?= (int)$r['qty'] - 1 ?>">−</button>
+                  <b><?= (int)$r['qty'] ?></b>
+                  <button type="button" class="pos-qty-btn" data-pos-qty="<?= e($r['key']) ?>" data-to="<?= (int)$r['qty'] + 1 ?>">+</button>
+                </td>
+                <td class="num"><?= e(price_fmt($r['sum'])) ?></td>
+                <td><button type="button" class="btn btn-line btn-xs" data-pos-qty="<?= e($r['key']) ?>" data-to="0">×</button></td>
+              </tr>
+            <?php endforeach; ?>
+          </table>
+          <p class="dim" id="posEmpty" <?= $lines ? 'hidden' : '' ?> style="margin:0">
+            Чек порожній. Тапніть по плитці, піднесіть сканер до етикетки — або вийдіть на сайт і додавайте звідти.
+          </p>
+          <div class="pos-total">Разом <b id="posTotal"><?= e(price_fmt($totals['total'])) ?></b></div>
+        </div>
+
+        <div class="pos-nav">
+          <button type="button" class="btn btn-line" data-go="1">← Покупець</button>
+          <button type="button" class="btn btn-gold" data-go="3">Далі: отримання →</button>
+        </div>
+        <a class="btn btn-line" style="width:100%;margin-top:10px" href="<?= e(url('/shop')) ?>"
+           data-help-title="Кнопка «Вийти на сайт»"
+           data-help="Відкриває вітрину, не втрачаючи чек: унизу зʼявиться смужка продажу, і кнопки «У кошик» на сайті додаватимуть товар у цей самий чек.
+
+Це для випадку, коли покупцеві треба показати картку товару — фото, опис, характеристики. Повернутись до каси можна з тієї ж смужки.">Вийти на сайт →</a>
       </div>
     </div>
+  </section>
 
-    <div class="admin-card pos-lines-card" style="padding:16px">
-      <h2 class="h-serif" style="font-size:18px;margin-bottom:12px">Чек</h2>
-      <table class="tbl pos-lines" id="posLines">
-        <?php foreach ($lines as $r): ?>
-          <tr>
-            <td>
-              <?= e($r['product']['name']) ?>
-              <?php if ($r['variant']): ?><div class="dim"><?= e($r['variant']['name']) ?></div><?php endif; ?>
-            </td>
-            <td class="num" style="white-space:nowrap">
-              <button type="button" class="pos-qty-btn" data-pos-qty="<?= e($r['key']) ?>" data-to="<?= (int)$r['qty'] - 1 ?>">−</button>
-              <b><?= (int)$r['qty'] ?></b>
-              <button type="button" class="pos-qty-btn" data-pos-qty="<?= e($r['key']) ?>" data-to="<?= (int)$r['qty'] + 1 ?>">+</button>
-            </td>
-            <td class="num"><?= e(price_fmt($r['sum'])) ?></td>
-            <td><button type="button" class="btn btn-line btn-xs" data-pos-qty="<?= e($r['key']) ?>" data-to="0">×</button></td>
-          </tr>
-        <?php endforeach; ?>
-      </table>
-      <p class="dim" id="posEmpty" <?= $lines ? 'hidden' : '' ?> style="margin:0">
-        Чек порожній. Тапніть по плитці, піднесіть сканер до етикетки — або вийдіть на сайт і додавайте звідти.
-      </p>
-      <div class="pos-total">Разом <b id="posTotal"><?= e(price_fmt($totals['total'])) ?></b></div>
-    </div>
+  <!-- ══════════════════════════════════════════════ крок 3: отримання ═══ -->
+  <section class="pos-pane" data-pane="3">
+    <div class="pos-wrap">
+      <div class="pos-goods">
+        <div class="admin-card" style="padding:18px">
+          <h2 class="h-serif" style="font-size:19px;margin:0 0 14px">Як покупець отримає замовлення</h2>
 
-    <div class="admin-card" style="padding:16px">
-      <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:12px" data-help-title="Спосіб продажу"
-           data-help="«У магазині» — покупець перед вами: товар віддається одразу, доставка не потрібна.
+          <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:14px" data-help-title="Спосіб продажу"
+               data-help="«У магазині» — покупець перед вами: товар віддається одразу, доставка не потрібна.
 
 «Телефоном» — подзвонили. Тоді номер обовʼязковий: без нього замовлення нікому підтвердити.
 
 Від вибору залежать поля доставки нижче й те, чи закривається замовлення одразу.">
-        <?php foreach (['offline' => 'У магазині', 'phone' => 'Телефоном'] as $key => $label): ?>
-          <label class="toggle" style="gap:8px">
-            <input type="radio" name="source" value="<?= e($key) ?>" data-pos-source
-                   style="position:static;opacity:1" <?= $source === $key ? 'checked' : '' ?>>
-            <?= e($label) ?></label>
-        <?php endforeach; ?>
-      </div>
-
-      <div data-pos-delivery <?= $source === 'offline' ? 'hidden' : '' ?>>
-        <label>Доставка</label>
-        <div style="display:flex;gap:14px;flex-wrap:wrap;margin:6px 0 12px">
-          <?php foreach (OrderFlow::DELIVERY as $key => $label): ?>
-            <label class="toggle" style="gap:8px">
-              <input type="radio" name="delivery" value="<?= e($key) ?>" data-pos-dlv
-                     style="position:static;opacity:1" <?= $form['delivery'] === $key ? 'checked' : '' ?>>
-              <?= e($label) ?></label>
-          <?php endforeach; ?>
-        </div>
-        <div data-pos-np <?= $form['delivery'] === 'np' ? '' : 'hidden' ?>>
-          <label>Місто</label>
-          <input type="text" name="np_city" id="npCity" value="<?= e($form['city']) ?>" autocomplete="off">
-          <input type="hidden" name="city_ref" id="npCityRef" value="<?= e($form['city_ref']) ?>">
-          <input type="hidden" name="np_office_ref" id="npOfficeRef" value="<?= e($form['np_office_ref']) ?>">
-          <input type="hidden" name="np_street_ref" id="npStreetRef" value="<?= e($form['np_street_ref']) ?>">
-          <?php /* Куди везти: у відділення чи додому. Обирати з довідника
-                   обовʼязково — накладна створюється за посиланням, а не за назвою. */ ?>
-          <label style="margin-top:8px">Куди</label>
-          <select name="np_type" id="posNpType">
-            <option value="warehouse"<?= $form['np_type'] === 'warehouse' ? ' selected' : '' ?>>У відділення / поштомат</option>
-            <option value="courier"<?= $form['np_type'] === 'courier' ? ' selected' : '' ?>>Курʼєром на адресу</option>
-          </select>
-          <div data-pos-np-wh<?= $form['np_type'] === 'courier' ? ' hidden' : '' ?>>
-            <label style="margin-top:8px">Відділення</label>
-            <input type="text" name="np_office" id="npOffice" value="<?= e($form['np_office']) ?>" autocomplete="off">
+            <?php foreach (['offline' => 'У магазині', 'phone' => 'Телефоном'] as $key => $label): ?>
+              <label class="toggle" style="gap:8px">
+                <input type="radio" name="source" value="<?= e($key) ?>" data-pos-source
+                       style="position:static;opacity:1" <?= $source === $key ? 'checked' : '' ?>>
+                <?= e($label) ?></label>
+            <?php endforeach; ?>
           </div>
-          <div data-pos-np-courier<?= $form['np_type'] === 'courier' ? '' : ' hidden' ?>>
-            <label style="margin-top:8px">Вулиця</label>
-            <input type="text" name="np_street" id="npStreet" value="<?= e($form['np_street']) ?>" autocomplete="off">
-            <div style="display:flex;gap:8px;margin-top:8px">
-              <div style="flex:1"><label>Будинок</label>
-                <input type="text" name="np_house" id="npHouse" value="<?= e($form['np_house']) ?>" maxlength="20"></div>
-              <div style="flex:1"><label>Квартира</label>
-                <input type="text" name="np_flat" id="npFlat" value="<?= e($form['np_flat']) ?>" maxlength="20"></div>
+
+          <div data-pos-delivery <?= $source === 'offline' ? 'hidden' : '' ?>>
+            <label>Доставка</label>
+            <div style="display:flex;gap:14px;flex-wrap:wrap;margin:6px 0 12px">
+              <?php foreach (OrderFlow::DELIVERY as $key => $label): ?>
+                <label class="toggle" style="gap:8px">
+                  <input type="radio" name="delivery" value="<?= e($key) ?>" data-pos-dlv
+                         style="position:static;opacity:1" <?= $form['delivery'] === $key ? 'checked' : '' ?>>
+                  <?= e($label) ?></label>
+              <?php endforeach; ?>
+            </div>
+            <div data-pos-np <?= $form['delivery'] === 'np' ? '' : 'hidden' ?>>
+              <?php /* Кожне поле з підказками — у власній обгортці. Віджет
+                       кріпить випадний список до батьківського елемента поля, і
+                       без обгортки він чіплявся до всього блоку доставки: список
+                       міст випадав аж під адресою, за півекрана від того місця,
+                       де його чекають. */ ?>
+              <div class="pos-field">
+                <label>Місто</label>
+                <input type="text" name="np_city" id="npCity" value="<?= e($form['city']) ?>" autocomplete="off">
+              </div>
+              <input type="hidden" name="city_ref" id="npCityRef" value="<?= e($form['city_ref']) ?>">
+              <input type="hidden" name="np_office_ref" id="npOfficeRef" value="<?= e($form['np_office_ref']) ?>">
+              <input type="hidden" name="np_street_ref" id="npStreetRef" value="<?= e($form['np_street_ref']) ?>">
+              <?php /* Куди везти: у відділення чи додому. Обирати з довідника
+                       обовʼязково — накладна створюється за посиланням, а не за назвою. */ ?>
+              <label style="margin-top:8px">Куди</label>
+              <select name="np_type" id="posNpType">
+                <option value="warehouse"<?= $form['np_type'] === 'warehouse' ? ' selected' : '' ?>>У відділення / поштомат</option>
+                <option value="courier"<?= $form['np_type'] === 'courier' ? ' selected' : '' ?>>Курʼєром на адресу</option>
+              </select>
+              <div data-pos-np-wh<?= $form['np_type'] === 'courier' ? ' hidden' : '' ?>>
+                <div class="pos-field" style="margin-top:8px">
+                  <label>Відділення</label>
+                  <input type="text" name="np_office" id="npOffice" value="<?= e($form['np_office']) ?>" autocomplete="off">
+                </div>
+              </div>
+              <div data-pos-np-courier<?= $form['np_type'] === 'courier' ? '' : ' hidden' ?>>
+                <div class="pos-field" style="margin-top:8px">
+                  <label>Вулиця</label>
+                  <input type="text" name="np_street" id="npStreet" value="<?= e($form['np_street']) ?>" autocomplete="off">
+                </div>
+                <div style="display:flex;gap:8px;margin-top:8px">
+                  <div style="flex:1"><label>Будинок</label>
+                    <input type="text" name="np_house" id="npHouse" value="<?= e($form['np_house']) ?>" maxlength="20"></div>
+                  <div style="flex:1"><label>Квартира</label>
+                    <input type="text" name="np_flat" id="npFlat" value="<?= e($form['np_flat']) ?>" maxlength="20"></div>
+                </div>
+              </div>
+            </div>
+            <div data-pos-addr <?= $form['delivery'] === 'other' ? '' : 'hidden' ?>>
+              <label>Адреса</label>
+              <input type="text" name="address" value="<?= e($form['address']) ?>">
+            </div>
+            <div style="margin-top:8px">
+              <label>Email (необовʼязково)</label>
+              <input type="text" name="email" value="<?= e($form['email']) ?>">
             </div>
           </div>
-        </div>
-        <div data-pos-addr <?= $form['delivery'] === 'other' ? '' : 'hidden' ?>>
-          <label>Адреса</label>
-          <input type="text" name="address" value="<?= e($form['address']) ?>">
-        </div>
-        <div style="margin-top:8px">
-          <label>Email (необовʼязково)</label>
-          <input type="text" name="email" value="<?= e($form['email']) ?>">
-        </div>
-      </div>
 
-      <div style="margin-top:10px" data-help-title="Промокод"
-           data-help="Код, який назвав покупець. Перевіряється так само, як на сайті: строк дії, ліміт використань і ліміт «один раз на людину» (його рахуємо за номером телефону).
+          <div class="form-grid" style="margin-top:14px">
+            <div data-help-title="Промокод"
+                 data-help="Код, який назвав покупець. Перевіряється так само, як на сайті: строк дії, ліміт використань і ліміт «один раз на людину» (його рахуємо за номером телефону).
 
 Неробочий код не пропустить оформлення — побачите причину вгорі екрана. Знижку рахує сервер за тими ж правилами, що й у кошику.">
-        <label>Промокод</label>
-        <input type="text" name="promo_code" value="<?= e($form['promo_code']) ?>">
-      </div>
-      <div style="margin-top:10px">
-        <label>Коментар</label>
-        <input type="text" name="comment" value="<?= e($form['comment']) ?>" placeholder="як домовились">
-      </div>
-      <div style="margin-top:12px" data-pos-handed <?= $form['delivery'] === 'pickup' ? '' : 'hidden' ?>
-           data-help-title="Товар віддано покупцю"
-           data-help="Ставте, коли товар уже в руках покупця: замовлення одразу закриється статусом «Доставлено», а залишки спишуться зі складу точки.
+              <label>Промокод</label>
+              <input type="text" name="promo_code" value="<?= e($form['promo_code']) ?>">
+            </div>
+            <div>
+              <label>Коментар</label>
+              <input type="text" name="comment" value="<?= e($form['comment']) ?>" placeholder="як домовились">
+            </div>
+          </div>
+
+          <div style="margin-top:14px" data-pos-handed <?= $form['delivery'] === 'pickup' ? '' : 'hidden' ?>
+               data-help-title="Товар віддано покупцю"
+               data-help="Ставте, коли товар уже в руках покупця: замовлення одразу закриється статусом «Доставлено», а залишки спишуться зі складу точки.
 
 Знімайте, якщо людина ще прийде забрати (відклали, домовились на завтра) — тоді замовлення лишиться в роботі, і магазин отримає про нього сповіщення, як про будь-яке нове.">
-        <label class="toggle">
-          <input type="checkbox" name="handed" <?= $form['handed'] ? 'checked' : '' ?>><span class="tr"></span>
-          Товар віддано покупцю</label>
+            <label class="toggle">
+              <input type="checkbox" name="handed" <?= $form['handed'] ? 'checked' : '' ?>><span class="tr"></span>
+              Товар віддано покупцю</label>
+          </div>
+        </div>
+      </div>
+
+      <?php /* Підсумок перед кнопкою: що саме зараз оформиться. Повертатись на
+               другий крок заради перевірки суми не має бути потреби. */ ?>
+      <div class="pos-check">
+        <div class="admin-card" style="padding:16px">
+          <h2 class="h-serif" style="font-size:18px;margin-bottom:10px">До оформлення</h2>
+          <div class="pos-sum"><span class="dim">Позицій у чеку</span><b data-sum-count><?= count($lines) ?></b></div>
+          <div class="pos-total">Разом <b data-sum-total><?= e(price_fmt($totals['total'])) ?></b></div>
+
+          <div class="pos-who is-<?= e($customer['state']) ?>" data-pos-note>
+            <span class="pos-who-icon" data-pos-icon><?= e($customer['icon']) ?></span>
+            <span data-pos-text><?= e($customer['note']) ?></span>
+          </div>
+
+          <div class="pos-actions" style="margin-top:14px">
+            <button class="btn btn-gold" type="submit" name="_action" value="save">💾 Оформити замовлення</button>
+          </div>
+        </div>
+        <div class="pos-nav">
+          <button type="button" class="btn btn-line" data-go="2">← Товари</button>
+        </div>
       </div>
     </div>
-
-    <div class="pos-actions">
-      <div class="pos-who is-<?= e($customer['state']) ?>" data-pos-note style="width:100%">
-        <span class="pos-who-icon" data-pos-icon><?= e($customer['icon']) ?></span>
-        <span data-pos-text><?= e($customer['note']) ?></span>
-      </div>
-      <button class="btn btn-gold" type="submit" name="_action" value="save">💾 Оформити замовлення</button>
-      <a class="btn btn-line" href="<?= e(url('/shop')) ?>" data-help-title="Кнопка «Вийти на сайт»"
-         data-help="Відкриває вітрину, не втрачаючи чек: унизу зʼявиться смужка продажу, і кнопки «У кошик» на сайті додаватимуть товар у цей самий чек.
-
-Це для випадку, коли покупцеві треба показати картку товару — фото, опис, характеристики. Повернутись до каси можна з тієї ж смужки.">Вийти на сайт →</a>
-    </div>
-  </form>
-</div>
+  </section>
+</form>
 
 <?php if ($np_enabled): ?><?= View::partial('partials/np_autocomplete') ?><?php endif; ?>
 <script>
