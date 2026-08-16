@@ -670,6 +670,12 @@ class Orders
             'ship_form' => $shipForm,
             'ship_gaps' => $shipGaps,
             'can_ship' => Auth::can('orders.ship'),
+            // Доставка належить замовленню цілком, тож правити її може той, хто
+            // веде хоч одну його частину: везти доведеться йому, і саме він
+            // телефонує покупцю уточнити. Продавець, який дивиться чуже
+            // замовлення через orders.view_all, форми не побачить — інакше вона
+            // показувалась би лише щоб відмовити на збереженні.
+            'can_edit_delivery' => Auth::can('orders.ship') && in_array(true, $manage, true),
             'ship_payers' => Shipments::PAYERS,
             'ship_payments' => Shipments::PAYMENTS,
             'np_enabled' => NovaPoshta::enabled(),
