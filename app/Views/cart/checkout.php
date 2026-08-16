@@ -5,6 +5,12 @@
   $selCity = $sel['city'] ?? '';
   $selRef = $sel['city_ref'] ?? '';
   $selOffice = $sel['np_office'] ?? '';
+  $selOfficeRef = $sel['np_office_ref'] ?? '';
+  $selType = ($sel['np_type'] ?? 'warehouse') === 'courier' ? 'courier' : 'warehouse';
+  $selStreet = $sel['np_street'] ?? '';
+  $selStreetRef = $sel['np_street_ref'] ?? '';
+  $selHouse = $sel['np_house'] ?? '';
+  $selFlat = $sel['np_flat'] ?? '';
   $selAddress = $sel['address'] ?? '';
   $canSave = !empty($auth_user);
   // «2 товари» читається як конкретна річ, «Ваше замовлення» — як абстракція
@@ -37,6 +43,10 @@
                          <?= $sel && (int)$sel['id'] === (int)$a['id'] ? 'checked' : '' ?>
                          data-delivery="<?= e($a['delivery']) ?>" data-city="<?= e($a['city']) ?>"
                          data-ref="<?= e($a['city_ref']) ?>" data-office="<?= e($a['np_office']) ?>"
+                         data-office-ref="<?= e($a['np_office_ref'] ?? '') ?>"
+                         data-type="<?= e($a['np_type'] ?? 'warehouse') ?>"
+                         data-street="<?= e($a['np_street'] ?? '') ?>" data-street-ref="<?= e($a['np_street_ref'] ?? '') ?>"
+                         data-house="<?= e($a['np_house'] ?? '') ?>" data-flat="<?= e($a['np_flat'] ?? '') ?>"
                          data-address="<?= e($a['address']) ?>">
                   <?= e(Addresses::title($a)) ?>
                 </label>
@@ -58,15 +68,34 @@
         </div>
 
         <div id="npFields"<?= $selDelivery === 'np' ? '' : ' style="display:none"' ?>>
+          <?php /* Куди саме везти. Це не «спосіб доставки» (він вище), а вибір
+                   усередині Нової Пошти: у відділення чи курʼєром додому. Різниця
+                   для нас істотна — курʼєрська накладна вимагає вулиці з довідника,
+                   а не просто адреси рядком. */ ?>
+          <div class="field">
+            <div class="variants" id="npTypeChips">
+              <label class="chip<?= $selType === 'warehouse' ? ' active' : '' ?>"><input type="radio" name="np_type" value="warehouse"<?= $selType === 'warehouse' ? ' checked' : '' ?> hidden>У відділення або поштомат</label>
+              <label class="chip<?= $selType === 'courier' ? ' active' : '' ?>"><input type="radio" name="np_type" value="courier"<?= $selType === 'courier' ? ' checked' : '' ?> hidden>Курʼєром на адресу</label>
+            </div>
+          </div>
           <div class="form-grid">
             <?php /* autocomplete="new-password" — єдине, що глушить автопідстановку адрес
                       у Chrome: "off" він для адресних полів свідомо ігнорує і накриває наш
                       список своїм. Ім'я поля теж не "city" — інакше евристика впізнає його
                       за назвою. data-* — те саме для менеджерів паролів. */ ?>
             <div class="field"><label>Місто</label><input type="text" name="np_city" id="npCity" value="<?= e($selCity) ?>" placeholder="Почніть вводити місто…" autocomplete="new-password" data-lpignore="true" data-1p-ignore data-form-type="other" spellcheck="false"></div>
-            <div class="field"><label>Відділення / поштомат</label><input type="text" name="np_office" id="npOffice" value="<?= e($selOffice) ?>" placeholder="Номер, вулиця або «поштомат»" autocomplete="new-password" data-lpignore="true" data-1p-ignore data-form-type="other" spellcheck="false"></div>
+            <div class="field" id="npOfficeField"><label>Відділення / поштомат</label><input type="text" name="np_office" id="npOffice" value="<?= e($selOffice) ?>" placeholder="Номер, вулиця або «поштомат»" autocomplete="new-password" data-lpignore="true" data-1p-ignore data-form-type="other" spellcheck="false"></div>
           </div>
+          <div class="form-grid" id="npCourierFields"<?= $selType === 'courier' ? '' : ' style="display:none"' ?>>
+            <div class="field" style="grid-column:1/-1"><label>Вулиця</label><input type="text" name="np_street" id="npStreet" value="<?= e($selStreet) ?>" placeholder="Почніть вводити назву вулиці…" autocomplete="new-password" data-lpignore="true" data-1p-ignore data-form-type="other" spellcheck="false"></div>
+            <div class="field"><label>Будинок</label><input type="text" name="np_house" id="npHouse" value="<?= e($selHouse) ?>" placeholder="12А" maxlength="20"></div>
+            <div class="field"><label>Квартира <span class="dim">(якщо є)</span></label><input type="text" name="np_flat" id="npFlat" value="<?= e($selFlat) ?>" placeholder="45" maxlength="20"></div>
+          </div>
+          <?php /* Ref-и з довідника НП: людина бачить назви, а накладну потім
+                   створюють саме за цими посиланнями */ ?>
           <input type="hidden" name="city_ref" id="npCityRef" value="<?= e($selRef) ?>">
+          <input type="hidden" name="np_office_ref" id="npOfficeRef" value="<?= e($selOfficeRef) ?>">
+          <input type="hidden" name="np_street_ref" id="npStreetRef" value="<?= e($selStreetRef) ?>">
         </div>
 
         <div id="pickupFields" style="display:none">
@@ -214,7 +243,33 @@
   var nameInput = document.getElementById('ordName'), phoneInput = document.getElementById('ordPhone');
   var me = <?= json_js(['name' => $pre['name'], 'phone' => $pre['phone']]) ?>;
   var npWidget = window.npAutocomplete
-    ? window.npAutocomplete({city: 'npCity', office: 'npOffice', ref: 'npCityRef'}) : null;
+    ? window.npAutocomplete({city: 'npCity', office: 'npOffice', ref: 'npCityRef',
+                             officeRef: 'npOfficeRef', street: 'npStreet', streetRef: 'npStreetRef'}) : null;
+
+  // Відділення чи курʼєр: показуємо рівно ті поля, які потрібні обраному
+  // способу. Приховане поле лишається заповненим — повернувшись до відділення,
+  // людина побачить те, що вже обрала, а не порожнечу.
+  var npTypeChips = document.querySelectorAll('#npTypeChips .chip');
+  var courierFields = document.getElementById('npCourierFields');
+  var officeField = document.getElementById('npOfficeField');
+  function showNpType(v){
+    if (courierFields) courierFields.style.display = v === 'courier' ? '' : 'none';
+    if (officeField) officeField.style.display = v === 'courier' ? 'none' : '';
+  }
+  npTypeChips.forEach(function(ch){
+    ch.addEventListener('click', function(){
+      npTypeChips.forEach(function(c){ c.classList.remove('active'); c.querySelector('input').checked = false; });
+      ch.classList.add('active');
+      var i = ch.querySelector('input');
+      i.checked = true;
+      showNpType(i.value);
+    });
+  });
+  function npType(){
+    var on = document.querySelector('#npTypeChips input:checked');
+    return on ? on.value : 'warehouse';
+  }
+  showNpType(npType());
 
   function showFor(v){
     np.style.display = v === 'np' ? '' : 'none';
@@ -258,9 +313,11 @@
       ch.classList.add('active');
       var i = ch.querySelector('input'), d = i.dataset;
       if (!i.value) {                           // «Інша адреса» — звільняємо поля під нову
-        if (npWidget) npWidget.apply('', '', '');
+        if (npWidget) npWidget.apply('', '', '', '', '', '');
         else { document.getElementById('npCity').value = ''; document.getElementById('npOffice').value = ''; }
         document.getElementById('npCityRef').value = '';
+        document.getElementById('npOfficeRef').value = '';
+        document.getElementById('npHouse').value = document.getElementById('npFlat').value = '';
         document.getElementById('otherAddress').value = '';
         return;
       }
@@ -271,9 +328,19 @@
         c.querySelector('input').checked = on;
       });
       showFor(delivery);
-      if (npWidget) npWidget.apply(d.city, d.ref, d.office);
+      var type = d.type === 'courier' ? 'courier' : 'warehouse';
+      npTypeChips.forEach(function(c){
+        var on = c.querySelector('input').value === type;
+        c.classList.toggle('active', on);
+        c.querySelector('input').checked = on;
+      });
+      showNpType(type);
+      if (npWidget) npWidget.apply(d.city, d.ref, d.office, d.officeRef, d.street, d.streetRef);
       else { document.getElementById('npCity').value = d.city || ''; document.getElementById('npOffice').value = d.office || ''; }
       document.getElementById('npCityRef').value = d.ref || '';
+      document.getElementById('npOfficeRef').value = d.officeRef || '';
+      document.getElementById('npHouse').value = d.house || '';
+      document.getElementById('npFlat').value = d.flat || '';
       document.getElementById('otherAddress').value = d.address || '';
     });
   });
@@ -373,7 +440,12 @@
     var d = document.querySelector('#deliveryChips input:checked');
     var v = d ? d.value : 'np';
     if (i === 0) {
-      if (v === 'np') return !!(document.getElementById('npCity').value.trim() && document.getElementById('npOffice').value.trim());
+      if (v === 'np') {
+        if (!document.getElementById('npCity').value.trim()) return false;
+        return npType() === 'courier'
+          ? !!(document.getElementById('npStreet').value.trim() && document.getElementById('npHouse').value.trim())
+          : !!document.getElementById('npOffice').value.trim();
+      }
       if (v === 'pickup') return !!(document.getElementById('pickupStore') || {}).value;
       return !!document.getElementById('otherAddress').value.trim();
     }

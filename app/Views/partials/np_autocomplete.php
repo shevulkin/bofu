@@ -1,12 +1,17 @@
-<?php /* Підказки міст і відділень Нової Пошти. Підключається один раз на сторінці;
-        поля прив'язуються викликом npAutocomplete({...}) — так віджет живе і в
-        checkout, і в кабінеті, не роздвоюючись. */ ?>
+<?php /* Підказки міст, відділень і вулиць Нової Пошти. Підключається один раз на
+        сторінці; поля прив'язуються викликом npAutocomplete({...}) — так віджет
+        живе і в checkout, і в кабінеті, і в налаштуваннях, не роздвоюючись. */ ?>
 <script>
 window.npAutocomplete = function (opt) {
   var cityInput = document.getElementById(opt.city), offInput = document.getElementById(opt.office);
   var refInput = opt.ref ? document.getElementById(opt.ref) : null;
+  var offRefInput = opt.officeRef ? document.getElementById(opt.officeRef) : null;
+  var streetInput = opt.street ? document.getElementById(opt.street) : null;
+  var streetRefInput = opt.streetRef ? document.getElementById(opt.streetRef) : null;
   if (!cityInput || !offInput) return null;
-  var cityUrl = '<?= e(url('/api/np/cities')) ?>', whUrl = '<?= e(url('/api/np/warehouses')) ?>';
+  var cityUrl = '<?= e(url('/api/np/cities')) ?>',
+      whUrl = '<?= e(url('/api/np/warehouses')) ?>',
+      stUrl = '<?= e(url('/api/np/streets')) ?>';
   var cityRef = (refInput && refInput.value) || '';
 
   /**
@@ -30,12 +35,13 @@ window.npAutocomplete = function (opt) {
       box.appendChild(d);
       box.classList.add('is-open');
     }
+    /** values — [{ref, label}]: підпис бачить людина, ref іде в приховане поле */
     function show(values) {
       items = values; active = -1; box.innerHTML = '';
       if (!values.length) { note('Нічого не знайдено'); return; }
       values.forEach(function (v, i) {
         var d = document.createElement('div');
-        d.textContent = v;
+        d.textContent = v.label;
         // mousedown, а не click: клік приходить уже після blur, коли список закрито
         d.addEventListener('mousedown', function (e) { e.preventDefault(); pick(i); });
         box.appendChild(d);
@@ -44,7 +50,7 @@ window.npAutocomplete = function (opt) {
     }
     function pick(i) {
       if (i < 0 || i >= items.length) return;
-      input.value = items[i];
+      input.value = items[i].label;
       close();
       onPick(items[i]);
     }
@@ -71,23 +77,34 @@ window.npAutocomplete = function (opt) {
     cityRef = ref;
     if (refInput) refInput.value = ref;
   }
+  /**
+   * Ref відділення живе рівно доти, доки в полі стоїть обраний із довідника
+   * рядок. Дописав людина букву — ref стирається: краще попросити обрати
+   * зі списку ще раз, ніж створити накладну на сусіднє відділення.
+   */
+  function setOfficeRef(ref) { if (offRefInput) offRefInput.value = ref || ''; }
+  function setStreetRef(ref) { if (streetRefInput) streetRefInput.value = ref || ''; }
 
   // ref міст тримаємо в мапі, а не перечитуємо повторним пошуком: на повну
   // назву НП відповідає іншим рядком («м. Кривий Ріг, Дніпропетровська обл.»
   // → «…, Криворізький р-н, …»), і місто ставало «не обраним»
-  var cityRefByLabel = {}, tCity, tOff;
+  var cityRefByLabel = {}, tCity, tOff, tStreet;
   if (cityRef && cityInput.value) cityRefByLabel[cityInput.value.trim()] = cityRef;
 
-  var cityDrop = dropdown(cityInput, function (label) {
-    setRef(cityRefByLabel[label] || '');
+  var cityDrop = dropdown(cityInput, function (item) {
+    setRef(item.ref);
     offInput.value = '';               // відділення старого міста в новому не існує
+    setOfficeRef('');
+    if (streetInput) { streetInput.value = ''; setStreetRef(''); }
     loadOffices('', true);
     offInput.focus();
   });
-  var offDrop = dropdown(offInput, function () { /* значення вже в полі */ });
+  var offDrop = dropdown(offInput, function (item) { setOfficeRef(item.ref); });
 
   cityInput.addEventListener('input', function () {
     clearTimeout(tCity);
+    setRef('');                        // місто ще не обрано зі списку
+    setOfficeRef('');
     var q = cityInput.value.trim();
     if (q.length < 2) { cityDrop.note('Введіть щонайменше дві літери назви міста'); return; }
     cityDrop.note('Шукаємо…');
@@ -95,7 +112,7 @@ window.npAutocomplete = function (opt) {
       fetch(cityUrl + '?q=' + encodeURIComponent(q))
         .then(function (r) { return r.json() }).then(function (d) {
           d.items.forEach(function (it) { cityRefByLabel[it.label] = it.ref; });
-          cityDrop.show(d.items.map(function (it) { return it.label }));
+          cityDrop.show(d.items);
         }).catch(function () { cityDrop.note('Не вдалося звʼязатися з Новою Поштою'); });
     }, 250);
   });
@@ -107,7 +124,7 @@ window.npAutocomplete = function (opt) {
   // НП за введеним текстом: «12», «Хрещатик» чи «поштомат» однаково працюють
   function loadOffices(q, silent) {
     var ref = cityRef;
-    if (!ref) { offDrop.note('Спершу оберіть місто'); return; }
+    if (!ref) { offDrop.note('Спершу оберіть місто зі списку'); return; }
     if (!silent) offDrop.note('Шукаємо…');
     fetch(whUrl + '?city=' + encodeURIComponent(ref) + '&q=' + encodeURIComponent(q))
       .then(function (r) { return r.json() }).then(function (d) {
@@ -117,19 +134,42 @@ window.npAutocomplete = function (opt) {
   }
   offInput.addEventListener('input', function () {
     clearTimeout(tOff);
+    setOfficeRef('');
     var q = offInput.value.trim();
     tOff = setTimeout(function () { loadOffices(q); }, 250);
   });
   offInput.addEventListener('focus', function () { loadOffices(offInput.value.trim()); });
 
+  // Вулиця — лише для доставки курʼєром. Поля може й не бути: у налаштуваннях
+  // відправника адреса не потрібна, там відправляють із відділення.
+  var streetDrop = streetInput ? dropdown(streetInput, function (item) { setStreetRef(item.ref); }) : null;
+  if (streetInput && streetDrop) {
+    streetInput.addEventListener('input', function () {
+      clearTimeout(tStreet);
+      setStreetRef('');
+      var q = streetInput.value.trim();
+      if (!cityRef) { streetDrop.note('Спершу оберіть місто зі списку'); return; }
+      if (q.length < 2) { streetDrop.note('Введіть щонайменше дві літери назви вулиці'); return; }
+      streetDrop.note('Шукаємо…');
+      tStreet = setTimeout(function () {
+        fetch(stUrl + '?city=' + encodeURIComponent(cityRef) + '&q=' + encodeURIComponent(q))
+          .then(function (r) { return r.json() }).then(function (d) { streetDrop.show(d.items); })
+          .catch(function () { streetDrop.note('Не вдалося звʼязатися з Новою Поштою'); });
+      }, 250);
+    });
+  }
+
   return {
     /** Підставити збережену адресу: ref відомий, тож підказки працюють одразу */
-    apply: function (city, ref, office) {
+    apply: function (city, ref, office, officeRef, street, streetRef) {
       cityInput.value = city || '';
       offInput.value = office || '';
       if (city && ref) cityRefByLabel[String(city).trim()] = ref;
       setRef(ref || '');
+      setOfficeRef(officeRef || '');
+      if (streetInput) { streetInput.value = street || ''; setStreetRef(streetRef || ''); }
       cityDrop.close(); offDrop.close();
+      if (streetDrop) streetDrop.close();
     }
   };
 };

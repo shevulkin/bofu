@@ -44,15 +44,17 @@
                 <b><?= e(Addresses::title($a)) ?></b>
                 <?php if ((int)$a['is_default'] === 1): ?><span class="status-pill st-processing">основна</span><?php endif; ?>
                 <div class="dim" style="font-size:13px">
-                  <?= $a['delivery'] === 'np'
-                        ? e(trim(($a['city'] ?? '') . ($a['np_office'] ? ', ' . $a['np_office'] : ''), ' ,'))
-                        : e($a['address']) ?>
+                  <?= $a['delivery'] === 'np' ? e(OrderFlow::deliveryAddress($a + ['delivery' => 'np'])) : e($a['address']) ?>
                 </div>
               </div>
               <button class="btn btn-line btn-sm addr-edit" type="button"
                       data-id="<?= (int)$a['id'] ?>" data-label="<?= e($a['label']) ?>"
                       data-delivery="<?= e($a['delivery']) ?>" data-city="<?= e($a['city']) ?>"
                       data-ref="<?= e($a['city_ref']) ?>" data-office="<?= e($a['np_office']) ?>"
+                      data-office-ref="<?= e($a['np_office_ref'] ?? '') ?>"
+                      data-type="<?= e($a['np_type'] ?? 'warehouse') ?>"
+                      data-street="<?= e($a['np_street'] ?? '') ?>" data-street-ref="<?= e($a['np_street_ref'] ?? '') ?>"
+                      data-house="<?= e($a['np_house'] ?? '') ?>" data-flat="<?= e($a['np_flat'] ?? '') ?>"
                       data-address="<?= e($a['address']) ?>">Змінити</button>
               <?php if ((int)$a['is_default'] !== 1): ?>
                 <form method="post" action="<?= e(url('/profile')) ?>" style="display:inline">
@@ -77,6 +79,9 @@
         <input type="hidden" name="id" id="addrId" value="">
         <input type="hidden" name="delivery" id="addrDelivery" value="np">
         <input type="hidden" name="city_ref" id="npCityRef" value="">
+        <input type="hidden" name="np_office_ref" id="npOfficeRef" value="">
+        <input type="hidden" name="np_street_ref" id="npStreetRef" value="">
+        <input type="hidden" name="np_type" id="addrNpType" value="warehouse">
         <h3 class="h-serif" style="font-size:17px;margin:0 0 12px" id="addrFormTitle">Нова адреса</h3>
         <div class="variants" id="addrKind" style="margin-bottom:14px">
           <label class="chip active" data-kind="np">Нова Пошта</label>
@@ -89,8 +94,22 @@
                     наш список власною підстановкою адрес (див. checkout) */ ?>
           <div class="field addr-np"><label>Місто</label>
             <input type="text" name="np_city" id="npCity" placeholder="Почніть вводити місто…" autocomplete="new-password" data-lpignore="true" data-1p-ignore data-form-type="other" spellcheck="false"></div>
-          <div class="field addr-np"><label>Відділення / поштомат</label>
+          <div class="field addr-np addr-wh"><label>Відділення / поштомат</label>
             <input type="text" name="np_office" id="npOffice" placeholder="Номер, вулиця або «поштомат»" autocomplete="new-password" data-lpignore="true" data-1p-ignore data-form-type="other" spellcheck="false"></div>
+          <div class="field addr-np addr-courier" style="display:none;grid-column:1/-1"><label>Вулиця</label>
+            <input type="text" name="np_street" id="npStreet" placeholder="Почніть вводити назву вулиці…" autocomplete="new-password" data-lpignore="true" data-1p-ignore data-form-type="other" spellcheck="false"></div>
+          <div class="field addr-np addr-courier" style="display:none"><label>Будинок</label>
+            <input type="text" name="np_house" id="npHouse" placeholder="12А" maxlength="20"></div>
+          <div class="field addr-np addr-courier" style="display:none"><label>Квартира <span class="dim">(якщо є)</span></label>
+            <input type="text" name="np_flat" id="npFlat" placeholder="45" maxlength="20"></div>
+        </div>
+        <?php /* Куди возити: у відділення чи додому. Перемикач стоїть під полями
+                 Нової Пошти, бо стосується лише її — «інша доставка» його не бачить. */ ?>
+        <div class="field addr-np" style="margin-top:4px">
+          <div class="variants" id="addrNpKind">
+            <label class="chip active" data-type="warehouse">У відділення / поштомат</label>
+            <label class="chip" data-type="courier">Курʼєром на адресу</label>
+          </div>
         </div>
         <div class="field addr-other" style="display:none"><label>Адреса</label>
           <input type="text" name="address" id="addrAddress" placeholder="Місто, вулиця, будинок — як вам зручно отримати"></div>
@@ -173,7 +192,22 @@
   // --- адреси доставки ---
   var form = document.getElementById('addrForm');
   var npWidget = window.npAutocomplete
-    ? window.npAutocomplete({city: 'npCity', office: 'npOffice', ref: 'npCityRef'}) : null;
+    ? window.npAutocomplete({city: 'npCity', office: 'npOffice', ref: 'npCityRef',
+                             officeRef: 'npOfficeRef', street: 'npStreet', streetRef: 'npStreetRef'}) : null;
+
+  // Відділення чи курʼєр — усередині Нової Пошти. Показуємо рівно ті поля,
+  // які потрібні: адреса без вулиці з довідника накладною не стане.
+  function setNpType(type){
+    document.getElementById('addrNpType').value = type;
+    document.querySelectorAll('#addrNpKind .chip').forEach(function(c){
+      c.classList.toggle('active', c.dataset.type === type);
+    });
+    document.querySelectorAll('.addr-wh').forEach(function(el){ el.style.display = type === 'courier' ? 'none' : '' });
+    document.querySelectorAll('.addr-courier').forEach(function(el){ el.style.display = type === 'courier' ? '' : 'none' });
+  }
+  document.querySelectorAll('#addrNpKind .chip').forEach(function(c){
+    c.addEventListener('click', function(){ setNpType(c.dataset.type) });
+  });
 
   function setKind(kind){
     document.getElementById('addrDelivery').value = kind;
@@ -191,9 +225,12 @@
     form.reset();
     document.getElementById('addrId').value = '';
     document.getElementById('npCityRef').value = '';
+    document.getElementById('npOfficeRef').value = '';
+    document.getElementById('npStreetRef').value = '';
     document.getElementById('addrFormTitle').textContent = 'Нова адреса';
     document.getElementById('addrCancel').style.display = 'none';
     setKind('np');
+    setNpType('warehouse');
   }
   var cancel = document.getElementById('addrCancel');
   if (cancel) cancel.addEventListener('click', reset);
@@ -205,13 +242,17 @@
       document.getElementById('addrLabel').value = d.label || '';
       document.getElementById('addrAddress').value = d.address || '';
       setKind(d.delivery === 'other' ? 'other' : 'np');
+      setNpType(d.type === 'courier' ? 'courier' : 'warehouse');
+      document.getElementById('npHouse').value = d.house || '';
+      document.getElementById('npFlat').value = d.flat || '';
       // ref підставляємо разом з містом — інакше підказки відділень довелося б
       // «розігрівати» повторним пошуком міста
-      if (npWidget) npWidget.apply(d.city, d.ref, d.office);
+      if (npWidget) npWidget.apply(d.city, d.ref, d.office, d.officeRef, d.street, d.streetRef);
       else {
         document.getElementById('npCity').value = d.city || '';
         document.getElementById('npOffice').value = d.office || '';
         document.getElementById('npCityRef').value = d.ref || '';
+        document.getElementById('npOfficeRef').value = d.officeRef || '';
       }
       document.getElementById('addrFormTitle').textContent = 'Змінити адресу';
       document.getElementById('addrCancel').style.display = '';

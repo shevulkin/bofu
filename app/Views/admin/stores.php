@@ -95,8 +95,59 @@
         </td>
         <td class="col-mid"><input type="checkbox" name="store[<?= (int)$s['id'] ?>][active]" <?= $s['active'] ? 'checked' : '' ?>></td>
       </tr>
+      <?php /* Звідки ця точка відправляє посилки. Окремим рядком під магазином,
+               а не колонкою: заповнюють це раз і рідко, а в таблиці з чотирьох
+               колонок ще два поля зробили б нечитабельним усе інше. */ ?>
+      <tr class="store-np-row">
+        <td colspan="6" style="padding-top:0">
+          <details<?= trim((string)($s['np_warehouse_ref'] ?? '')) !== '' ? ' open' : '' ?>>
+            <summary class="dim" style="cursor:pointer;font-size:13px">
+              📦 Відправлення Новою Поштою
+              <?= trim((string)($s['np_warehouse'] ?? '')) !== ''
+                    ? '— ' . e(trim((string)$s['np_city'] . ', ' . (string)$s['np_warehouse'], ' ,'))
+                    : '— зі спільного відділення (Налаштування)' ?>
+            </summary>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px">
+              <div style="flex:1;min-width:180px">
+                <label class="dim" style="font-size:12px">Місто відправлення</label>
+                <input type="text" name="store[<?= (int)$s['id'] ?>][np_city]" value="<?= e($s['np_city'] ?? '') ?>"
+                       id="npCity<?= (int)$s['id'] ?>" placeholder="як у спільних налаштуваннях"
+                       autocomplete="new-password" data-lpignore="true" data-1p-ignore spellcheck="false">
+                <input type="hidden" name="store[<?= (int)$s['id'] ?>][np_city_ref]" value="<?= e($s['np_city_ref'] ?? '') ?>" id="npCityRef<?= (int)$s['id'] ?>">
+              </div>
+              <div style="flex:2;min-width:220px">
+                <label class="dim" style="font-size:12px">Відділення відправлення</label>
+                <input type="text" name="store[<?= (int)$s['id'] ?>][np_warehouse]" value="<?= e($s['np_warehouse'] ?? '') ?>"
+                       id="npOffice<?= (int)$s['id'] ?>" placeholder="оберіть зі списку"
+                       autocomplete="new-password" data-lpignore="true" data-1p-ignore spellcheck="false">
+                <input type="hidden" name="store[<?= (int)$s['id'] ?>][np_warehouse_ref]" value="<?= e($s['np_warehouse_ref'] ?? '') ?>" id="npOfficeRef<?= (int)$s['id'] ?>">
+              </div>
+              <div style="flex:1;min-width:150px">
+                <label class="dim" style="font-size:12px">Телефон відправника</label>
+                <input type="text" name="store[<?= (int)$s['id'] ?>][np_sender_phone]" value="<?= e($s['np_sender_phone'] ?? '') ?>"
+                       placeholder="як у спільних налаштуваннях">
+              </div>
+            </div>
+            <p class="dim" style="margin:8px 0 0;font-size:12px">
+              Порожньо — посилки цієї точки їдуть із відділення, вказаного в Налаштуваннях.
+              Місто й відділення діють лише разом: одне без одного — накладна в нікуди, тому таке поєднання ігнорується.
+            </p>
+          </details>
+        </td>
+      </tr>
     <?php endforeach; ?>
   </table>
+  <?= View::partial('partials/np_autocomplete') ?>
+  <script>
+  // Підказки відділень — на кожен рядок свої: id полів різняться номером точки
+  (function(){
+    if (!window.npAutocomplete) return;
+    <?php foreach ($stores as $s): $i = (int)$s['id']; ?>
+    window.npAutocomplete({city: 'npCity<?= $i ?>', office: 'npOffice<?= $i ?>',
+                           ref: 'npCityRef<?= $i ?>', officeRef: 'npOfficeRef<?= $i ?>'});
+    <?php endforeach; ?>
+  })();
+  </script>
   <div class="admin-save">
     <button class="btn btn-gold" type="submit" data-help-title="Кнопка «Зберегти»"
             data-help="Зберігає всі зміни в таблиці одразу — правки в кількох рядках підуть одним натисканням.

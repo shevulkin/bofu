@@ -200,8 +200,29 @@ USB-СКАНЕР: піднесіть сканер до етикетки — ві
           <label>Місто</label>
           <input type="text" name="np_city" id="npCity" value="<?= e($form['city']) ?>" autocomplete="off">
           <input type="hidden" name="city_ref" id="npCityRef" value="<?= e($form['city_ref']) ?>">
-          <label style="margin-top:8px">Відділення</label>
-          <input type="text" name="np_office" id="npOffice" value="<?= e($form['np_office']) ?>" autocomplete="off">
+          <input type="hidden" name="np_office_ref" id="npOfficeRef" value="<?= e($form['np_office_ref']) ?>">
+          <input type="hidden" name="np_street_ref" id="npStreetRef" value="<?= e($form['np_street_ref']) ?>">
+          <?php /* Куди везти: у відділення чи додому. Обирати з довідника
+                   обовʼязково — накладна створюється за посиланням, а не за назвою. */ ?>
+          <label style="margin-top:8px">Куди</label>
+          <select name="np_type" id="posNpType">
+            <option value="warehouse"<?= $form['np_type'] === 'warehouse' ? ' selected' : '' ?>>У відділення / поштомат</option>
+            <option value="courier"<?= $form['np_type'] === 'courier' ? ' selected' : '' ?>>Курʼєром на адресу</option>
+          </select>
+          <div data-pos-np-wh<?= $form['np_type'] === 'courier' ? ' hidden' : '' ?>>
+            <label style="margin-top:8px">Відділення</label>
+            <input type="text" name="np_office" id="npOffice" value="<?= e($form['np_office']) ?>" autocomplete="off">
+          </div>
+          <div data-pos-np-courier<?= $form['np_type'] === 'courier' ? '' : ' hidden' ?>>
+            <label style="margin-top:8px">Вулиця</label>
+            <input type="text" name="np_street" id="npStreet" value="<?= e($form['np_street']) ?>" autocomplete="off">
+            <div style="display:flex;gap:8px;margin-top:8px">
+              <div style="flex:1"><label>Будинок</label>
+                <input type="text" name="np_house" id="npHouse" value="<?= e($form['np_house']) ?>" maxlength="20"></div>
+              <div style="flex:1"><label>Квартира</label>
+                <input type="text" name="np_flat" id="npFlat" value="<?= e($form['np_flat']) ?>" maxlength="20"></div>
+            </div>
+          </div>
         </div>
         <div data-pos-addr <?= $form['delivery'] === 'other' ? '' : 'hidden' ?>>
           <label>Адреса</label>

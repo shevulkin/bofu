@@ -190,6 +190,17 @@ $roEdit = $canEdit ? '' : 'disabled';
       <label>Поріг «закінчується», шт.</label>
       <input type="number" min="0" step="1" name="low_stock_threshold" value="<?= e($p['low_stock_threshold'] ?? '') ?>" placeholder="порожньо — показувати просто «в наявності»" <?= $roEdit ?>>
     </div>
+    <div class="field" data-help-title="Вага, кг"
+         data-help="Скільки важить одна штука разом із тарою — це те, за чим Нова Пошта рахує доставку.
+
+Проставте — і форма накладної сама порахує вагу посилки: вага × кількість по всіх позиціях. Продавцю лишиться звірити, а не зважувати кожне замовлення.
+
+Порожньо — береться типова вага з Налаштувань. Це не помилка, просто накладна буде приблизною, і НП може перерахувати за фактом.
+
+У товару з фасовками вагу вказують у самій фасовці: «мед узагалі» не важить нічого, важить банка на 0.5 чи на 1.5 кг.">
+      <label>Вага, кг</label>
+      <input type="text" name="weight" value="<?= e(num_val($p['weight'] ?? null)) ?>" placeholder="0.5 — для розрахунку накладної" <?= $roEdit ?>>
+    </div>
   </div>
 
   <?php if (!$isNew): ?>
@@ -231,6 +242,9 @@ $roEdit = $canEdit ? '' : 'disabled';
           <?php /* Штрихкод належить фасовці: етикетку клеять на банку, а не на «мед узагалі» */ ?>
           <input type="text" name="variant[<?= $vid ?>][barcode]" value="<?= e($v['barcode'] ?? '') ?>"
                  placeholder="штрихкод" inputmode="numeric" autocomplete="off">
+          <?php /* Вага теж належить фасовці — за нею рахується накладна */ ?>
+          <input type="text" name="variant[<?= $vid ?>][weight]" value="<?= e(num_val($v['weight'] ?? null)) ?>"
+                 placeholder="вага, кг" title="Вага однієї штуки — для розрахунку доставки">
           <label class="checkbox" title="Показувати покупцям"><input type="checkbox" name="variant[<?= $vid ?>][active]" <?= $v['active'] ? 'checked' : '' ?>> вкл.</label>
           <button class="btn btn-danger btn-xs row-del" type="button" title="Видалити варіант">✕</button>
           <input type="hidden" name="variant[<?= $vid ?>][_delete]" value="" disabled>

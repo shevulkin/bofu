@@ -1,5 +1,6 @@
 <?php $q = fn(array $over = []) => url('/admin/orders?' . http_build_query(array_merge(
-      ['status' => $status], $sees_all ? ['scope' => $scope] : [], $over))); ?>
+      ['status' => $status], $ship !== 'all' ? ['ship' => $ship] : [],
+      $sees_all ? ['scope' => $scope] : [], $over))); ?>
 <div class="admin-head"><h1 class="h-serif"><?= $is_seller_view ? ($scope === 'all' ? 'Замовлення мережі' : 'Мої замовлення') : 'Замовлення' ?></h1>
   <?php if (Auth::can('orders.create')): ?>
     <a class="btn btn-gold btn-sm" href="<?= e(url('/admin/orders/new')) ?>" data-help-title="Кнопка «Каса»"
@@ -38,6 +39,27 @@
   <?php foreach ($statuses as $key => $label): ?>
     <a class="chip <?= $status === $key ? 'active' : '' ?>" href="<?= e($q(['status' => $key])) ?>"><?= e($label) ?></a>
   <?php endforeach; ?>
+</div>
+<?php /* Стан посилки — інше питання, ніж стан замовлення, тому й фільтр окремий.
+         «В дорозі» стоїть і в тієї частини, що годину як виїхала, і в тієї, що
+         третій день лежить у відділенні; продавцю ці два випадки потрібні різні. */ ?>
+<div class="cat-chips" style="margin-top:8px" data-help-title="Фільтр за посилкою"
+     data-help="Показує замовлення за станом відправлення в Новій Пошті.
+
+«Без накладної» — те, що вже треба зібрати й відправити: доставка поштою, замовлення в роботі, а номера ще немає. Головна добірка на початок дня.
+
+«У дорозі» — посилка їде. Робити нічого не треба.
+
+«Чекає у відділенні» — прибула, але покупець її не забрав. Через кілька днів НП почне повертати: саме тут варто подзвонити.
+
+«Проблема» — відмова, повернення, невдала доставка. Ці розбирають руками.
+
+Стан оновлюється сам за розкладом; у картці замовлення є кнопка «↻ Статус» на випадок «покупець питає просто зараз».">
+  <a class="chip <?= $ship === 'all' ? 'active' : '' ?>" href="<?= e($q(['ship' => 'all'])) ?>">Будь-яка посилка</a>
+  <a class="chip <?= $ship === 'none' ? 'active' : '' ?>" href="<?= e($q(['ship' => 'none'])) ?>">Без накладної</a>
+  <a class="chip <?= $ship === 'transit' ? 'active' : '' ?>" href="<?= e($q(['ship' => 'transit'])) ?>">У дорозі</a>
+  <a class="chip <?= $ship === 'arrived' ? 'active' : '' ?>" href="<?= e($q(['ship' => 'arrived'])) ?>">Чекає у відділенні</a>
+  <a class="chip <?= $ship === 'problem' ? 'active' : '' ?>" href="<?= e($q(['ship' => 'problem'])) ?>">Проблема</a>
 </div>
 <?php if (!$orders): ?><p class="muted">Замовлень немає.</p><?php else: ?>
 <table class="tbl">
@@ -141,7 +163,33 @@
           <div class="dim" style="white-space:nowrap">код <?= e($o['promo_code']) ?> — без знижки</div>
         <?php endif; ?>
       </td>
-      <td><span class="status-pill st-<?= e($o['status']) ?>"><?= e($statuses[$o['status']] ?? $o['status']) ?></span></td>
+      <td><span class="status-pill st-<?= e($o['status']) ?>"><?= e($statuses[$o['status']] ?? $o['status']) ?></span>
+        <?php
+          /*
+           * Посилка під статусом замовлення, а не окремою колонкою: у широкій
+           * таблиці ще одна колонка витиснула б товари, а питання тут одне й те
+           * саме — «на якому воно етапі». Головне замовлення збирає накладні
+           * своїх частин, частина показує свою.
+           */
+          $rowShipments = $o['parent_id']
+              ? array_filter([$shipments[$id] ?? null])
+              : array_values(array_filter(array_map(fn($c) => $shipments[(int)$c['id']] ?? null, $children[$id] ?? [])));
+        ?>
+        <?php foreach ($rowShipments as $sh): $phase = (string)$sh['phase']; ?>
+          <div style="margin-top:5px;white-space:nowrap">
+            <a class="dim" style="font-size:12px" target="_blank" rel="noopener"
+               href="<?= e(Shipments::trackUrl($sh['number'])) ?>"><?= e($sh['number']) ?></a>
+            <div class="dim" style="font-size:11.5px<?= $phase === 'arrived' ? ';color:var(--gold)' : '' ?>">
+              <?= e(Shipments::statusLabel($sh)) ?></div>
+          </div>
+        <?php endforeach; ?>
+        <?php /* Мовчазна відсутність накладної там, де вона потрібна, — головна
+                 причина «замовлення зависло»: усі бачать «в обробці» й ніхто не
+                 пакує. Тому позначка, і лише там, де посилка справді має бути. */ ?>
+        <?php if (!$rowShipments && $o['delivery'] === 'np' && !in_array($o['status'], ['done', 'canceled'], true)): ?>
+          <div class="dim" style="font-size:11.5px;margin-top:5px">без накладної</div>
+        <?php endif; ?>
+      </td>
       <?php
         // «Сьогодні 09:40» відповідає на питання, яке продавець ставить насправді
         // («це свіже чи вчорашнє?»), а 03.08.2026 змушує це вираховувати

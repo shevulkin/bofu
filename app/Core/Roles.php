@@ -25,6 +25,10 @@ class Roles
         'orders.note'         => 'Додавати нотатки до замовлення',
         'orders.manage'       => 'Керувати замовленням цілком (передача між магазинами)',
         'orders.create'       => 'Оформлювати замовлення за покупця (дзвінок, продаж у точці)',
+        // Накладна коштує грошей і створюється від імені магазину, тож це
+        // окреме право, а не додаток до «змінювати статус»: подивитись і
+        // повести замовлення можна й без нього
+        'orders.ship'         => 'Створювати накладні Нової Пошти',
         'products.view'       => 'Бачити товари',
         'products.stock'      => 'Правити залишки',
         'products.price'      => 'Правити ціни магазину',
@@ -58,7 +62,7 @@ class Roles
             // orders.view_all — лише читання чужих точок: правити можна те, що у своїх
             // (це вирішує canManage по seller_stores, а не право)
             'caps' => ['orders.view', 'orders.view_all', 'orders.status', 'orders.assign',
-                       'orders.note', 'orders.create',
+                       'orders.note', 'orders.create', 'orders.ship',
                        'products.view', 'products.stock', 'products.price'],
             'assignable' => true,
         ],
