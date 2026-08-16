@@ -917,6 +917,37 @@ body.help-on [data-help] *{pointer-events:none}
 @media (max-width:600px){.prod-thumb{width:44px;height:44px}}
 
 /* ---------- каса (продаж за покупця) ---------- */
+/* Стрічка кроків. Під кожним підписом — те, що на цьому кроці вже вирішено:
+   продавцю не треба вертатись, щоб пригадати, кого записав і на яку суму. */
+.pos-steps{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:18px}
+.pos-step{display:flex;align-items:center;gap:10px;flex-wrap:wrap;text-align:left;cursor:pointer;
+  background:var(--bg2);border:1px solid var(--line);border-radius:6px;padding:11px 14px;
+  color:var(--muted);font-family:inherit;font-size:14px;transition:.15s}
+.pos-step:hover{border-color:var(--line2);color:var(--text)}
+.pos-step-n{flex-shrink:0;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;
+  justify-content:center;background:var(--bg3);color:var(--muted);font-size:13px;font-weight:700}
+.pos-step-t{font-weight:600}
+/* Підсумок кроку меншим і на власному рядку: він пояснює, а не сперечається
+   з назвою за увагу */
+.pos-step-s{flex-basis:100%;color:var(--dim);font-size:12.5px;padding-left:34px;margin-top:-2px}
+.pos-step.is-active{border-color:var(--gold);color:var(--text);background:var(--bg3)}
+.pos-step.is-active .pos-step-n{background:var(--gold);color:var(--bg)}
+/* Пройдений крок позначаємо галкою через ::after, а не підміною тексту: номер
+   лишається на місці, і стрічка не «стрибає» при переходах */
+.pos-step.is-done{color:var(--text)}
+.pos-step.is-done .pos-step-n{background:var(--ok);color:var(--bg)}
+.pos-nav{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-top:16px}
+.pos-nav .btn-gold{min-width:190px}
+.pos-sum{display:flex;justify-content:space-between;align-items:baseline;font-size:14px}
+/* Обгортка поля з підказками. Віджет кріпить випадний список до батька поля,
+   тож батько має бути саме полем, а не блоком доставки цілком. */
+.pos-field{position:relative}
+@media (max-width:640px){
+  /* На телефоні три колонки перетворюють підписи на стовпчик літер */
+  .pos-steps{grid-template-columns:1fr}
+  .pos-step-s{padding-left:0}
+  .pos-nav .btn,.pos-nav .btn-gold{flex:1;min-width:0}
+}
 /* Два стовпці: ліворуч те, з чого набирають чек, праворуч сам чек. Чек
    «липкий» — він потрібен перед очима на всій висоті плитки. */
 .pos-wrap{display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,380px);gap:18px;align-items:start}

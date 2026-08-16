@@ -21,6 +21,53 @@
 
   function esc(s) { var d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
 
+  // ── кроки ───────────────────────────────────────────────────────────────
+  // Перемикання тут, а не запитами: чек живе в сесії, і бігати за ним на
+  // сервер щоразу, коли натиснули «Далі», нема потреби. Форма одна на всі
+  // три кроки, тож поля прихованих кроків усе одно поїдуть в оформлення.
+  var panes = form.querySelectorAll('[data-pane]');
+  var tabs = document.querySelectorAll('[data-pos-steps] .pos-step');
+  var stepEl = document.getElementById('posStep');
+  var step = parseInt(stepEl && stepEl.value, 10) || 1;
+
+  function goto(n, quiet) {
+    // На товари без покупця можна, з товарів без жодної позиції — ні:
+    // порожній чек оформити не вийде, і дізнатись про це краще тут, а не
+    // після заповнення доставки.
+    if (n === 3 && countLines() === 0) {
+      say('Чек порожній — спершу додайте хоч одну позицію', true);
+      n = 2;
+    }
+    step = n;
+    if (stepEl) stepEl.value = String(n);
+    Array.prototype.forEach.call(panes, function (p) {
+      p.hidden = parseInt(p.getAttribute('data-pane'), 10) !== n;
+    });
+    Array.prototype.forEach.call(tabs, function (t) {
+      var mine = parseInt(t.getAttribute('data-go'), 10);
+      t.classList.toggle('is-active', mine === n);
+      t.classList.toggle('is-done', mine < n);
+    });
+    // Курсор у поле сканера: на кроці товарів працюють саме з нього, і
+    // клікати в нього мишею після кожного переходу не має бути потреби
+    if (n === 2 && scanEl) scanEl.focus();
+    if (!quiet) window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function countLines() { return linesEl ? linesEl.querySelectorAll('tr').length : 0; }
+
+  /** Один і той самий підсумок стоїть у кількох місцях — оновлюємо всі одразу */
+  function setAll(sel, text) {
+    Array.prototype.forEach.call(document.querySelectorAll(sel), function (el) { el.textContent = text; });
+  }
+
+  document.addEventListener('click', function (e) {
+    var go = e.target.closest('[data-go]');
+    if (!go) return;
+    e.preventDefault();
+    goto(parseInt(go.getAttribute('data-go'), 10) || 1);
+  });
+
   function say(text, bad) {
     if (!msgEl) return;
     msgEl.textContent = text || '';
@@ -55,6 +102,13 @@
     }).join('');
     if (emptyEl) emptyEl.hidden = d.lines.length > 0;
     if (totalEl) totalEl.textContent = d.total_label;
+    // Підсумки на стрічці кроків і на кроці оформлення: вони показують те саме,
+    // що щойно змінилось у чеку, і мають змінитись разом із ним
+    setAll('[data-sum-goods]', d.lines.length
+      ? d.lines.length + ' поз. · ' + d.total_label : 'чек порожній');
+    setAll('[data-sum-count]', String(d.lines.length));
+    setAll('[data-sum-total]', d.total_label);
+    if (d.customer !== undefined) setAll('[data-sum-customer]', d.customer || 'анонімний');
     if (d.error) say(d.error, true);
     else if (d.added) say(d.added + ' — додано');
 
@@ -258,6 +312,24 @@
   });
 
   sync();
+
+  // Підпис третього кроку в стрічці: «видача в точці» чи «доставка» — те, що
+  // саме зараз обрано, видно не заходячи туди
+  function syncStepSummary() {
+    var offline = pick('[data-pos-source]', 'offline') === 'offline';
+    var dlv = pick('[data-pos-dlv]', 'pickup');
+    setAll('[data-sum-delivery]', offline ? 'видача в точці'
+      : (dlv === 'np' ? 'Нова Пошта' : (dlv === 'pickup' ? 'самовивіз' : 'інша доставка')));
+  }
+  Array.prototype.forEach.call(form.querySelectorAll('[data-pos-source],[data-pos-dlv]'), function (el) {
+    el.addEventListener('change', syncStepSummary);
+  });
+  syncStepSummary();
+
+  // Показуємо той крок, на якому людина зупинилась: після зміни точки продажу
+  // й після помилки оформлення сторінка перезавантажується, і кидати її на
+  // початок означало б відбирати зроблене
+  goto(step, true);
 
   if (window.npAutocomplete) {
     window.npAutocomplete({ city: 'npCity', office: 'npOffice', ref: 'npCityRef',
