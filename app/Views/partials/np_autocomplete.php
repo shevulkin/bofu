@@ -15,6 +15,59 @@ window.npAutocomplete = function (opt) {
   var cityRef = (refInput && refInput.value) || '';
 
   /**
+   * Прибрати підказки самого браузера з поля.
+   *
+   * autocomplete="new-password" глушить автопідстановку адрес, але не історію
+   * форм: Chrome усе одно пропонує те, що людина колись тут ввела, і його біле
+   * віконце лягає поверх нашого списку. Обирати з двох списків, де один знає
+   * довідник Нової Пошти, а другий — лише вчорашній набір літер, людина не
+   * повинна.
+   *
+   * Приймається браузером лише одне: історія форм ведеться за ІМЕНЕМ поля, і
+   * поля без імені в ній немає взагалі. Тому видиме поле лишається без name, а
+   * значення возить прихований двійник поруч. Прихованих полів браузер не
+   * запамʼятовує, тож і пропонувати згодом нема чого.
+   *
+   * Робимо це в JS, а не в розмітці: без JS підказок Нової Пошти теж немає, і
+   * поле має лишитись звичайним — заповнив руками, відправив, працює. Тобто
+   * ціна цього прийому — рівно нуль для того, у кого JS вимкнено.
+   */
+  function unname(input) {
+    var real = input.getAttribute('name');
+    if (!real) return null;
+    var twin = document.createElement('input');
+    twin.type = 'hidden';
+    twin.name = real;
+    twin.value = input.value;
+    input.parentNode.insertBefore(twin, input.nextSibling);
+    input.removeAttribute('name');
+    input.setAttribute('autocomplete', 'off');
+    var sync = function () { twin.value = input.value; };
+    input.addEventListener('input', sync);
+    input.addEventListener('change', sync);
+    return sync;
+  }
+
+  // Значення міняємо й програмно (вибір зі списку, підстановка збереженої
+  // адреси), а на це подія input не приходить — тож синхронізуємо ще й самі
+  var syncs = [];
+  [cityInput, offInput, streetInput].forEach(function (el) {
+    if (!el) return;
+    var s = unname(el);
+    if (s) syncs.push(s);
+  });
+  function syncTwins() { syncs.forEach(function (s) { s(); }); }
+  // Остання лінія оборони: форму могли заповнити й відправити так, як ми не
+  // передбачили. Перед відправленням двійники завжди мають те, що на екрані.
+  var form = cityInput.form || cityInput.closest('form');
+  if (form) {
+    form.addEventListener('submit', syncTwins);
+    // reset() чистить видимі поля, а двійники — за власним «початковим»
+    // значенням; після скидання вони мають збігтися, а не розʼїхатись
+    form.addEventListener('reset', function () { setTimeout(syncTwins, 0); });
+  }
+
+  /**
    * Власний список замість <datalist>: той відкривається на розсуд браузера і
    * щойно завантажені варіанти показує лише після наступного натискання —
    * зовні це виглядає так, ніби підказок немає взагалі.
@@ -51,6 +104,7 @@ window.npAutocomplete = function (opt) {
     function pick(i) {
       if (i < 0 || i >= items.length) return;
       input.value = items[i].label;
+      syncTwins();                     // програмній зміні value події input не буде
       close();
       onPick(items[i]);
     }
@@ -168,6 +222,7 @@ window.npAutocomplete = function (opt) {
       setRef(ref || '');
       setOfficeRef(officeRef || '');
       if (streetInput) { streetInput.value = street || ''; setStreetRef(streetRef || ''); }
+      syncTwins();
       cityDrop.close(); offDrop.close();
       if (streetDrop) streetDrop.close();
     }
