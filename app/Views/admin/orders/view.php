@@ -407,66 +407,121 @@
         <?= $parent['address'] ? '<br>Адреса: ' . e($parent['address']) : '' ?>
       </p>
 
-      <?php /* Адреса без Ref-ів довідника — це адреса, за якою не створюється
-               накладна: НП приймає посилання, а «Відділення №5» у місті буває
-               не одне. Таке трапляється зі старими замовленнями й з тими, де
-               покупець вписав відділення руками. Лагодиться тут-таки: інакше
-               продавцю лишалось би оформлювати посилку в кабінеті НП. */ ?>
-      <?php if ($parent['delivery'] === 'np' && $can_ship && $np_enabled): ?>
-        <?php
-          $needsRef = trim((string)($parent['city_ref'] ?? '')) === ''
-            || (($parent['np_type'] ?? 'warehouse') === 'courier'
-                ? trim((string)($parent['np_street_ref'] ?? '')) === ''
-                : trim((string)($parent['np_office_ref'] ?? '')) === '');
-        ?>
-        <details style="margin-top:12px"<?= $needsRef ? ' open' : '' ?>>
+      <?php
+        /*
+         * Правка доставки — включно зі способом.
+         *
+         * Спочатку тут можна було лише дообрати відділення, і то лише коли
+         * замовлення вже їхало Новою Поштою. На практиці цього мало: покупець
+         * передумав щодо самовивозу, продавець домовився про пошту телефоном,
+         * а старі замовлення взагалі не мали звʼязку з довідником. Перекладати
+         * це на «перестворіть замовлення» — втратити його історію й номер.
+         *
+         * Ref-и НП тут не обовʼязкові: без ключа API підказок немає взагалі, і
+         * вимагати їх означало б замкнене коло. Накладну за адресою без Ref не
+         * створити — про це прямо каже блок відправлення біля позицій.
+         */
+        $needsRef = $parent['delivery'] === 'np' && (trim((string)($parent['city_ref'] ?? '')) === ''
+          || (($parent['np_type'] ?? 'warehouse') === 'courier'
+              ? trim((string)($parent['np_street_ref'] ?? '')) === ''
+              : trim((string)($parent['np_office_ref'] ?? '')) === ''));
+        $locked = (bool)$shipments;   // накладна вже виписана на цю адресу
+      ?>
+      <?php if ($can_ship): ?>
+        <details style="margin-top:12px"<?= $needsRef && !$locked ? ' open' : '' ?>>
           <summary class="dim" style="cursor:pointer;font-size:13px">
-            <?= $needsRef ? '⚠️ Уточнити відділення для накладної' : 'Змінити відділення доставки' ?>
+            <?= $needsRef && !$locked ? '⚠️ Уточнити відділення для накладної' : 'Змінити доставку' ?>
           </summary>
-          <?php if ($needsRef): ?>
+          <?php if ($locked): ?>
             <p class="dim" style="font-size:12.5px;margin:8px 0">
-              Адреса записана текстом, без звʼязку з довідником Нової Пошти — накладну за нею не створити.
-              Оберіть місто й відділення з підказок: покупцю нічого робити не треба, адреса та сама.
+              Накладна вже виписана на цю адресу. Щоб змінити доставку, спершу відкріпіть її
+              в блоці відправлення — інакше посилка поїде туди, куди її вже відправили.
             </p>
-          <?php endif; ?>
-          <form method="post" action="<?= e(url('/admin/orders/' . $order['id'])) ?>" style="margin-top:8px">
-            <?= Csrf::field() ?>
-            <input type="hidden" name="action" value="np_address">
-            <div class="field" style="margin-bottom:8px">
-              <label class="dim" style="font-size:12px">Куди</label>
-              <select name="np_type" id="npAddrType">
-                <option value="warehouse"<?= ($parent['np_type'] ?? 'warehouse') !== 'courier' ? ' selected' : '' ?>>У відділення / поштомат</option>
-                <option value="courier"<?= ($parent['np_type'] ?? '') === 'courier' ? ' selected' : '' ?>>Курʼєром на адресу</option>
-              </select>
-            </div>
-            <div class="field" style="margin-bottom:8px">
-              <label class="dim" style="font-size:12px">Місто</label>
-              <input type="text" name="np_city" id="npCity" value="<?= e($parent['city'] ?? '') ?>"
-                     autocomplete="new-password" data-lpignore="true" data-1p-ignore spellcheck="false">
-              <input type="hidden" name="city_ref" id="npCityRef" value="<?= e($parent['city_ref'] ?? '') ?>">
-            </div>
-            <div class="field" style="margin-bottom:8px" data-np-wh>
-              <label class="dim" style="font-size:12px">Відділення</label>
-              <input type="text" name="np_office" id="npOffice" value="<?= e($parent['np_office'] ?? '') ?>"
-                     autocomplete="new-password" data-lpignore="true" data-1p-ignore spellcheck="false">
-              <input type="hidden" name="np_office_ref" id="npOfficeRef" value="<?= e($parent['np_office_ref'] ?? '') ?>">
-            </div>
-            <div data-np-courier hidden>
+          <?php else: ?>
+            <?php if ($needsRef): ?>
+              <p class="dim" style="font-size:12.5px;margin:8px 0">
+                Адреса записана текстом, без звʼязку з довідником Нової Пошти — накладну за нею не створити.
+                Оберіть місто й відділення з підказок: покупцю нічого робити не треба, адреса та сама.
+              </p>
+            <?php endif; ?>
+            <?php if (!$np_enabled): ?>
+              <p class="dim" style="font-size:12.5px;margin:8px 0">
+                Підказок міст і відділень не буде, поки не вписано API-ключ Нової Пошти
+                (Налаштування). Вписане руками збережеться, але накладну за ним не створити.
+              </p>
+            <?php endif; ?>
+            <form method="post" action="<?= e(url('/admin/orders/' . $order['id'])) ?>" style="margin-top:8px">
+              <?= Csrf::field() ?>
+              <input type="hidden" name="action" value="np_address">
               <div class="field" style="margin-bottom:8px">
-                <label class="dim" style="font-size:12px">Вулиця</label>
-                <input type="text" name="np_street" id="npStreet" value="<?= e($parent['np_street'] ?? '') ?>"
-                       autocomplete="new-password" data-lpignore="true" data-1p-ignore spellcheck="false">
-                <input type="hidden" name="np_street_ref" id="npStreetRef" value="<?= e($parent['np_street_ref'] ?? '') ?>">
+                <label class="dim" style="font-size:12px">Спосіб доставки</label>
+                <select name="delivery" id="ordDelivery">
+                  <?php foreach (OrderFlow::DELIVERY as $key => $label): ?>
+                    <option value="<?= e($key) ?>"<?= $parent['delivery'] === $key ? ' selected' : '' ?>><?= e($label) ?></option>
+                  <?php endforeach; ?>
+                </select>
               </div>
-              <div style="display:flex;gap:8px">
-                <div class="field" style="flex:1"><label class="dim" style="font-size:12px">Будинок</label>
-                  <input type="text" name="np_house" value="<?= e($parent['np_house'] ?? '') ?>" maxlength="20"></div>
-                <div class="field" style="flex:1"><label class="dim" style="font-size:12px">Квартира</label>
-                  <input type="text" name="np_flat" value="<?= e($parent['np_flat'] ?? '') ?>" maxlength="20"></div>
+
+              <div data-d-np hidden>
+                <div class="field" style="margin-bottom:8px">
+                  <label class="dim" style="font-size:12px">Куди</label>
+                  <select name="np_type" id="npAddrType">
+                    <option value="warehouse"<?= ($parent['np_type'] ?? 'warehouse') !== 'courier' ? ' selected' : '' ?>>У відділення / поштомат</option>
+                    <option value="courier"<?= ($parent['np_type'] ?? '') === 'courier' ? ' selected' : '' ?>>Курʼєром на адресу</option>
+                  </select>
+                </div>
+                <div class="field" style="margin-bottom:8px">
+                  <label class="dim" style="font-size:12px">Місто</label>
+                  <input type="text" name="np_city" id="npCity" value="<?= e($parent['city'] ?? '') ?>"
+                         autocomplete="new-password" data-lpignore="true" data-1p-ignore spellcheck="false">
+                  <input type="hidden" name="city_ref" id="npCityRef" value="<?= e($parent['city_ref'] ?? '') ?>">
+                </div>
+                <div class="field" style="margin-bottom:8px" data-np-wh>
+                  <label class="dim" style="font-size:12px">Відділення</label>
+                  <input type="text" name="np_office" id="npOffice" value="<?= e($parent['np_office'] ?? '') ?>"
+                         autocomplete="new-password" data-lpignore="true" data-1p-ignore spellcheck="false">
+                  <input type="hidden" name="np_office_ref" id="npOfficeRef" value="<?= e($parent['np_office_ref'] ?? '') ?>">
+                </div>
+                <div data-np-courier hidden>
+                  <div class="field" style="margin-bottom:8px">
+                    <label class="dim" style="font-size:12px">Вулиця</label>
+                    <input type="text" name="np_street" id="npStreet" value="<?= e($parent['np_street'] ?? '') ?>"
+                           autocomplete="new-password" data-lpignore="true" data-1p-ignore spellcheck="false">
+                    <input type="hidden" name="np_street_ref" id="npStreetRef" value="<?= e($parent['np_street_ref'] ?? '') ?>">
+                  </div>
+                  <div style="display:flex;gap:8px">
+                    <div class="field" style="flex:1"><label class="dim" style="font-size:12px">Будинок</label>
+                      <input type="text" name="np_house" value="<?= e($parent['np_house'] ?? '') ?>" maxlength="20"></div>
+                    <div class="field" style="flex:1"><label class="dim" style="font-size:12px">Квартира</label>
+                      <input type="text" name="np_flat" value="<?= e($parent['np_flat'] ?? '') ?>" maxlength="20"></div>
+                  </div>
+                </div>
               </div>
-            </div>
-            <button class="btn btn-line btn-sm" type="submit">Зберегти доставку</button>
-          </form>
+
+              <div class="field" style="margin-bottom:8px" data-d-pickup hidden>
+                <label class="dim" style="font-size:12px">Магазин видачі</label>
+                <select name="pickup_store_id">
+                  <option value="">— оберіть точку —</option>
+                  <?php foreach ($stores as $s): ?>
+                    <option value="<?= (int)$s['id'] ?>"<?= (int)($parent['store_id'] ?? 0) === (int)$s['id'] ? ' selected' : '' ?>>
+                      <?= e($s['name'] . ($s['city'] ? ', ' . $s['city'] : '')) ?></option>
+                  <?php endforeach; ?>
+                </select>
+              </div>
+
+              <div class="field" style="margin-bottom:8px" data-d-other hidden>
+                <label class="dim" style="font-size:12px">Як доставляєте</label>
+                <input type="text" name="address" value="<?= e($parent['address'] ?? '') ?>" maxlength="200"
+                       placeholder="Місто, вулиця, будинок — або як домовились">
+              </div>
+
+              <button class="btn btn-line btn-sm" type="submit">Зберегти доставку</button>
+              <p class="dim" style="font-size:12px;margin:8px 0 0">
+                Зміна стосується всього замовлення — усі магазини везуть в одне місце.
+                Покупцю про це повідомлення не йде: він або сам попросив, або ви щойно з ним говорили.
+              </p>
+            </form>
+          <?php endif; ?>
         </details>
       <?php endif; ?>
       <?php if ($parent['comment']): ?><p style="margin-top:12px" class="dim">Коментар: <?= e($parent['comment']) ?></p><?php endif; ?>
@@ -558,23 +613,33 @@
   </div>
 </div>
 
-<?php /* Підказки НП потрібні лише тому, хто може правити доставку */ ?>
-<?php if ($parent['delivery'] === 'np' && $can_ship && $np_enabled): ?>
-  <?= View::partial('partials/np_autocomplete') ?>
+<?php /* Форма доставки є лише в того, хто може її правити */ ?>
+<?php if ($can_ship && !$shipments): ?>
+  <?php /* Підказки НП живуть окремо: без ключа їх немає, а форма працює й так */ ?>
+  <?php if ($np_enabled) echo View::partial('partials/np_autocomplete'); ?>
   <script>
   (function(){
     if (window.npAutocomplete) {
       window.npAutocomplete({city: 'npCity', office: 'npOffice', ref: 'npCityRef',
                              officeRef: 'npOfficeRef', street: 'npStreet', streetRef: 'npStreetRef'});
     }
-    var sel = document.getElementById('npAddrType');
-    if (!sel) return;
+    // Показуємо поля рівно того способу, який обрано: у самовивозі відділення
+    // НП читалось би як «то куди ж воно все-таки їде»
+    var mode = document.getElementById('ordDelivery');
+    var type = document.getElementById('npAddrType');
+    if (!mode) return;
+    var show = function(sel, on){ document.querySelectorAll(sel).forEach(function(el){ el.hidden = !on; }); };
     var sync = function(){
-      var courier = sel.value === 'courier';
-      document.querySelectorAll('[data-np-wh]').forEach(function(el){ el.hidden = courier; });
-      document.querySelectorAll('[data-np-courier]').forEach(function(el){ el.hidden = !courier; });
+      var d = mode.value;
+      show('[data-d-np]', d === 'np');
+      show('[data-d-pickup]', d === 'pickup');
+      show('[data-d-other]', d === 'other');
+      var courier = type && type.value === 'courier';
+      show('[data-np-wh]', d === 'np' && !courier);
+      show('[data-np-courier]', d === 'np' && courier);
     };
-    sel.addEventListener('change', sync);
+    mode.addEventListener('change', sync);
+    if (type) type.addEventListener('change', sync);
     sync();
   })();
   </script>
