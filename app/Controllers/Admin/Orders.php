@@ -788,53 +788,97 @@ class Orders
     private static function npAddress(array $order, array $parent, string $back): never
     {
         Auth::requireCap('orders.ship');
-        // Правити адресу може той, хто веде хоч одну частину цього замовлення:
+        // Правити доставку може той, хто веде хоч одну частину цього замовлення:
         // везти доведеться йому, і саме він телефонує покупцю уточнити
         $mine = false;
         foreach (OrderFlow::children((int)$parent['id']) as $c) if (self::canManage($c)) { $mine = true; break; }
         if (!$mine) { flash('error', 'Немає прав правити доставку цього замовлення.'); redirect($back); }
-        if ((string)$parent['delivery'] !== 'np') { flash('error', 'Замовлення не на Нову Пошту.'); redirect($back); }
-
-        $uuid = static fn($v) => preg_match('/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i', trim((string)$v))
-            ? trim((string)$v) : null;
-        $type = ($_POST['np_type'] ?? 'warehouse') === 'courier' ? 'courier' : 'warehouse';
-        $cityRef = $uuid($_POST['city_ref'] ?? '');
-        $city = trim((string)($_POST['np_city'] ?? ''));
-        if (!$cityRef || $city === '') {
-            flash('error', 'Оберіть місто зі списку підказок — саме за ним створюється накладна.');
+        if (Shipments::forParent((int)$parent['id'])) {
+            // Накладна вже виписана на стару адресу — мовчки перевести замовлення
+            // на самовивіз означало б посилку, що їде в нікуди
+            flash('error', 'Спершу відкріпіть накладну — доставку виписаної посилки так не змінюють.');
             redirect($back);
         }
+
+        $delivery = (string)($_POST['delivery'] ?? '');
+        if (!isset(OrderFlow::DELIVERY[$delivery])) $delivery = (string)$parent['delivery'];
+
+        // Порожні поля всіх трьох способів: перемикаючись, лишати хвости
+        // попереднього не можна — самовивіз із відділенням НП читається як
+        // «то куди ж воно їде».
         $patch = [
-            'city' => $city, 'city_ref' => $cityRef, 'np_type' => $type,
+            'delivery' => $delivery,
+            'city' => null, 'city_ref' => null, 'np_type' => 'warehouse',
             'np_office' => null, 'np_office_ref' => null,
             'np_street' => null, 'np_street_ref' => null, 'np_house' => null, 'np_flat' => null,
+            'address' => null,
         ];
-        if ($type === 'courier') {
-            $streetRef = $uuid($_POST['np_street_ref'] ?? '');
-            $house = trim((string)($_POST['np_house'] ?? ''));
-            if (!$streetRef || $house === '') {
-                flash('error', 'Оберіть вулицю зі списку й вкажіть будинок.');
+        $storeId = null;
+
+        if ($delivery === 'np') {
+            $uuid = static fn($v) => preg_match('/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i', trim((string)$v))
+                ? trim((string)$v) : null;
+            $type = ($_POST['np_type'] ?? 'warehouse') === 'courier' ? 'courier' : 'warehouse';
+            $city = trim((string)($_POST['np_city'] ?? ''));
+            $cityRef = $uuid($_POST['city_ref'] ?? '');
+            if ($city === '') { flash('error', 'Вкажіть місто доставки.'); redirect($back); }
+            // Ref не вимагаємо: без ключа API підказок немає взагалі, і забороняти
+            // тоді правити адресу означало б замкнене коло. Накладну за такою
+            // адресою не створити — про це скаже сам блок відправлення.
+            $patch['city'] = $city;
+            $patch['city_ref'] = $cityRef;
+            $patch['np_type'] = $type;
+            if ($type === 'courier') {
+                $street = trim((string)($_POST['np_street'] ?? ''));
+                $house = trim((string)($_POST['np_house'] ?? ''));
+                if ($street === '' || $house === '') {
+                    flash('error', 'Для курʼєра потрібні вулиця й номер будинку.');
+                    redirect($back);
+                }
+                $patch['np_street'] = $street;
+                $patch['np_street_ref'] = $uuid($_POST['np_street_ref'] ?? '');
+                $patch['np_house'] = $house;
+                $patch['np_flat'] = trim((string)($_POST['np_flat'] ?? '')) ?: null;
+            } else {
+                $office = trim((string)($_POST['np_office'] ?? ''));
+                if ($office === '') { flash('error', 'Вкажіть відділення або поштомат.'); redirect($back); }
+                $patch['np_office'] = $office;
+                $patch['np_office_ref'] = $uuid($_POST['np_office_ref'] ?? '');
+            }
+        } elseif ($delivery === 'pickup') {
+            // store_id у головному — це точка видачі, а не виконавець. Приймаємо
+            // лише чинну активну: неіснуючий id залишив би замовлення без адреси.
+            $sid = (int)($_POST['pickup_store_id'] ?? 0);
+            if (!$sid || !DB::row('SELECT id FROM stores WHERE id = ? AND active = 1', [$sid])) {
+                flash('error', 'Оберіть магазин, з якого покупець забере замовлення.');
                 redirect($back);
             }
-            $patch['np_street'] = trim((string)($_POST['np_street'] ?? ''));
-            $patch['np_street_ref'] = $streetRef;
-            $patch['np_house'] = $house;
-            $patch['np_flat'] = trim((string)($_POST['np_flat'] ?? '')) ?: null;
+            $storeId = $sid;
         } else {
-            $officeRef = $uuid($_POST['np_office_ref'] ?? '');
-            $office = trim((string)($_POST['np_office'] ?? ''));
-            if (!$officeRef || $office === '') {
-                flash('error', 'Оберіть відділення зі списку підказок — назви для накладної замало.');
-                redirect($back);
-            }
-            $patch['np_office'] = $office;
-            $patch['np_office_ref'] = $officeRef;
+            $address = trim((string)($_POST['address'] ?? ''));
+            if ($address === '') { flash('error', 'Опишіть, як саме доставляєте.'); redirect($back); }
+            $patch['address'] = mb_substr($address, 0, 200);
         }
 
+        // Адреса однакова в усіх частинах — вона успадкована й лежить копією в
+        // кожній. А от store_id у частині означає зовсім інше (магазин-виконавець),
+        // тож точку видачі ставимо лише головному: інакше самовивіз перекинув би
+        // усі позиції в одну точку разом із залишками.
         DB::update('orders', $patch, 'id = ? OR parent_id = ?', [(int)$parent['id'], (int)$parent['id']]);
+        // Точку видачі ставимо (або знімаємо) лише головному: у частині те саме
+        // поле означає магазин-виконавця, і затерти його — це втратити, хто
+        // взагалі везе замовлення. Перехід на пошту точку видачі прибирає:
+        // забирати вже нема звідки.
+        DB::update('orders', ['store_id' => $storeId], 'id = ?', [(int)$parent['id']]);
+
+        $where = $delivery === 'pickup'
+            ? (string)(DB::val('SELECT name FROM stores WHERE id = ?', [$storeId]) ?? '')
+            : OrderFlow::deliveryAddress($patch);
         OrderFlow::log((int)$parent['id'], null, 'shipment',
-            'доставку уточнено: ' . OrderFlow::deliveryAddress($patch + ['delivery' => 'np']), Auth::id());
-        flash('success', 'Адресу доставки уточнено — тепер накладну можна створити.');
+            'доставку змінено: ' . OrderFlow::deliveryLabel($delivery) . ($where !== '' ? ', ' . $where : ''),
+            Auth::id());
+        flash('success', 'Доставку збережено: ' . OrderFlow::deliveryLabel($delivery)
+            . ($where !== '' ? ' — ' . $where : ''));
         redirect($back);
     }
 
