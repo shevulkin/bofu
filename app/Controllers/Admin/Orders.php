@@ -60,6 +60,34 @@ class Orders
         if ($status !== 'all' && isset(self::STATUSES[$status])) { $where .= ' AND o.status = ?'; $params[] = $status; }
 
         /*
+         * Фільтр за точкою.
+         *
+         * Адмін дивиться головні замовлення, і магазин у них не записаний —
+         * він у частинах. Тому для нього умова йде через частини: «замовлення,
+         * у якому щось виконує ця точка». Продавець дивиться самі частини, і
+         * там магазин лежить у рядку.
+         *
+         * Список точок теж різний: у своєму режимі продавець фільтрує лише
+         * серед власних (у нього їх може бути кілька), в режимі мережі —
+         * серед усіх. Пропонувати фільтр, який гарантовано дасть порожньо,
+         * означає підказувати неіснуючу роботу.
+         */
+        $pickable = DB::all('SELECT id, name, city FROM stores ORDER BY sort, id');
+        if ($mine !== null && $scope === 'mine') {
+            $pickable = array_values(array_filter($pickable, fn($s) => in_array((int)$s['id'], $mine, true)));
+        }
+        $store = (int)($_GET['store'] ?? 0);
+        if ($store && !in_array($store, array_map(fn($s) => (int)$s['id'], $pickable), true)) $store = 0;
+        if ($store) {
+            if ($mine === null) {
+                $where .= ' AND EXISTS (SELECT 1 FROM orders part WHERE part.parent_id = o.id AND part.store_id = ?)';
+            } else {
+                $where .= ' AND o.store_id = ?';
+            }
+            $params[] = $store;
+        }
+
+        /*
          * Фільтр за станом посилки — питання, які продавець ставить собі
          * щоранку: що ще не відправлено і що вже чекає на покупця. Статус
          * замовлення на них не відповідає: «В дорозі» стоїть і в тієї частини,
@@ -117,6 +145,7 @@ class Orders
             'orders' => $orders, 'items' => $items, 'children' => $children,
             'shipments' => $shipments,
             'ship' => $ship,
+            'store' => $store, 'stores_filter' => $pickable,
             'status' => $status, 'statuses' => self::STATUSES,
             'is_seller_view' => $mine !== null,
             'my_store_ids' => $mine ?? [],

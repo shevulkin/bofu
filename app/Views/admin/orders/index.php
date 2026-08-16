@@ -1,6 +1,7 @@
-<?php $q = fn(array $over = []) => url('/admin/orders?' . http_build_query(array_merge(
+<?php $q = fn(array $over = []) => url('/admin/orders?' . http_build_query(array_filter(array_merge(
       ['status' => $status], $ship !== 'all' ? ['ship' => $ship] : [],
-      $sees_all ? ['scope' => $scope] : [], $over))); ?>
+      $store ? ['store' => $store] : [],
+      $sees_all ? ['scope' => $scope] : [], $over), fn($v) => $v !== '' && $v !== 0 && $v !== '0'))); ?>
 <div class="admin-head"><h1 class="h-serif"><?= $is_seller_view ? ($scope === 'all' ? 'Замовлення мережі' : 'Мої замовлення') : 'Замовлення' ?></h1>
   <?php if (Auth::can('orders.create')): ?>
     <a class="btn btn-gold btn-sm" href="<?= e(url('/admin/orders/new')) ?>" data-help-title="Кнопка «Каса»"
@@ -61,6 +62,24 @@
   <a class="chip <?= $ship === 'arrived' ? 'active' : '' ?>" href="<?= e($q(['ship' => 'arrived'])) ?>">Чекає у відділенні</a>
   <a class="chip <?= $ship === 'problem' ? 'active' : '' ?>" href="<?= e($q(['ship' => 'problem'])) ?>">Проблема</a>
 </div>
+<?php /* Точка. Показуємо лише коли є з чого обирати: з одним магазином фільтр
+         нічого не фільтрує, а місце займає. У продавця в списку тільки його
+         точки — фільтр, який гарантовано дасть порожньо, підказує неіснуючу
+         роботу. */ ?>
+<?php if (count($stores_filter) > 1): ?>
+  <div class="cat-chips" style="margin-top:8px" data-help-title="Фільтр за магазином"
+       data-help="Показує замовлення, у яких бере участь обрана точка.
+
+Для цілого замовлення це означає «щось із нього виконує цей магазин» — решту частин видно теж, бо замовлення показується цілком. Для частини — що вона його.
+
+Разом із рештою фільтрів працює як «і»: точка + «без накладної» дає список того, що саме цьому магазину треба зібрати й відправити сьогодні.">
+    <a class="chip <?= !$store ? 'active' : '' ?>" href="<?= e($q(['store' => 0])) ?>">Усі точки</a>
+    <?php foreach ($stores_filter as $s): ?>
+      <a class="chip <?= (int)$store === (int)$s['id'] ? 'active' : '' ?>"
+         href="<?= e($q(['store' => (int)$s['id']])) ?>"><?= e($s['name']) ?><?= $s['city'] ? ', ' . e($s['city']) : '' ?></a>
+    <?php endforeach; ?>
+  </div>
+<?php endif; ?>
 <?php if (!$orders): ?><p class="muted">Замовлень немає.</p><?php else: ?>
 <table class="tbl">
   <tr>
