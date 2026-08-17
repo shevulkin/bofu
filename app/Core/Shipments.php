@@ -482,7 +482,10 @@ class Shipments
         };
         if ($want === null || $want === $status) return;
         if ($want === 'shipped' && $status === 'shipped') return;
-        OrderFlow::setStatus((int)$child['id'], $want, $userId);
+        // Покупцю про це вже сказано — конкретніше, з номером накладної й
+        // посиланням на відстеження (tellCustomer вище). Друге повідомлення
+        // про ту саму подію, ще й сухіше, виглядало б як збій розсилки.
+        OrderFlow::setStatus((int)$child['id'], $want, $userId, false);
     }
 
     /**
@@ -513,24 +516,38 @@ class Shipments
             ?? ($child['store_id'] ? (DB::val('SELECT name FROM stores WHERE id = ?', [$child['store_id']]) ?? '') : '');
         $many = count(OrderFlow::children((int)$parent['id'])) > 1;
 
-        $status = match ((string)$shipment['phase']) {
-            'new' => 'Посилку передаємо Новій Пошті',
-            'arrived' => 'Посилка чекає на вас у відділенні',
-            'done' => 'Посилку отримано — дякуємо!',
-            default => self::statusLabel($shipment),
+        // Речення, а не мітка стану. Це те, з чого людина почне читати
+        // повідомлення, і воно має звучати як фраза від магазину, а не як
+        // значення поля в базі.
+        [$status, $headline] = match ((string)$shipment['phase']) {
+            'new' => ['Ваше замовлення передано Новій Пошті.', 'передано Новій Пошті'],
+            'arrived' => ['Ваше замовлення прибуло у відділення Нової Пошти.', 'прибуло у відділення'],
+            'done' => ['Ваше замовлення отримано. Дякуємо за довіру!', 'отримано'],
+            default => [self::statusLabel($shipment), self::statusLabel($shipment)],
         };
         $est = $shipment['estimated_at'] ? date('d.m.Y', strtotime((string)$shipment['estimated_at'])) : '';
+        $done = (string)$shipment['phase'] === 'done';
 
         return [
             'number' => (string)$parent['number'],
             'ttn' => (string)$shipment['number'],
             'status' => $status,
+            // Коротка форма того самого — для теми листа, де довге речення
+            // обрізається на півслові
+            'headline' => $headline,
             // Магазин називаємо лише в розділеному замовленні: інакше це зайве
             // слово про те, чого покупець не помічав
-            'part' => $many && $store !== '' ? 'Частина від магазину «' . $store . '»' : '',
-            'estimated' => $est !== '' && (string)$shipment['phase'] !== 'done' ? 'Орієнтовно: ' . $est : '',
-            'cod' => ((float)$shipment['cod']) > 0 ? 'До сплати при отриманні: ' . price_fmt($shipment['cod']) : '',
-            'url' => self::trackUrl((string)$shipment['number']),
+            'part' => $many && $store !== '' ? 'Відправлення від магазину «' . $store . '»' : '',
+            // Усе, що втратило сенс після отримання, зникає з листа. Обіцяти
+            // дату доставки, просити гроші й пропонувати «відстежити» людині,
+            // яка вже тримає посилку в руках, — це не увага, а неуважність.
+            // Рядки несуть власний підпис і порожніють цілком: у шаблоні
+            // лишається сама підстановка, тож порожня зникає разом із рядком.
+            'estimated' => $est !== '' && !$done ? 'Орієнтовна дата доставки: ' . $est : '',
+            'cod' => ((float)$shipment['cod']) > 0 && !$done
+                ? 'До сплати при отриманні: ' . price_fmt($shipment['cod']) : '',
+            'url' => $done ? '' : 'Відстежити: ' . self::trackUrl((string)$shipment['number']),
+            'shop' => (string)cfg('app_name'),
         ];
     }
 

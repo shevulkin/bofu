@@ -447,7 +447,16 @@ class OrderFlow
     }
 
     /** Підтягнути головне під підзамовлення. Повертає новий статус, якщо він змінився */
-    public static function syncParent(int $parentId, ?int $userId = null): ?string
+    /**
+     * $tellCustomer = false — коли покупцю вже сказали конкретніше.
+     *
+     * Такий випадок один: статус змінив трекінг Нової Пошти, і покупець тієї ж
+     * секунди отримав повідомлення з номером накладної й посиланням на
+     * відстеження. Друге, сухіше («замовлення — доставлено»), приходило б
+     * слідом за першим і виглядало б як збій розсилки. Персоналу при цьому все
+     * йде як завжди: для нього це різні новини.
+     */
+    public static function syncParent(int $parentId, ?int $userId = null, bool $tellCustomer = true): ?string
     {
         $parent = self::order($parentId);
         $new = self::aggregateStatus($parentId);
@@ -465,7 +474,7 @@ class OrderFlow
         ], $parent['store_id'] ? (int)$parent['store_id'] : null);
         // Покупцю це головна новина дня — і саме тут, а не в кожній частині:
         // рух усього замовлення важливіший за рух однієї з його половин.
-        self::tellCustomer($parent, self::statusLabel($new));
+        if ($tellCustomer) self::tellCustomer($parent, self::statusLabel($new));
         return $new;
     }
 
@@ -473,7 +482,7 @@ class OrderFlow
      * Зміна статусу. Для підзамовлення — своє + автопідтягування головного,
      * для головного — каскадом на всі підзамовлення (щоб «скасувати все» було одним рухом).
      */
-    public static function setStatus(int $orderId, string $status, ?int $userId = null): bool
+    public static function setStatus(int $orderId, string $status, ?int $userId = null, bool $tellCustomer = true): bool
     {
         if (!isset(self::STATUSES[$status])) return false;
         $order = self::order($orderId);
@@ -483,7 +492,7 @@ class OrderFlow
             if (!self::applyChildStatus($order, $status, $userId)) return false;
             // Головне змінилось — покупцю пішла новина про все замовлення, і
             // дублювати її розповіддю про одну частину не треба.
-            if (self::syncParent((int)$order['parent_id'], $userId) === null) {
+            if (self::syncParent((int)$order['parent_id'], $userId, $tellCustomer) === null && $tellCustomer) {
                 self::tellCustomer(self::head($order), self::statusLabel($status), $order);
             }
             return true;
@@ -497,7 +506,7 @@ class OrderFlow
         }
         if ($changed) self::log($orderId, null, 'status',
             'Статус проставлено всім підзамовленням: ' . self::statusLabel($status), $userId);
-        self::syncParent($orderId, $userId);
+        self::syncParent($orderId, $userId, $tellCustomer);
         return $changed > 0;
     }
 
@@ -626,6 +635,12 @@ class OrderFlow
             'order_customer', self::customerVars($parent, $statusLabel, $child));
     }
 
+    /** Сума для листа: копійки лише тоді, коли вони справді є */
+    private static function money(float $sum): string
+    {
+        return number_format($sum, fmod($sum, 1) !== 0.0 ? 2 : 0, '.', ' ');
+    }
+
     /**
      * Що саме побачить покупець. Винесено окремо, бо тут важливий не факт
      * відправки, а текст: номер завжди один — той, який людина знає, — а от
@@ -640,10 +655,16 @@ class OrderFlow
         }
         return [
             'number' => $parent['number'],
-            'status' => $statusLabel,
+            // Статус із малої: у шаблоні він стоїть усередині речення
+            // («Ваше замовлення … — доставлено.»), а не окремою міткою
+            'status' => mb_strtolower($statusLabel),
             'part'   => $child ? 'Частина від магазину «' . ($store ?: 'уточнюємо') . '»' : '',
             'items'  => $child ? self::itemsSummary((int)$child['id']) : '',
-            'total'  => number_format((float)($child['total'] ?? $parent['total']), 2, '.', ' '),
+            // Копійки показуємо, лише коли вони є. «1 240.00 грн» у листі до
+            // покупця виглядає роздруківкою з бухгалтерії, а не сумою покупки.
+            'total'  => self::money((float)($child['total'] ?? $parent['total'])),
+            // Підпис: людина має бачити, що з нею говорить магазин, а не система
+            'shop'   => (string)cfg('app_name'),
         ];
     }
 

@@ -336,9 +336,14 @@ final class CancelRestockTest
 
         $tpl = Notify::DEFAULT_TEMPLATES['order_customer'];
         $textWhole = Notify::interpolate($tpl, $whole);
+        // Дірка — це не будь-який порожній рядок, а зайвий: шаблон відділяє
+        // підпис магазину порожнім рядком навмисно. Ловимо саме те, що лишається
+        // від зниклих підстановок, — два й більше поспіль.
         $this->ok('порожні рядки не лишають дір у повідомленні',
-            !str_contains($textWhole, "\n\n") && substr_count($textWhole, "\n") === 1);
-        $this->ok('людина бачить статус словами', str_contains($textWhole, 'Доставлено'));
+            !str_contains($textWhole, "\n\n\n") && !str_ends_with($textWhole, "\n"));
+        $this->ok('людина бачить статус словами',
+            str_contains(mb_strtolower($textWhole), 'доставлено'));
+        $this->ok('лист підписаний магазином', str_contains($textWhole, (string)cfg('app_name')));
         $this->ok('у звістці про частину видно магазин',
             str_contains(Notify::interpolate($tpl, $part), 'Частина від магазину'));
 

@@ -44,6 +44,7 @@ final class ShipmentTest
             $this->testTracking();
             $this->testAttach();
             $this->testDue();
+            $this->testLetters();
         } finally {
             $this->tearDown();
         }
@@ -353,6 +354,46 @@ final class ShipmentTest
 
         $dup = Shipments::attach($child, $this->parent(), '20450000000002');
         $this->ok('той самий номер удруге не прикріплюється', $dup['ok'] === false);
+    }
+
+    /**
+     * Те, що читає покупець. Перевіряємо не «красиво чи ні» — це не автоматизується,
+     * — а речі, які ламаються тихо: тема листа, зайві рядки після отримання й те,
+     * що правка адміна не затирається новим типовим текстом.
+     */
+    private function testLetters(): void
+    {
+        $this->group('лист покупцю');
+
+        $parent = $this->parent();
+        $sh = Shipments::forOrder($this->child);          // ця вже «отримана»
+        $vars = Shipments::vars($sh, $this->child(), $parent);
+
+        $this->ok('тема називає подію, а не «сповіщення»',
+            str_contains(Notify::subject('order_shipment', $vars), $parent['number']));
+        $this->ok('тема коротка — без повного речення',
+            !str_contains(Notify::subject('order_shipment', $vars), '.'));
+
+        // Після отримання ці рядки втрачають сенс і мають зникнути цілком
+        $this->ok('отриманій посилці не обіцяють дату доставки', $vars['estimated'] === '');
+        $this->ok('в отриманої не просять грошей', $vars['cod'] === '');
+        $this->ok('отриману не пропонують відстежити', $vars['url'] === '');
+        $this->ok('лист підписаний магазином', $vars['shop'] === (string)cfg('app_name'));
+
+        $text = Notify::interpolate(Notify::template('order_shipment', null), $vars);
+        $this->ok('номер накладної в тексті є', str_contains($text, (string)$sh['number']));
+        $this->ok('дір із порожніх рядків немає', !str_contains($text, "\n\n\n"));
+        $this->ok('текст не обривається порожнім рядком', !str_ends_with($text, "\n"));
+
+        // Поки в базі лежить дослівно старий типовий текст — показуємо новий;
+        // щойно адмін щось змінив — його варіант недоторканний
+        $legacy = "🚚 Замовлення {number}\n{part}\nНакладна: {ttn}\n{status}\n{estimated}\n{cod}\n{url}";
+        $this->ok('старий типовий текст поступається новому',
+            Notify::template('order_shipment', $legacy) === Notify::DEFAULT_TEMPLATES['order_shipment']);
+        $this->ok('порожній шаблон бере типовий',
+            Notify::template('order_shipment', '') === Notify::DEFAULT_TEMPLATES['order_shipment']);
+        $this->ok('правку адміна не чіпаємо',
+            Notify::template('order_shipment', 'Мій текст {ttn}') === 'Мій текст {ttn}');
     }
 
     private function testDue(): void
