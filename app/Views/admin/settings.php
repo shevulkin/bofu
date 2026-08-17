@@ -285,6 +285,90 @@
     </label>
   </div>
   <div class="admin-card">
+    <h2 class="h-serif" data-help-title="Вчасно.Каса (ПРРО)"
+        data-help="Фіскальні чеки. Продаж на касі пробивається автоматично, будь-яке замовлення — кнопкою в його картці.
+
+Токен беруть у кабінеті kasa.vchasno.ua: Дії з касою → Налаштування каси → блок «Токен». Він показується один раз, тож одразу збережіть його. Токен належить КАСІ: якщо в кожної точки своя каса, вписуйте токени в картках магазинів — вони старші за цей загальний.
+
+Перед першим чеком у кабінеті має лежати ключ касира: вкладка «Ключі». Без нього ПРРО прийме токен, але відмовиться підписувати чек.">
+      Вчасно.Каса (ПРРО)</h2>
+    <p class="dim" style="margin-bottom:16px">
+      Токен беруть у кабінеті <a href="https://kasa.vchasno.ua/" target="_blank" rel="noopener"
+      style="color:inherit">kasa.vchasno.ua</a>: <b>Дії з касою → Налаштування каси → Токен</b>.
+      Саме поле — вище, у «Інтеграціях». Тут — те, що з цього токена виходить у чеку.
+      Токен належить касі, а каса — точці: якщо кас кілька, вписуйте токени в
+      <a href="<?= e(url('/admin/stores')) ?>" style="color:inherit">картках магазинів</a>,
+      і вони переважать загальний.
+    </p>
+    <?php if ($vchasno_own): ?>
+      <p class="dim" style="margin-bottom:16px">
+        Власну касу мають: <?= e(implode(', ', array_map(fn($s) => (string)$s['name'], $vchasno_own))) ?>.
+        Загальний токен на них не діє.
+      </p>
+    <?php endif; ?>
+    <div class="form-grid">
+      <div class="field" data-help-title="Податкова група за замовчуванням"
+           data-help="Ставка, з якою товар потрапляє в чек і в ДПС.
+
+Береться, коли в товарі не проставлена власна (Каталог → товар → Податкова група) і коли в магазину немає своєї. Точки можуть належати різним ФОПам, тож у картці магазину група теж є — і вона старша за цю.
+
+Помилка тут не помітна одразу: чек пробʼється, а розбіжність спливе в податковому періоді.">
+        <label>Податкова група за замовчуванням</label>
+        <select name="vchasno_taxgrp">
+          <?php $curTax = (int)Settings::get('vchasno_taxgrp', '2'); ?>
+          <?php foreach ($tax_groups as $code => $label): ?>
+            <option value="<?= (int)$code ?>"<?= $curTax === (int)$code ? ' selected' : '' ?>>
+              <?= (int)$code ?> — <?= e($label) ?></option>
+          <?php endforeach; ?>
+        </select>
+      </div>
+      <div class="field">
+        <label>Підпис касира в чеку</label>
+        <input type="text" name="vch[vchasno_cashier]"
+               value="<?= e(Settings::get('vchasno_cashier', '')) ?>" maxlength="100"
+               placeholder="Порожньо — імʼя продавця, який пробив чек">
+        <p class="field-hint">Заповнюйте, лише якщо в чеку має стояти одне й те саме імʼя незалежно від того, хто продав.</p>
+      </div>
+      <div class="field" style="grid-column:1/-1">
+        <label>Рядок унизу чека</label>
+        <input type="text" name="vch[vchasno_comment_down]"
+               value="<?= e(Settings::get('vchasno_comment_down', '')) ?>" maxlength="120"
+               placeholder="Дякуємо за покупку!">
+        <p class="field-hint">Друкується під сумою. Емодзі та рідкісні символи ПРРО не приймає — ми їх приберемо.</p>
+      </div>
+    </div>
+    <label class="toggle" style="margin-top:14px"
+           data-help-title="Пробивати чек одразу на касі"
+           data-help="Продаж у точці фіскалізується тим самим рухом, яким оформлюється, — але лише той, за який гроші вже отримали: видача з рук із галкою «товар віддано».
+
+Замовлення з каси на доставку так не пробивається: його оплатять при отриманні, а післяплату фіскалізує перевізник. Такий чек лишається кнопкою в картці замовлення.
+
+Вимикайте, якщо чеки пробиваєте в іншій програмі, — тоді сайт нічого не надсилатиме сам.">
+      <input type="checkbox" name="vchasno_auto_pos" value="1"<?= Settings::bool('vchasno_auto_pos', true) ? ' checked' : '' ?>>
+      <span class="tr"></span> Пробивати чек одразу при продажі на касі
+    </label>
+    <label class="toggle" style="margin-top:10px"
+           data-help-title="Надсилати покупцю посилання на чек"
+           data-help="«Вчасно.Каса» сама надішле електронний чек на пошту або в SMS, якщо ми передамо їй контакти покупця.
+
+Це не окреме повідомлення від магазину, а сервіс ПРРО: покупець отримає посилання на чек, який можна відкрити й пізніше.
+
+Неправильна пошта чи номер на проведення чека не впливають — просто не буде повідомлення.">
+      <input type="checkbox" name="vchasno_send_link" value="1"<?= Settings::bool('vchasno_send_link', true) ? ' checked' : '' ?>>
+      <span class="tr"></span> Надсилати покупцю посилання на електронний чек
+    </label>
+    <label class="toggle" style="margin-top:10px"
+           data-help-title="Округлювати готівку"
+           data-help="Монет дрібніших за 10 копійок в обігу немає, тож готівкову суму заокруглюють до 10 копійок.
+
+Округлення йде в чек окремим рядком, а не тихою зміною ціни: покупець бачить, звідки взялась різниця, а в ДПС товар коштує рівно стільки, скільки на полиці.
+
+На картку не діє — там платять копійка в копійку.">
+      <input type="checkbox" name="vchasno_cash_round" value="1"<?= Settings::bool('vchasno_cash_round', true) ? ' checked' : '' ?>>
+      <span class="tr"></span> Округлювати готівку до 10 копійок
+    </label>
+  </div>
+  <div class="admin-card">
     <h2 class="h-serif" data-help-title="Тексти бота при вході"
         data-help="Що саме бот пише людині, яка входить на сайт через Telegram чи Viber.
 

@@ -31,7 +31,7 @@ class Stores
                         'name' => $name, 'city' => trim($s['city'] ?? '') ?: null,
                         'address' => trim($s['address'] ?? '') ?: null, 'phone' => trim($s['phone'] ?? '') ?: null,
                         'active' => !empty($s['active']) ? 1 : 0,
-                    ], self::coords($s['coords'] ?? '', $bad), self::npSender($s)), 'id = ?', [(int)$id]);
+                    ], self::coords($s['coords'] ?? '', $bad), self::npSender($s), self::kasa($s)), 'id = ?', [(int)$id]);
                     if ($bad) $badNames[] = $name;
                 }
                 // Про нерозібрані координати кажемо поіменно: збереглося все інше,
@@ -76,6 +76,30 @@ class Stores
             'np_warehouse' => $full ? ($cut($s['np_warehouse'] ?? '', 200) ?: null) : null,
             'np_warehouse_ref' => $full ? $whRef : null,
             'np_sender_phone' => $cut($s['np_sender_phone'] ?? '', 30) ?: null,
+        ];
+    }
+
+    /**
+     * Власна каса точки.
+     *
+     * Токен належить касі, а каса — торговій точці: чек мусить пробитись саме
+     * на тому ПРРО, де стоїть покупець, бо йому належать і фіскальний номер, і
+     * зміна, і Z-звіт. Порожній токен означає «працює на загальній касі» — і це
+     * нормальний стан для одного ФОПа з кількома точками.
+     *
+     * Податкова група тут з тієї ж причини: точки можуть належати різним ФОПам,
+     * і платник ПДВ поруч із неплатником — звичайна для мережі річ.
+     */
+    private static function kasa(array $s): array
+    {
+        $token = trim((string)($s['vchasno_token'] ?? ''));
+        $tax = (int)($s['vchasno_taxgrp'] ?? 0);
+        return [
+            'vchasno_token' => $token !== '' ? mb_substr($token, 0, 250) : null,
+            // Нуль — це «як у загальних налаштуваннях», а не група №0: такої
+            // немає. Чуже число теж не приймаємо — ПРРО відхилив би його вже
+            // на живому чеку, посеред черги.
+            'vchasno_taxgrp' => isset(\Vchasno::TAX_GROUPS[$tax]) ? $tax : null,
         ];
     }
 

@@ -227,6 +227,10 @@ class App
             '/admin/orders/new'         => [$A.'Orders', 'pos', 'orders.create'],
             '/admin/orders/search'      => [$A.'Orders', 'search', 'orders.create'],
             '/admin/products/codes'     => [$A.'Products', 'codes', 'products.manage'],
+            // Каса «Вчасно»: зміна, звіти, звірка товарів. Чеки окремих
+            // замовлень тут не живуть — вони в картках замовлень.
+            '/admin/vchasno'            => [$A.'Kasa', 'index', 'fiscal.manage'],
+            '/admin/vchasno/goods'      => [$A.'Kasa', 'goods', 'fiscal.manage'],
             '/admin/promos'             => [$A.'Promos', 'index', 'promos.manage'],
             '/admin/diplomas'           => [$A.'Diplomas', 'index', 'diplomas.manage'],
             '/admin/users'              => [$A.'Users', 'index', 'users.manage'],

@@ -201,6 +201,31 @@ $roEdit = $canEdit ? '' : 'disabled';
       <label>Вага, кг</label>
       <input type="text" name="weight" value="<?= e(num_val($p['weight'] ?? null)) ?>" placeholder="0.5 — для розрахунку накладної" <?= $roEdit ?>>
     </div>
+    <div class="field" data-help-title="Податкова група"
+         data-help="З якою ставкою товар потрапляє у фіскальний чек і в ДПС.
+
+Порожньо — береться типова група магазину, який продає (а якщо в нього своєї немає — загальна з Налаштувань). Так стоїть у більшості товарів: уся полиця оподатковується однаково.
+
+Заповнюйте там, де товар відрізняється від решти: підакцизне, пільгове, послуга без ПДВ.
+
+Помилка тут не помітна одразу — чек пробʼється, а розбіжність спливе аж у податковому періоді.">
+      <label>Податкова група</label>
+      <select name="taxgrp" <?= $roEdit ?>>
+        <option value="0">як у магазину</option>
+        <?php foreach (Vchasno::TAX_GROUPS as $code => $label): ?>
+          <option value="<?= (int)$code ?>"<?= (int)($p['taxgrp'] ?? 0) === (int)$code ? ' selected' : '' ?>>
+            <?= (int)$code ?> — <?= e($label) ?></option>
+        <?php endforeach; ?>
+      </select>
+    </div>
+    <div class="field" data-help-title="Код УКТЗЕД"
+         data-help="Потрібен у чеку лише для окремих груп товарів — підакцизних та тих, для яких його вимагає закон.
+
+Для меду й решти звичайних товарів залишайте порожнім: зайвий код у чеку нікому не допомагає, а помилковий створює розбіжність у звітності.">
+      <label>Код УКТЗЕД</label>
+      <input type="text" name="uktzed" value="<?= e($p['uktzed'] ?? '') ?>" maxlength="32"
+             placeholder="лише для підакцизних" <?= $roEdit ?>>
+    </div>
   </div>
 
   <?php if (!$isNew): ?>

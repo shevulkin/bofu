@@ -133,6 +133,42 @@
               Місто й відділення діють лише разом: одне без одного — накладна в нікуди, тому таке поєднання ігнорується.
             </p>
           </details>
+          <?php /* Каса тут із тієї ж причини, що й відділення: у точки вона
+                   своя, заповнюють раз і рідко, а в таблиці це була б колонка
+                   з шістдесятьма символами токена. */ ?>
+          <details<?= trim((string)($s['vchasno_token'] ?? '')) !== '' ? ' open' : '' ?> style="margin-top:8px">
+            <summary class="dim" style="cursor:pointer;font-size:13px">
+              🧾 Каса «Вчасно» цієї точки
+              <?= trim((string)($s['vchasno_token'] ?? '')) !== ''
+                    ? '— власна'
+                    : '— спільна (Налаштування)' ?>
+            </summary>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px">
+              <div style="flex:2;min-width:240px">
+                <label class="dim" style="font-size:12px">Токен каси</label>
+                <input type="password" name="store[<?= (int)$s['id'] ?>][vchasno_token]"
+                       value="<?= e($s['vchasno_token'] ?? '') ?>"
+                       placeholder="порожньо — спільна каса з Налаштувань"
+                       autocomplete="off" spellcheck="false">
+              </div>
+              <div style="flex:1;min-width:200px">
+                <label class="dim" style="font-size:12px">Податкова група точки</label>
+                <select name="store[<?= (int)$s['id'] ?>][vchasno_taxgrp]">
+                  <option value="0">як у Налаштуваннях</option>
+                  <?php foreach (Vchasno::TAX_GROUPS as $code => $label): ?>
+                    <option value="<?= (int)$code ?>"<?= (int)($s['vchasno_taxgrp'] ?? 0) === (int)$code ? ' selected' : '' ?>>
+                      <?= (int)$code ?> — <?= e($label) ?></option>
+                  <?php endforeach; ?>
+                </select>
+              </div>
+            </div>
+            <p class="dim" style="margin:8px 0 0;font-size:12px">
+              Токен беруть у кабінеті kasa.vchasno.ua: Дії з касою → Налаштування каси → Токен.
+              Заповнюйте, лише якщо в цієї точки окрема каса — тоді її чеки підуть саме на неї,
+              зі своєю зміною і своїм Z-звітом. Податкова група потрібна тоді, коли точка належить
+              іншому ФОПу, ніж решта.
+            </p>
+          </details>
         </td>
       </tr>
     <?php endforeach; ?>

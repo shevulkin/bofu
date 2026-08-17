@@ -4,7 +4,7 @@ declare(strict_types=1);
 namespace Controllers\Admin;
 
 use DB, View, Auth, Cart, Catalog, Customers, OrderFlow, AuthTokens, Newsletter, Pos, Promo, Settings,
-    Shipments, NovaPoshta, RateLimit;
+    Shipments, NovaPoshta, RateLimit, Fiscal, Vchasno;
 
 /**
  * Адмінка замовлень.
@@ -207,6 +207,10 @@ class Orders
             'has_codes' => self::anyCodes(),
             'errors' => $errors,
             'step' => self::posStep($errors),
+            // Про оплату питаємо, лише коли є куди пробити чек: магазин без
+            // ПРРО не має відповідати на питання, яке ні на що не впливає.
+            'kasa_on' => Vchasno::anyEnabled(),
+            'pay_types' => Vchasno::PAY_TYPES,
             'np_enabled' => Settings::get('np_api_key') !== null && Settings::get('np_api_key') !== '',
             'page_title' => 'Каса — адмінка',
         ], 'layouts/admin');
@@ -323,6 +327,14 @@ class Orders
             // «товар віддано» стоїть у продажу на місці: там замовлення
             // закривається тим самим рухом, яким створюється
             'handed' => is_post() ? !empty($_POST['handed']) : true,
+            // Чим розрахувались — це поле фіскального чека, а не замовлення:
+            // ДПС має бачити, готівка це чи картка. Готівка перша, бо в точці
+            // так платять частіше, і зайвий клац на кожному продажі дорожчий
+            // за зайвий клац на кожному п’ятому.
+            'pay_type' => isset(Vchasno::PAY_TYPES[(int)($_POST['pay_type'] ?? 0)])
+                ? (int)($_POST['pay_type'] ?? 0) : 0,
+            // Скільки дали купюрами. Порожньо — рівно стільки, скільки в чеку.
+            'got' => trim((string)($_POST['got'] ?? '')),
         ];
     }
 
@@ -605,12 +617,57 @@ class Orders
             foreach ($placed['children'] as $c) OrderFlow::notifyNew($c);
         }
 
+        // Фіскальний чек — там само, де гроші: видача з рук у точці. Замовлення
+        // з каси на доставку оплатять при отриманні, і пробивати його зараз
+        // означало б фіскалізувати гроші, яких ще немає.
+        //
+        // Помилка чека замовлення не скасовує: товар уже віддали. Вона стає
+        // повідомленням продавцю й кнопкою в картці — там, де її й виправляють.
+        $fiscalErrors = [];
+        if ($form['handed'] && $form['delivery'] === 'pickup' && Auth::can('orders.fiscal')) {
+            $parent = OrderFlow::order((int)$placed['id']);
+            if ($parent) {
+                $fiscalErrors = Fiscal::afterPosSale($placed['children'], $parent, [
+                    'pay_type' => $form['pay_type'],
+                    'got' => (float)str_replace(',', '.', $form['got']),
+                    'cashier' => (string)(Auth::user()['name'] ?? ''),
+                ], Auth::id());
+            }
+        }
+
         // Чек закрито: власний кошик продавця повертається, смужка на вітрині гасне
         Pos::stop();
 
-        flash('success', 'Замовлення ' . $number . ' оформлено'
-            . ($userId ? '' : ' (покупець анонімний)') . '.');
+        if ($fiscalErrors) {
+            // Голосно й окремо від «оформлено»: непробитий чек — це продаж
+            // повз ДПС, і продавець має піти в картку, а не в наступний продаж.
+            flash('error', 'Замовлення ' . $number . ' оформлено, але ЧЕК НЕ ПРОБИТО. '
+                . implode(' ', $fiscalErrors) . ' Спробуйте ще раз у картці замовлення.');
+        } else {
+            flash('success', 'Замовлення ' . $number . ' оформлено'
+                . ($userId ? '' : ' (покупець анонімний)') . '.' . self::receiptNote($placed['children']));
+        }
         redirect('/admin/orders/' . $placed['id']);
+    }
+
+    /**
+     * Хвіст повідомлення про оформлення: чек і решта.
+     *
+     * Решта — головне, що продавцю треба знати в цю секунду: він стоїть із
+     * купюрою в руці. Номер чека — друге: за ним чек шукають, якщо покупець
+     * повернеться. Порожньо, коли каси немає, — і тоді речення не змінюється.
+     */
+    private static function receiptNote(array $children): string
+    {
+        $bits = [];
+        foreach ($children as $c) {
+            $r = Fiscal::forOrder((int)$c['id']);
+            if (!$r || (string)$r['status'] !== 'done') continue;
+            if ((float)$r['change'] > 0) $bits[] = 'Решта: ' . price_fmt((float)$r['change']) . '.';
+            $bits[] = 'Чек ' . $r['fiscal_number']
+                . (!empty($r['is_test']) ? ' (ТЕСТОВА каса — без юридичної сили)' : '') . '.';
+        }
+        return $bits ? ' ' . implode(' ', $bits) : '';
     }
 
     /**
@@ -677,7 +734,11 @@ class Orders
         $parent = OrderFlow::head($order);
         $children = OrderFlow::children((int)$parent['id']);
 
-        $items = []; $stock = []; $manage = [];
+        $items = []; $stock = []; $manage = []; $fiscalGaps = [];
+        // Чеки всього замовлення одним запитом: у картці їх показують поруч із
+        // частинами, і по запиту на частину — це рівно те, з чого починаються
+        // «чомусь адмінка гальмує»
+        $receipts = Fiscal::forParent((int)$parent['id']);
         // Накладна створюється на кожну частину окремо, тож і форма своя в
         // кожної: вага, післяплата й опис у різних магазинів різні
         $shipments = Shipments::forParent((int)$parent['id']);
@@ -686,6 +747,7 @@ class Orders
             $rows = OrderFlow::items((int)$c['id']);
             $items[(int)$c['id']] = $rows;
             $manage[(int)$c['id']] = self::canManage($c);
+            if (!Fiscal::hasSale((int)$c['id'])) $fiscalGaps[(int)$c['id']] = Fiscal::missing($c, $parent);
             if (!isset($shipments[(int)$c['id']]) && (string)$parent['delivery'] === 'np') {
                 $shipForm[(int)$c['id']] = Shipments::defaults($c, $parent);
                 $shipGaps[(int)$c['id']] = Shipments::missing($c, $parent);
@@ -733,6 +795,11 @@ class Orders
             'ship_payers' => Shipments::PAYERS,
             'ship_payments' => Shipments::PAYMENTS,
             'np_enabled' => NovaPoshta::enabled(),
+            'receipts' => $receipts,
+            'fiscal_gaps' => $fiscalGaps,
+            'can_fiscal' => Auth::can('orders.fiscal'),
+            'kasa_on' => Vchasno::anyEnabled(),
+            'pay_types' => Vchasno::PAY_TYPES,
             'statuses' => self::STATUSES,
             'can_manage_parent' => Auth::can('orders.manage'),
             'page_title' => 'Замовлення ' . $order['number'] . ' — адмінка',
@@ -808,6 +875,13 @@ class Orders
         // orders.ship — вона коштує грошей і створюється від імені магазину.
         if (str_starts_with((string)$action, 'ship_')) {
             self::shipment($action, $tree, $parent, $back);
+        }
+
+        // Фіскальні чеки. Згруповані з тієї ж причини, що й накладні: перевірка
+        // прав спільна — чек пробиває той, хто веде частину, плюс окреме право
+        // orders.fiscal (чек іде в ДПС, і повернення теж).
+        if (str_starts_with((string)$action, 'fiscal_')) {
+            self::fiscal($action, $tree, $parent, $back);
         }
 
         if ($action === 'transfer') {
@@ -999,6 +1073,82 @@ class Orders
         }
 
         flash('error', 'Невідома дія з накладною.');
+        redirect($back);
+    }
+
+    /**
+     * Фіскальні чеки з картки замовлення.
+     *
+     * Усі дії стосуються ОДНІЄЇ частини — тієї, чий магазин веде цей продавець:
+     * гроші отримала конкретна точка своєю касою. Тому перевірка одна на всіх,
+     * а далі кожна дія відповідає сама за себе.
+     */
+    private static function fiscal(string $action, array $tree, array $parent, string $back): never
+    {
+        Auth::requireCap('orders.fiscal');
+        $child = $tree[(int)($_POST['order_id'] ?? 0)] ?? null;
+        if (!$child || !$child['parent_id'] || !self::canManage($child)) {
+            flash('error', 'Немає прав пробивати чек по цій частині.');
+            redirect($back);
+        }
+
+        if ($action === 'fiscal_sell') {
+            // Ліміт тут не від ботів, а від подвійного натискання й
+            // нетерплячого F5: кожен чек справжній і йде в ДПС.
+            RateLimit::guard('fiscal', 60, 3600);
+            $r = Fiscal::sell($child, $parent, [
+                'pay_type' => (int)($_POST['pay_type'] ?? 0),
+                'got' => (float)str_replace(',', '.', (string)($_POST['got'] ?? '')),
+                'cashier' => (string)(Auth::user()['name'] ?? ''),
+            ], Auth::id());
+            flash($r['ok'] ? 'success' : 'error', $r['ok']
+                ? 'Чек пробито: ' . $r['receipt']['fiscal_number']
+                  . ((float)$r['receipt']['change'] > 0 ? '. Решта: ' . price_fmt((float)$r['receipt']['change']) : '')
+                : 'Чек не пробито. ' . $r['error']);
+            redirect($back);
+        }
+
+        // Решта дій — над конкретним чеком, і він мусить належати саме цій
+        // частині: id з форми сам собою нічого не доводить.
+        $receipt = Fiscal::byId((int)($_POST['receipt_id'] ?? 0));
+        if (!$receipt || (int)$receipt['order_id'] !== (int)$child['id']) {
+            flash('error', 'Такого чека в цьому замовленні немає.');
+            redirect($back);
+        }
+
+        if ($action === 'fiscal_retry') {
+            RateLimit::guard('fiscal', 60, 3600);
+            $r = Fiscal::retry($receipt, Auth::id());
+            flash($r['ok'] ? 'success' : 'error', $r['ok']
+                ? 'Каса відповіла: чек ' . $r['receipt']['fiscal_number']
+                : 'Досі не виходить. ' . $r['error']);
+            redirect($back);
+        }
+
+        if ($action === 'fiscal_return') {
+            RateLimit::guard('fiscal', 60, 3600);
+            $r = Fiscal::refund($receipt, Auth::id(), (string)(Auth::user()['name'] ?? ''));
+            flash($r['ok'] ? 'success' : 'error', $r['ok']
+                ? 'Чек повернення пробито: ' . $r['receipt']['fiscal_number']
+                : 'Повернення не проведено. ' . $r['error']);
+            redirect($back);
+        }
+
+        if ($action === 'fiscal_link') {
+            // Покупець просить чек назавтра («загубив») — надсилає його сама
+            // «Вчасно.Каса», ми лише кажемо їй куди.
+            RateLimit::guard('fiscal_link', 60, 3600);
+            $to = trim((string)($_POST['recipient'] ?? ''));
+            $channel = str_contains($to, '@') ? 'email' : 'sms';
+            if ($to === '') { flash('error', 'Вкажіть пошту або номер, куди надіслати чек.'); redirect($back); }
+            $r = Fiscal::sendLink($receipt, $channel, $to);
+            flash($r['ok'] ? 'success' : 'error', $r['ok']
+                ? 'Посилання на чек надіслано на ' . $to
+                : 'Не надіслалось. ' . $r['error']);
+            redirect($back);
+        }
+
+        flash('error', 'Невідома дія з чеком.');
         redirect($back);
     }
 

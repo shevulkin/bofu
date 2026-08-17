@@ -108,6 +108,10 @@
       ? d.lines.length + ' поз. · ' + d.total_label : 'чек порожній');
     setAll('[data-sum-count]', String(d.lines.length));
     setAll('[data-sum-total]', d.total_label);
+    // Сума числом — за нею браузер рахує решту з готівки. Оновлюємо разом із
+    // чеком: інакше після зміни кількості решта показувалась би від старої суми.
+    var totalHidden = document.querySelector('[data-pos-total]');
+    if (totalHidden && d.total !== undefined) { totalHidden.value = d.total; syncPay(); }
     if (d.customer !== undefined) setAll('[data-sum-customer]', d.customer || 'анонімний');
     if (d.error) say(d.error, true);
     else if (d.added) say(d.added + ' — додано');
@@ -295,7 +299,46 @@
     if (npBox) npBox.hidden = dlv !== 'np';
     if (addrBox) addrBox.hidden = dlv !== 'other';
     if (handedBox) handedBox.hidden = dlv !== 'pickup';
+    // Оплата — там само, де «віддано»: гроші беруть тоді, коли товар віддають.
+    // Замовлення на доставку оплатять при отриманні, і питати про це тут
+    // означало б записати в чек здогад.
+    if (payBox) payBox.hidden = dlv !== 'pickup';
   }
+
+  // ── решта з готівки ─────────────────────────────────────────────────────
+  var payBox = form.querySelector('[data-pos-pay]');
+  var cashBox = form.querySelector('[data-pos-cash]');
+  var gotEl = form.querySelector('[data-pos-got]');
+  var changeBox = form.querySelector('[data-pos-change-box]');
+  var changeEl = form.querySelector('[data-pos-change]');
+  var totalEl2 = form.querySelector('[data-pos-total]');
+
+  // Готівка ходить кроком у 10 копійок — рівно так її округлить і сервер,
+  // інакше решта на екрані розійшлася б із решти в чеку на копійку.
+  function cashSum() {
+    var t = totalEl2 ? parseFloat(totalEl2.value) : 0;
+    if (!(t > 0)) return 0;
+    return Math.round(t * 10) / 10;
+  }
+
+  function syncPay() {
+    var cash = pick('[data-pos-pay-type]', '0') === '0';
+    if (cashBox) cashBox.hidden = !cash;
+    if (!cash || !gotEl || !changeBox) { if (changeBox) changeBox.hidden = true; return; }
+    var got = parseFloat(String(gotEl.value).replace(',', '.'));
+    var due = cashSum();
+    // Показуємо решту, лише коли дали БІЛЬШЕ: «решта 0» читається як помилка
+    // касира, а «решта −50» — це просто недорахували, і про це скаже чек.
+    if (!isFinite(got) || got <= due) { changeBox.hidden = true; return; }
+    changeBox.hidden = false;
+    if (changeEl) changeEl.textContent = (Math.round((got - due) * 100) / 100)
+      .toFixed(2).replace('.', ',') + ' грн';
+  }
+
+  Array.prototype.forEach.call(form.querySelectorAll('[data-pos-pay-type]'), function (el) {
+    el.addEventListener('change', syncPay);
+  });
+  if (gotEl) gotEl.addEventListener('input', syncPay);
 
   Array.prototype.forEach.call(form.querySelectorAll('[data-pos-source],[data-pos-dlv]'), function (el) {
     el.addEventListener('change', sync);
@@ -312,6 +355,7 @@
   });
 
   sync();
+  syncPay();
 
   // Підпис третього кроку в стрічці: «видача в точці» чи «доставка» — те, що
   // саме зараз обрано, видно не заходячи туди

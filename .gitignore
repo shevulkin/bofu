@@ -4,6 +4,8 @@
 /storage/logs/*
 /storage/sessions/
 /storage/cache/*
+# вивантаження товарів із кабінету «Вчасно.Каси» — робочий файл на час звірки
+/storage/vchasno/
 /storage/*.sqlite*
 # завантажені фото (контент, не код) — крім правил доступу до теки
 /assets/uploads/*

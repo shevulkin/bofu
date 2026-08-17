@@ -42,6 +42,9 @@
         ['Продажі', [
             ['/admin/orders', 'Замовлення', true],
             ['/admin/orders/new', Pos::active() ? '🛒 Каса · продаж триває' : 'Каса (новий продаж)', Auth::can('orders.create')],
+            // Пункт зʼявляється лише там, де налаштована каса: без токена він
+            // веде на екран, який уміє тільки сказати «токена немає»
+            ['/admin/vchasno', 'Вчасно.Каса (ПРРО)', Auth::can('fiscal.manage') && Vchasno::anyEnabled()],
             ['/admin/promos', 'Акції та промокоди', Auth::can('promos.manage')],
             ['/admin/subscribers', 'Розсилка', Auth::can('subscribers.manage')],
         ]],

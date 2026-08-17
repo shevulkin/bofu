@@ -29,6 +29,7 @@ class IntegrationCheck
             self::viber(trim((string)($v['viber_bot_token'] ?? ''))),
             self::novaPoshta(trim((string)($v['np_api_key'] ?? ''))),
             self::npSender(trim((string)($v['np_api_key'] ?? ''))),
+            self::vchasno(trim((string)($v['vchasno_token'] ?? ''))),
             self::google($v),
             self::email(trim((string)($v['mail_from'] ?? ''))),
             self::botSite(trim((string)($v['bot_site_url'] ?? ''))),
@@ -153,6 +154,72 @@ class IntegrationCheck
             . ', ' . (Settings::get('np_sender_warehouse', '') ?: 'відділення обрано'),
             'Це перевірка заповненості, а не дійсності: чи прийме НП саме цього відправника, '
             . 'з’ясується на першій справжній накладній. Тестових ми не створюємо — вони коштують грошей.');
+    }
+
+    /**
+     * Каса «Вчасно»: чи прийме вона чек.
+     *
+     * Питаємо статус ПРРО (task 18) — єдиний запит, який нічого не проводить.
+     * Пробний чек тут був би злочином проти обліку: він справжній, іде в ДПС,
+     * і скасувати його можна лише чеком повернення.
+     *
+     * Робочий токен ще не означає, що чек пробʼється: підписує його ключ
+     * касира зі сховища кабінету, і саме його відсутність — найчастіша
+     * причина «токен же правильний, а нічого не працює».
+     */
+    private static function vchasno(string $token): array
+    {
+        $storeCases = DB::all("SELECT name FROM stores WHERE vchasno_token IS NOT NULL AND vchasno_token <> ''");
+        $own = $storeCases ? ' Точки з власною касою (' . count($storeCases) . ') перевіряються окремо — '
+             . 'цей запит їх не стосується.' : '';
+
+        if ($token === '') {
+            return self::row('Вчасно.Каса', $storeCases ? 'warn' : 'off',
+                $storeCases
+                    ? 'Загального токена немає, але власні каси є: ' . implode(', ', array_map(fn($s) => (string)$s['name'], $storeCases))
+                    : 'Токена немає — фіскальні чеки не пробиваються',
+                $storeCases
+                    ? 'Магазини без власного токена чеків не пробиватимуть.'
+                    : 'Токен беруть у кабінеті kasa.vchasno.ua: Дії з касою → Налаштування каси → Токен.');
+        }
+
+        Vchasno::useToken($token);
+        try {
+            $r = Vchasno::status();
+        } finally {
+            Vchasno::useToken(null);
+        }
+        if (!$r['ok']) {
+            return self::row('Вчасно.Каса', 'bad', 'Каса не відповіла: ' . $r['error'],
+                'Токен беруть у кабінеті каси (Дії з касою → Налаштування каси → Токен) і вставляють повністю. '
+                . 'Він показується один раз — якщо загубився, згенеруйте новий.' . $own);
+        }
+
+        $info = (array)($r['data']['info'] ?? []);
+        $shift = (int)($info['shift_status'] ?? -1);
+        $shiftText = match ($shift) {
+            Vchasno::SHIFT_OPEN => 'зміна відкрита',
+            Vchasno::SHIFT_CLOSED => 'зміна закрита (відкриється сама з першим чеком)',
+            default => 'змін ще не було',
+        };
+        $text = 'Каса ' . ($info['fisid'] ?? '?') . ' (ЄДРПОУ ' . ($info['edrpou'] ?? '?') . '), ' . $shiftText;
+
+        // Тестова каса пробиває чеки без юридичної сили. Це не помилка
+        // налаштування — так і перевіряють інтеграцію, — але дізнатись про це
+        // з першого податкового періоду було б дорого.
+        if (isset($info['isFis']) && (int)$info['isFis'] === 0) {
+            return self::row('Вчасно.Каса', 'warn', $text,
+                'Це ТЕСТОВА каса: чеки з неї не мають юридичної сили й у ДПС не потрапляють. '
+                . 'Для роботи підставте токен фіскальної каси.' . $own);
+        }
+        if (isset($info['sign_status']) && (int)$info['sign_status'] < 1) {
+            return self::row('Вчасно.Каса', 'warn', $text,
+                'Ключ касира не завантажено у сховище кабінету — чек не буде кому підписати. '
+                . 'Кабінет → вкладка «Ключі».' . $own);
+        }
+        return self::row('Вчасно.Каса', 'ok', $text,
+            'Це відповідь самої каси, а не проведений чек: пробного ми не робимо — він справжній, '
+            . 'іде в ДПС і скасовується лише поверненням.' . $own);
     }
 
     private static function google(array $v): array

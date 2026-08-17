@@ -146,6 +146,74 @@ switch ($cmd) {
         $changed = Shipments::refresh($due);
         echo "Перевірено накладних: " . count($due) . ", змінили стан: $changed\n";
         exit(0);
+    case 'vchasno:retry':
+        /*
+         * Чеки, на які каса не відповіла.
+         *
+         * Такий чек МІГ пробитись — зв’язок обірвався вже після того, як ПРРО
+         * прийняв завдання. Тому повторюємо запит із тією самою міткою (tag):
+         * «Вчасно.Каса» впізнає її й віддасть той самий чек, а не пробʼє
+         * другий. Без цієї команди кожен обрив лишав би продаж без чека, а
+         * продавця — з кнопкою, яку треба не забути натиснути.
+         *
+         * У cron кожні пʼять хвилин — цього досить, щоб покупець ще стояв біля
+         * каси, коли чек нарешті знайдеться:
+         *
+         *     *_/5 * * * * php /home/USER/site/bin/cli.php vchasno:retry
+         */
+        $due = Fiscal::due((int)($argv[2] ?? 50));
+        if (!$due) {
+            echo "Непевних чеків немає.\n";
+            exit(0);
+        }
+        $done = $left = 0;
+        foreach ($due as $r) {
+            $res = Fiscal::retry($r);
+            $res['ok'] ? $done++ : $left++;
+        }
+        echo "Перепитано: " . count($due) . ", пройшло: $done, досі без відповіді: $left\n";
+        exit(0);
+    case 'vchasno:z':
+        /*
+         * Z-звіт: закриття зміни.
+         *
+         * Закон вимагає закривати зміну щонайменше раз на добу — інакше каса
+         * перестане приймати чеки просто посеред робочого дня. Ставте в cron
+         * на час, коли точка вже точно не продає:
+         *
+         *     50 23 * * * php /home/USER/site/bin/cli.php vchasno:z
+         *
+         * Закриваємо КОЖНУ налаштовану касу: зміна належить касі, і одна
+         * закрита за всіх нічого не означає. Закриту повторно не чіпаємо —
+         * про це скаже сама каса, і це не помилка.
+         */
+        $cases = [];
+        foreach (DB::all("SELECT id, name FROM stores
+                          WHERE vchasno_token IS NOT NULL AND vchasno_token <> '' AND active = 1") as $s) {
+            $cases[] = [(int)$s['id'], (string)$s['name']];
+        }
+        if (trim((string)Settings::get('vchasno_token', '')) !== '') $cases[] = [null, 'спільна каса'];
+        if (!$cases) {
+            echo "Жодної каси не налаштовано — закривати нічого.\n";
+            exit(0);
+        }
+        $bad = 0;
+        foreach ($cases as [$storeId, $name]) {
+            $st = Vchasno::status($storeId);
+            if (!$st['ok']) {
+                echo "  ✗ $name: $st[error]\n";
+                $bad++;
+                continue;
+            }
+            if ((int)($st['data']['info']['shift_status'] ?? -1) !== Vchasno::SHIFT_OPEN) {
+                echo "  · $name: зміна вже закрита\n";
+                continue;
+            }
+            $z = Vchasno::zReport('cron', $storeId);
+            if ($z['ok']) echo "  ✓ $name: зміну закрито\n";
+            else { echo "  ✗ $name: $z[error]\n"; $bad++; }
+        }
+        exit($bad ? 1 : 0);
     case 'seed':
         Schema::createAll();
         Seeder::run();
@@ -175,5 +243,5 @@ switch ($cmd) {
             . ($code === 0 ? "ВСІ НАБОРИ ПРОЙДЕНО ($files)" : "Є ПРОВАЛЕНІ НАБОРИ — дивіться вище") . "\n";
         exit($code);
     default:
-        echo "Використання: php bin/cli.php [migrate|seed|fresh|test|prod-check|wipe|grant-admin|np:track]\n";
+        echo "Використання: php bin/cli.php [migrate|seed|fresh|test|prod-check|wipe|grant-admin|np:track|vchasno:retry|vchasno:z]\n";
 }

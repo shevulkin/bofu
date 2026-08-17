@@ -19,6 +19,20 @@ class Products
         return $v > 0 ? round(min($v, 1000), 3) : null;
     }
 
+    /**
+     * Податкова група для фіскального чека.
+     *
+     * Порожньо (і будь-що не з переліку ДПС) означає «як у магазину» — саме
+     * так стоїть у більшості товарів, і проставляти те саме число в кожній
+     * картці ніхто не стане. Чуже число мовчки не зберігаємо: ПРРО відхилив би
+     * його вже на живому чеку, тобто посеред черги.
+     */
+    private static function taxGroup($raw): ?int
+    {
+        $v = (int)$raw;
+        return isset(\Vchasno::TAX_GROUPS[$v]) ? $v : null;
+    }
+
     public static function index(): never
     {
         $q = trim($_GET['q'] ?? '');
@@ -383,6 +397,8 @@ class Products
                 'low_stock_threshold' => ($_POST['low_stock_threshold'] ?? '') === '' ? null : (int)$_POST['low_stock_threshold'],
                 // Вага однієї штуки — за нею форма накладної рахує вагу посилки
                 'weight' => self::weight($_POST['weight'] ?? ''),
+                'taxgrp' => self::taxGroup($_POST['taxgrp'] ?? ''),
+                'uktzed' => trim($_POST['uktzed'] ?? '') ?: null,
                 'created_at' => now(), 'updated_at' => now(),
             ]);
             self::syncBrands($id, (array)($_POST['brand_ids'] ?? []));
@@ -559,6 +575,8 @@ class Products
                 'made_to_order' => isset($_POST['made_to_order']) ? 1 : 0,
                 'low_stock_threshold' => ($_POST['low_stock_threshold'] ?? '') === '' ? null : (int)$_POST['low_stock_threshold'],
                 'weight' => self::weight($_POST['weight'] ?? ''),
+                'taxgrp' => self::taxGroup($_POST['taxgrp'] ?? ''),
+                'uktzed' => trim($_POST['uktzed'] ?? '') ?: null,
                 'updated_at' => now(),
             ], 'id = ?', [$id]);
             self::syncBrands($id, (array)($_POST['brand_ids'] ?? []));
