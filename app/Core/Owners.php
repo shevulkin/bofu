@@ -58,6 +58,34 @@ class Owners
         return $out;
     }
 
+    /**
+     * Каси власника — щоб було видно, який ключ до чого належить.
+     *
+     * ПРРО реєструють на торгову точку, тож у ФОПа з двома магазинами кас теж
+     * дві — і в Device Manager вони звуться по-різному. Ключ при цьому один,
+     * його ж і завантажують в обидві. Без цього переліку зʼясовувати, чий
+     * «kasa2», доводилось би по картках магазинів по одній.
+     *
+     * @return array<int, array{store:string,route:string,device:string,ready:bool}>
+     */
+    public static function cashRegisters(int $ownerId): array
+    {
+        $out = [];
+        foreach (DB::all('SELECT * FROM stores WHERE owner_id = ? ORDER BY sort, id', [$ownerId]) as $s) {
+            $route = FiscalProvider::route((int)$s['id']);
+            $out[(int)$s['id']] = [
+                'store' => (string)$s['name'],
+                'route' => FiscalProvider::routeLabel($route['route']),
+                // Для хмари каса впізнається токеном, для решти — назвою в DM
+                'device' => $route['route'] === 'cloud'
+                    ? ($route['token'] !== '' ? 'за токеном' : '')
+                    : $route['device'],
+                'ready' => FiscalProvider::missing($route) === [],
+            ];
+        }
+        return $out;
+    }
+
     public static function label(?array $owner): string
     {
         if (!$owner) return 'власника не вказано';
