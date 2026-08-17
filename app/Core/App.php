@@ -229,6 +229,8 @@ class App
             '/admin/brands'             => [$A.'Brands', 'index', 'catalog.manage'],
             '/admin/partners'           => [$A.'Partners', 'index', 'content.manage'],
             '/admin/stores'             => [$A.'Stores', 'index', 'stores.manage'],
+            // Власники точок: коли мережа — це більше ніж один платник податків
+            '/admin/owners'             => [$A.'OwnersAdmin', 'index', 'stores.manage'],
             '/admin/orders'             => [$A.'Orders', 'index', 'orders.view'],
             '/admin/orders/new'         => [$A.'Orders', 'pos', 'orders.create'],
             '/admin/orders/search'      => [$A.'Orders', 'search', 'orders.create'],

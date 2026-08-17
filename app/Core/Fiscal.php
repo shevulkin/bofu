@@ -172,6 +172,10 @@ class Fiscal
             $own = trim((string)(DB::val('SELECT vchasno_cashier FROM stores WHERE id = ?', [$storeId]) ?? ''));
             if ($own !== '') return $own;
         }
+        // Далі — власник точки: у двох магазинів одного ФОПа підпис один, і
+        // вписувати його двічі означало б рано чи пізно розійтись
+        $owner = Owners::ofStore($storeId);
+        if ($owner && trim((string)($owner['cashier'] ?? '')) !== '') return trim((string)$owner['cashier']);
         return trim((string)Settings::get('vchasno_cashier', ''));
     }
 
@@ -181,6 +185,12 @@ class Fiscal
         if ($storeId) {
             $own = DB::val('SELECT vchasno_taxgrp FROM stores WHERE id = ?', [$storeId]);
             if ($own !== null && isset(Vchasno::TAX_GROUPS[(int)$own])) return (int)$own;
+        }
+        // Ставка належить ПЛАТНИКУ, а не приміщенню: у двох точок одного ФОПа
+        // вона одна й та сама, і різною бути не може.
+        $owner = Owners::ofStore($storeId);
+        if ($owner && $owner['taxgrp'] !== null && isset(Vchasno::TAX_GROUPS[(int)$owner['taxgrp']])) {
+            return (int)$owner['taxgrp'];
         }
         $g = (int)Settings::get('vchasno_taxgrp', '2');
         return isset(Vchasno::TAX_GROUPS[$g]) ? $g : 2;

@@ -60,6 +60,7 @@
         ]],
         ['Мережа', [
             ['/admin/stores', 'Магазини', Auth::can('stores.manage')],
+            ['/admin/owners', 'Власники (ФОПи)', Auth::can('stores.manage')],
             ['/admin/users', 'Користувачі', Auth::can('users.manage')],
         ]],
         ['Сайт', [

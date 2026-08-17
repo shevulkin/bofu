@@ -878,6 +878,15 @@ class Orders
             'fiscal_jobs' => Auth::can('orders.fiscal')
                 ? count(Fiscal::queuedForUser((int)Auth::id(), (int)$parent['id'])) : 0,
             'kasa_on' => FiscalProvider::anyConfigured(),
+            // Чия це частина. Показуємо, лише коли власників справді кілька:
+            // у мережі одного ФОПа цей рядок не каже нічого нового, а от коли
+            // замовлення розпалося між двома платниками податків — це головне,
+            // що треба бачити: чеки в них різні, і гроші теж мають бути різні.
+            'owners' => \Owners::all(),
+            'owner_of' => array_reduce($children, function ($acc, $c) {
+                $acc[(int)$c['id']] = \Owners::ofStore($c['store_id'] ? (int)$c['store_id'] : null);
+                return $acc;
+            }, []),
             'pay_types' => Vchasno::PAY_TYPES,
             'statuses' => self::STATUSES,
             'can_manage_parent' => Auth::can('orders.manage'),
