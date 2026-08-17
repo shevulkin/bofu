@@ -2,7 +2,7 @@
   <div class="container footer-inner">
     <?php /* Порядок: хто ми → де нас знайти → правовий рядок. Копірайт стоїть
              останнім, бо це підпис під усім вище, а не окремий блок посередині */ ?>
-    <div class="brand"><img src="<?= e(asset('img/avatar.png')) ?>" alt=""> <span class="brand-text" style="display:inline">BEEKEEPER OF UKRAINE</span></div>
+    <div class="brand"><img src="<?= e(asset('img/favicon.png')) ?>" width="34" height="34" alt=""> <span class="brand-text" style="display:inline">BEEKEEPER OF UKRAINE</span></div>
     <div class="footer-social">
       <a href="<?= e(Content::title('social_instagram', '#')) ?>" target="_blank" rel="noopener" title="Instagram" style="display:flex;align-items:center;gap:7px"<?= edit_mark('social_instagram') ?>><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><rect x="2.5" y="2.5" width="19" height="19" rx="5.2"/><circle cx="12" cy="12" r="4.6"/><circle cx="17.6" cy="6.4" r="1.3" fill="currentColor" stroke="none"/></svg>Instagram</a>
       <a href="<?= e(Content::title('social_youtube', '#')) ?>" target="_blank" rel="noopener" title="YouTube" style="display:flex;align-items:center;gap:7px"<?= edit_mark('social_youtube') ?>><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M23.5 6.5a3 3 0 0 0-2.1-2.2C19.5 3.8 12 3.8 12 3.8s-7.5 0-9.4.5A3 3 0 0 0 .5 6.5 31 31 0 0 0 0 12a31 31 0 0 0 .5 5.5 3 3 0 0 0 2.1 2.2c1.9.5 9.4.5 9.4.5s7.5 0 9.4-.5a3 3 0 0 0 2.1-2.2A31 31 0 0 0 24 12a31 31 0 0 0-.5-5.5zM9.6 15.6V8.4L15.8 12l-6.2 3.6z"/></svg>YouTube</a>

@@ -116,6 +116,36 @@ switch ($cmd) {
             ? "НЕ ГОТОВО: критичних — $bad, попереджень — $warn\n"
             : ($warn ? "Можна запускати, але перегляньте попередження ($warn)\n" : "Готово до бойового сервера\n");
         exit($bad ? 1 : 0);
+    case 'yt:refresh':
+        /*
+         * Оновити список відео каналу.
+         *
+         * Ставиться в cron раз на годину — рівно з тією ж частотою, з якою
+         * протухає кеш:
+         *
+         *     30 * * * * php /home/USER/site/bin/cli.php yt:refresh
+         *
+         * Причина існування: RSS віддає 15 відео, і на кожне йде окремий запит
+         * до YouTube, щоб зрозуміти, Short це чи ні. Шістнадцять послідовних
+         * запитів — це секунди, і платив за них випадковий покупець, який
+         * першим відкрив головну після протухання кешу. Тепер платить cron.
+         *
+         * Хвилину варто взяти не нульову: о рівній годині на shared-хостингу
+         * стартують крони всіх сусідів одночасно.
+         */
+        if (trim((string)Settings::get('youtube_channel', '')) === '') {
+            echo "YouTube: канал не вказано в налаштуваннях — оновлювати нічого.\n";
+            exit(0);
+        }
+        $was = count((array)json_decode((string)Settings::get('yt_cache', ''), true));
+        $videos = YouTube::latest(100, true);   // force: саме цьому виклику дозволено чекати
+        $now = count((array)json_decode((string)Settings::get('yt_cache', ''), true));
+        if (!$videos) {
+            echo "YouTube не відповів — на сторінці лишається попередній список ($was відео).\n";
+            exit(0);
+        }
+        echo "YouTube: у кеші відео — $now (було $was).\n";
+        exit(0);
     case 'np:track':
         /*
          * Статуси посилок Нової Пошти.
@@ -175,5 +205,5 @@ switch ($cmd) {
             . ($code === 0 ? "ВСІ НАБОРИ ПРОЙДЕНО ($files)" : "Є ПРОВАЛЕНІ НАБОРИ — дивіться вище") . "\n";
         exit($code);
     default:
-        echo "Використання: php bin/cli.php [migrate|seed|fresh|test|prod-check|wipe|grant-admin|np:track]\n";
+        echo "Використання: php bin/cli.php [migrate|seed|fresh|test|prod-check|wipe|grant-admin|np:track|yt:refresh]\n";
 }
