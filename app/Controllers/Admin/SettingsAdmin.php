@@ -13,6 +13,9 @@ class SettingsAdmin
         'telegram_bot_token' => 'Telegram: токен бота',
         'viber_bot_token' => 'Viber: токен бота',
         'np_api_key' => 'Нова Пошта: API-ключ',
+        // Токен каси. Загальний — для магазину з однією касою; у точки може
+        // бути свій (Магазини → картка точки), і він старший за цей.
+        'vchasno_token' => 'Вчасно.Каса: токен каси',
         // Ключ Google Maps потрапляє в HTML сторінки — інакше карта не
         // завантажиться. Тому обмеження за доменом у консолі Google не
         // «бажано», а єдине, що заважає стороннім витрачати вашу квоту.
@@ -39,6 +42,14 @@ class SettingsAdmin
         'np_sender_warehouse', 'np_sender_warehouse_ref',
         'np_description', 'np_weight_default', 'np_seats_default',
     ];
+
+    /**
+     * Те, що друкується в кожному чеку «Вчасно.Каси».
+     *
+     * Окремо від TEXT_KEYS, як і відправник НП: це не ключ інтеграції, який
+     * копіюють із кабінету, а підпис під чеком, який читає покупець.
+     */
+    private const VCHASNO_KEYS = ['vchasno_cashier', 'vchasno_comment_down'];
 
     private const TOGGLES = [
         'notify_all_enabled' => 'Усі сповіщення (головний вимикач)',
@@ -97,6 +108,28 @@ class SettingsAdmin
             Settings::set('np_payment', isset(\Shipments::PAYMENTS[$payment]) ? $payment : 'Cash');
             Settings::set('np_cod_default', isset($_POST['np_cod_default']) ? '1' : '0');
 
+            // Вчасно.Каса. Податкову групу приймаємо лише з їхнього переліку:
+            // підставлене число ПРРО відхилив би вже на живому чеку, тобто
+            // тоді, коли покупець стоїть біля каси.
+            $tax = (int)($_POST['vchasno_taxgrp'] ?? 0);
+            Settings::set('vchasno_taxgrp', (string)(isset(\Vchasno::TAX_GROUPS[$tax]) ? $tax : 2));
+            // Постачальник ПРРО й маршрут за замовчуванням. Приймаємо лише з
+            // переліку: підставлене значення означало б чеки, які нікуди не
+            // йдуть, і зʼясувалось би це на першому ж продажі.
+            $prov = (string)($_POST['fiscal_provider'] ?? '');
+            Settings::set('fiscal_provider', isset(\FiscalProvider::PROVIDERS[$prov]) ? $prov : 'vchasno');
+            $route = (string)($_POST['fiscal_route'] ?? '');
+            Settings::set('fiscal_route', isset(\FiscalProvider::ROUTES[$route]) ? $route : 'cloud');
+            foreach (self::VCHASNO_KEYS as $key) {
+                // Чистимо тим самим фільтром, що й самі чеки: ПРРО має вузьку
+                // абетку, і емодзі в підписі касира завалило б кожен чек —
+                // причому не тут, а на касі, посеред черги.
+                if (isset($_POST['vch'][$key])) Settings::set($key, \Vchasno::clean((string)$_POST['vch'][$key], 120));
+            }
+            foreach (['vchasno_auto_pos', 'vchasno_send_link', 'vchasno_cash_round'] as $key) {
+                Settings::set($key, isset($_POST[$key]) ? '1' : '0');
+            }
+
             $oldViber = Settings::get('viber_bot_token', '');
             foreach (self::TEXT_KEYS as $key => $label) {
                 if (isset($_POST['text'][$key])) Settings::set($key, trim($_POST['text'][$key]));
@@ -134,6 +167,14 @@ class SettingsAdmin
             'bot_texts' => BotAuth::TEXTS, 'bot_site' => BotAuth::siteUrl(),
             'np_enabled' => \NovaPoshta::enabled(),
             'np_payers' => \Shipments::PAYERS, 'np_payments' => \Shipments::PAYMENTS,
+            'tax_groups' => \Vchasno::TAX_GROUPS,
+            'fiscal_providers' => \FiscalProvider::PROVIDERS,
+            'fiscal_routes' => \FiscalProvider::ROUTES,
+            // Точки з власною касою: щоб було видно, на кого загальний токен
+            // не поширюється, і не довелось шукати це по картках магазинів
+            'vchasno_own' => \DB::all("SELECT name, vchasno_taxgrp FROM stores
+                                       WHERE vchasno_token IS NOT NULL AND vchasno_token <> ''
+                                       ORDER BY sort, id"),
             'vapid_public' => $vapidPub,
             'page_title' => 'Налаштування — адмінка',
         ], 'layouts/admin');

@@ -31,7 +31,7 @@ class Stores
                         'name' => $name, 'city' => trim($s['city'] ?? '') ?: null,
                         'address' => trim($s['address'] ?? '') ?: null, 'phone' => trim($s['phone'] ?? '') ?: null,
                         'active' => !empty($s['active']) ? 1 : 0,
-                    ], self::coords($s['coords'] ?? '', $bad), self::npSender($s)), 'id = ?', [(int)$id]);
+                    ], self::coords($s['coords'] ?? '', $bad), self::npSender($s), self::kasa($s)), 'id = ?', [(int)$id]);
                     if ($bad) $badNames[] = $name;
                 }
                 // Про нерозібрані координати кажемо поіменно: збереглося все інше,
@@ -40,6 +40,20 @@ class Stores
                     ? 'Збережено, але координати не розібрались: ' . implode(', ', $badNames)
                       . '. Потрібна пара чисел «50.4501, 30.5234» або посилання з Google Maps.'
                     : 'Збережено');
+            }
+            if ($action === 'agent_token') {
+                // Токен показуємо РІВНО ОДИН РАЗ — у базі лишається хеш.
+                // Тому не «згенерувати й показати колись», а «ось він, копіюйте
+                // зараз»: другого разу не буде, буде лише новий токен, від
+                // якого старий агент перестане працювати.
+                $id = (int)($_POST['store_id'] ?? 0);
+                $store = $id ? DB::row('SELECT id, name FROM stores WHERE id = ?', [$id]) : null;
+                if (!$store) { flash('error', 'Такої точки немає.'); redirect('/admin/stores'); }
+                $token = \FiscalProvider::newAgentToken($id);
+                flash('success', 'Токен агента для «' . $store['name'] . '»: ' . $token
+                    . ' — скопіюйте його зараз, удруге він не покажеться. '
+                    . 'Старий токен, якщо був, більше не діє.');
+                redirect('/admin/stores');
             }
             redirect('/admin/stores');
         }
@@ -76,6 +90,40 @@ class Stores
             'np_warehouse' => $full ? ($cut($s['np_warehouse'] ?? '', 200) ?: null) : null,
             'np_warehouse_ref' => $full ? $whRef : null,
             'np_sender_phone' => $cut($s['np_sender_phone'] ?? '', 30) ?: null,
+        ];
+    }
+
+    /**
+     * Власна каса точки.
+     *
+     * Токен належить касі, а каса — торговій точці: чек мусить пробитись саме
+     * на тому ПРРО, де стоїть покупець, бо йому належать і фіскальний номер, і
+     * зміна, і Z-звіт. Порожній токен означає «працює на загальній касі» — і це
+     * нормальний стан для одного ФОПа з кількома точками.
+     *
+     * Податкова група тут з тієї ж причини: точки можуть належати різним ФОПам,
+     * і платник ПДВ поруч із неплатником — звичайна для мережі річ.
+     */
+    private static function kasa(array $s): array
+    {
+        $token = trim((string)($s['vchasno_token'] ?? ''));
+        $tax = (int)($s['vchasno_taxgrp'] ?? 0);
+        $route = trim((string)($s['fiscal_route'] ?? ''));
+        $url = trim((string)($s['dm_url'] ?? ''));
+        return [
+            // Порожній маршрут означає «як у загальних налаштуваннях», а не
+            // «ніяк»: інакше кожну нову точку довелося б налаштовувати цілком,
+            // аби вона просто працювала як усі.
+            'fiscal_route' => isset(\FiscalProvider::ROUTES[$route]) ? $route : null,
+            // Адресу приймаємо лише http/https: у поле «адреса каси» рано чи
+            // пізно вставлять щось із кабінету, і javascript: там ні до чого
+            'dm_url' => preg_match('~^https?://~i', $url) ? mb_substr(rtrim($url, '/'), 0, 200) : null,
+            'dm_device' => mb_substr(trim((string)($s['dm_device'] ?? '')), 0, 100) ?: null,
+            'vchasno_token' => $token !== '' ? mb_substr($token, 0, 250) : null,
+            // Нуль — це «як у загальних налаштуваннях», а не група №0: такої
+            // немає. Чуже число теж не приймаємо — ПРРО відхилив би його вже
+            // на живому чеку, посеред черги.
+            'vchasno_taxgrp' => isset(\Vchasno::TAX_GROUPS[$tax]) ? $tax : null,
         ];
     }
 

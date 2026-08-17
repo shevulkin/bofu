@@ -147,6 +147,44 @@
       </form>
     <?php endif; ?>
 
+    <?php if ($can_fiscal): ?>
+      <form class="admin-card" method="post" action="<?= e(url('/profile')) ?>">
+        <?= Csrf::field() ?><input type="hidden" name="_action" value="kasa">
+        <h2 class="h-serif" style="font-size:20px">Моя каса</h2>
+        <p class="dim" style="margin-bottom:16px">
+          Через яку касу пробиваються чеки ваших продажів. За замовчуванням — касу вашої точки,
+          і міняти тут нічого не треба. Власну касу вказують тоді, коли <b>Device Manager стоїть
+          на цьому ж пристрої</b> — вашому ПК або телефоні — і ключ підпису лежить у ньому
+          (на флешці чи в папці). Тоді чек несе просто ваша вкладка, і ключ нікуди не передається.
+        </p>
+        <div class="form-grid">
+          <div class="field">
+            <label>Куди пробивати</label>
+            <select name="fiscal_route">
+              <option value="">як у моїй точці</option>
+              <?php foreach ($fiscal_routes as $key => $label): ?>
+                <option value="<?= e($key) ?>"<?= (string)($u['fiscal_route'] ?? '') === $key ? ' selected' : '' ?>>
+                  <?= e($label) ?></option>
+              <?php endforeach; ?>
+            </select>
+          </div>
+          <div class="field">
+            <label>Адреса Device Manager</label>
+            <input type="text" name="dm_url" value="<?= e($u['dm_url'] ?? '') ?>"
+                   placeholder="<?= e($fiscal_default) ?>" spellcheck="false">
+            <p class="field-hint">Якщо DM стоїть тут же — лишайте як є.</p>
+          </div>
+          <div class="field">
+            <label>Назва каси в Device Manager</label>
+            <input type="text" name="dm_device" value="<?= e($u['dm_device'] ?? '') ?>"
+                   placeholder="kasa1" spellcheck="false">
+            <p class="field-hint">Та сама, під якою ви завели ПРРО в Device Manager.</p>
+          </div>
+        </div>
+        <button class="btn btn-gold" type="submit" style="margin-top:16px">💾 Зберегти касу</button>
+      </form>
+    <?php endif; ?>
+
     <div class="admin-card">
       <h2 class="h-serif" style="font-size:20px">Месенджери для сповіщень і входу</h2>
       <p class="dim" style="margin-bottom:16px">Підключіть месенджер — сюди приходитимуть коди входу за номером телефону,

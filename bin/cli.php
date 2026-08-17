@@ -176,6 +176,85 @@ switch ($cmd) {
         $changed = Shipments::refresh($due);
         echo "Перевірено накладних: " . count($due) . ", змінили стан: $changed\n";
         exit(0);
+    case 'vchasno:retry':
+        /*
+         * Чеки, на які каса не відповіла.
+         *
+         * Такий чек МІГ пробитись — зв’язок обірвався вже після того, як ПРРО
+         * прийняв завдання. Тому повторюємо запит із тією самою міткою (tag):
+         * «Вчасно.Каса» впізнає її й віддасть той самий чек, а не пробʼє
+         * другий. Без цієї команди кожен обрив лишав би продаж без чека, а
+         * продавця — з кнопкою, яку треба не забути натиснути.
+         *
+         * У cron кожні пʼять хвилин — цього досить, щоб покупець ще стояв біля
+         * каси, коли чек нарешті знайдеться:
+         *
+         *     *_/5 * * * * php /home/USER/site/bin/cli.php vchasno:retry
+         */
+        $due = Fiscal::due((int)($argv[2] ?? 50));
+        $done = $left = 0;
+        foreach ($due as $r) {
+            $res = Fiscal::retry($r);
+            $res['ok'] ? $done++ : $left++;
+        }
+        /*
+         * Окремо — завдання, які забрав агент і не повернув: вимкнули касовий
+         * ПК, обірвався інтернет. Повертаємо їх у чергу; це безпечно рівно
+         * тому, що мітка незмінна — якщо чек усе-таки пробився, друга спроба
+         * поверне його ж, а не пробʼє новий.
+         */
+        $requeued = Fiscal::requeueStale();
+        if (!$due && !$requeued) {
+            echo "Непевних чеків немає.\n";
+            exit(0);
+        }
+        echo "Перепитано: " . count($due) . ", пройшло: $done, досі без відповіді: $left"
+           . ($requeued ? ", повернуто в чергу: $requeued" : '') . "\n";
+        exit(0);
+    case 'vchasno:z':
+        /*
+         * Z-звіт: закриття зміни.
+         *
+         * Закон вимагає закривати зміну щонайменше раз на добу — інакше каса
+         * перестане приймати чеки просто посеред робочого дня. Ставте в cron
+         * на час, коли точка вже точно не продає:
+         *
+         *     50 23 * * * php /home/USER/site/bin/cli.php vchasno:z
+         *
+         * Закриваємо КОЖНУ налаштовану касу: зміна належить касі, і одна
+         * закрита за всіх нічого не означає. Закриту повторно не чіпаємо —
+         * про це скаже сама каса, і це не помилка.
+         */
+        $stores = DB::all('SELECT id, name FROM stores WHERE active = 1 ORDER BY sort, id');
+        $any = false; $bad = 0;
+        foreach ($stores as $s) {
+            $storeId = (int)$s['id'];
+            $name = (string)$s['name'];
+            $route = FiscalProvider::route($storeId);
+            if (FiscalProvider::missing($route)) continue;   // каси в цієї точки немає
+            $any = true;
+
+            // Там, де до каси ходить наш сервер, спершу питаємо, чи зміна
+            // взагалі відкрита: зайвий Z-звіт нічого не зламає, але й нічого
+            // не дасть, а в журналі виглядатиме як помилка.
+            if ($route['route'] === 'cloud') {
+                $st = Vchasno::status($storeId);
+                if (!$st['ok']) { echo "  ✗ $name: $st[error]\n"; $bad++; continue; }
+                if ((int)($st['data']['info']['shift_status'] ?? -1) !== Vchasno::SHIFT_OPEN) {
+                    echo "  · $name: зміна вже закрита\n";
+                    continue;
+                }
+            }
+            $r = Fiscal::service('shift_close', $storeId, null, ['cashier' => 'cron']);
+            if ($r['state'] === 'queued') echo "  → $name: завдання поставлено в чергу агенту\n";
+            elseif ($r['ok']) echo "  ✓ $name: зміну закрито\n";
+            else { echo "  ✗ $name: $r[error]\n"; $bad++; }
+        }
+        if (!$any) {
+            echo "Жодної каси не налаштовано — закривати нічого.\n";
+            exit(0);
+        }
+        exit($bad ? 1 : 0);
     case 'seed':
         Schema::createAll();
         Seeder::run();
@@ -205,5 +284,6 @@ switch ($cmd) {
             . ($code === 0 ? "ВСІ НАБОРИ ПРОЙДЕНО ($files)" : "Є ПРОВАЛЕНІ НАБОРИ — дивіться вище") . "\n";
         exit($code);
     default:
-        echo "Використання: php bin/cli.php [migrate|seed|fresh|test|prod-check|wipe|grant-admin|np:track|yt:refresh]\n";
+        echo "Використання: php bin/cli.php [migrate|seed|fresh|test|prod-check|wipe|grant-admin"
+           . "|np:track|yt:refresh|vchasno:retry|vchasno:z]\n";
 }

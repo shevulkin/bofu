@@ -4,6 +4,13 @@
 /storage/logs/*
 /storage/sessions/
 /storage/cache/*
+# вивантаження товарів із кабінету «Вчасно.Каси» — робочий файл на час звірки
+/storage/vchasno/
+# стан емулятора Device Manager — робочий файл тестів
+/storage/dm-emulator.json*
+# журнал і налаштування агента каси — вони місцеві, у кожної точки свої
+/bin/agent/agent.log
+/bin/agent/agent.config.json
 /storage/*.sqlite*
 # завантажені фото (контент, не код) — крім правил доступу до теки
 /assets/uploads/*

@@ -51,6 +51,9 @@
 </form>
 <form method="post" action="<?= e(url('/admin/stores')) ?>">
   <?= Csrf::field() ?><input type="hidden" name="_action" value="save">
+  <?php /* Заповнюється кнопкою «створити токен агента»: форма одна на всі
+           точки, і сказати, про яку саме йдеться, більше нема як. */ ?>
+  <input type="hidden" name="store_id" value="">
   <table class="tbl">
     <tr><th>Назва</th><th>Місто</th><th>Адреса</th><th>Телефон</th>
       <th style="width:220px" data-help-title="Колонка «Координати»"
@@ -132,6 +135,97 @@
               Порожньо — посилки цієї точки їдуть із відділення, вказаного в Налаштуваннях.
               Місто й відділення діють лише разом: одне без одного — накладна в нікуди, тому таке поєднання ігнорується.
             </p>
+          </details>
+          <?php /* Каса тут із тієї ж причини, що й відділення: у точки вона
+                   своя, заповнюють раз і рідко, а в таблиці це була б колонка
+                   з шістдесятьма символами токена. */ ?>
+          <?php
+            $ownRoute = trim((string)($s['fiscal_route'] ?? ''));
+            $seen = trim((string)($s['agent_seen_at'] ?? ''));
+            $agentAlive = $seen !== '' && strtotime($seen) > time() - 300;
+          ?>
+          <details<?= $ownRoute !== '' || trim((string)($s['vchasno_token'] ?? '')) !== '' ? ' open' : '' ?> style="margin-top:8px">
+            <summary class="dim" style="cursor:pointer;font-size:13px">
+              🧾 Каса цієї точки
+              <?= $ownRoute !== '' ? '— ' . e(mb_strtolower(FiscalProvider::routeLabel($ownRoute))) : '— як у Налаштуваннях' ?>
+            </summary>
+
+            <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px">
+              <div style="flex:1;min-width:220px">
+                <label class="dim" style="font-size:12px">Як доходимо до каси</label>
+                <select name="store[<?= (int)$s['id'] ?>][fiscal_route]">
+                  <option value="">як у Налаштуваннях</option>
+                  <?php foreach (FiscalProvider::ROUTES as $key => $label): ?>
+                    <option value="<?= e($key) ?>"<?= $ownRoute === $key ? ' selected' : '' ?>><?= e($label) ?></option>
+                  <?php endforeach; ?>
+                </select>
+              </div>
+              <div style="flex:1;min-width:200px">
+                <label class="dim" style="font-size:12px">Податкова група точки</label>
+                <select name="store[<?= (int)$s['id'] ?>][vchasno_taxgrp]">
+                  <option value="0">як у Налаштуваннях</option>
+                  <?php foreach (Vchasno::TAX_GROUPS as $code => $label): ?>
+                    <option value="<?= (int)$code ?>"<?= (int)($s['vchasno_taxgrp'] ?? 0) === (int)$code ? ' selected' : '' ?>>
+                      <?= (int)$code ?> — <?= e($label) ?></option>
+                  <?php endforeach; ?>
+                </select>
+              </div>
+            </div>
+
+            <?php /* Поля обох маршрутів показуємо разом: перемикати їх
+                     javascript-ом заради двох рядків — більше коду, ніж
+                     користі, а заповнене «не те» поле нікому не заважає. */ ?>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px">
+              <div style="flex:2;min-width:240px">
+                <label class="dim" style="font-size:12px">Токен каси (для хмари)</label>
+                <input type="password" name="store[<?= (int)$s['id'] ?>][vchasno_token]"
+                       value="<?= e($s['vchasno_token'] ?? '') ?>"
+                       placeholder="порожньо — спільний токен із Налаштувань"
+                       autocomplete="off" spellcheck="false">
+              </div>
+              <div style="flex:1;min-width:180px">
+                <label class="dim" style="font-size:12px">Адреса Device Manager</label>
+                <input type="text" name="store[<?= (int)$s['id'] ?>][dm_url]"
+                       value="<?= e($s['dm_url'] ?? '') ?>" placeholder="http://localhost:3939" spellcheck="false">
+              </div>
+              <div style="flex:1;min-width:150px">
+                <label class="dim" style="font-size:12px">Назва каси в DM</label>
+                <input type="text" name="store[<?= (int)$s['id'] ?>][dm_device]"
+                       value="<?= e($s['dm_device'] ?? '') ?>" placeholder="kasa1" spellcheck="false">
+              </div>
+            </div>
+
+            <p class="dim" style="margin:8px 0 0;font-size:12px">
+              <b>Хмара</b> — чек пробиває наш сервер, ключ підпису лежить у постачальника.
+              <b>Каса точки</b> — ключ на флешці чи в папці на касовому ПК, а завдання йому
+              приносить агент; назовні в магазині нічого не відкрито.
+              <b>Каса на цьому пристрої</b> — те саме, але Device Manager стоїть у самого продавця,
+              і маршрут йому вмикають у профілі, а не тут.
+            </p>
+
+            <?php if ($ownRoute === 'agent'): ?>
+              <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--bg3)">
+                <div class="dim" style="font-size:12.5px">
+                  Агент:
+                  <?php if ($seen === ''): ?>
+                    <b>жодного разу не виходив на звʼязок</b> — запустіть його на касовому ПК
+                  <?php else: ?>
+                    <b><?= $agentAlive ? 'на звʼязку' : 'мовчить' ?></b>,
+                    востаннє <?= e(date('d.m H:i', strtotime($seen))) ?>
+                  <?php endif; ?>
+                </div>
+                <button class="btn btn-line btn-xs" type="submit" name="_action" value="agent_token"
+                        formnovalidate onclick="this.form.store_id.value='<?= (int)$s['id'] ?>'"
+                        style="margin-top:8px"
+                        data-help-title="Токен агента"
+                        data-help="Ним агент на касовому ПК доводить, що він саме з цієї точки, і забирає лише її чеки.
+
+Токен показується РІВНО ОДИН РАЗ — у базі лишається тільки його відбиток. Скопіюйте його в agent.config.json поруч з агентом.
+
+Натиснути ще раз можна будь-коли, але старий токен одразу перестане працювати, і агента доведеться переналаштувати.">
+                  🔑 <?= $seen === '' ? 'Створити токен агента' : 'Створити новий токен' ?></button>
+              </div>
+            <?php endif; ?>
           </details>
         </td>
       </tr>

@@ -7,7 +7,7 @@ declare(strict_types=1);
  */
 class Schema
 {
-    public const VERSION = 34;
+    public const VERSION = 35;
 
     /** Оновлення існуючої бази до поточної версії без втрати даних */
     public static function upgrade(): void
@@ -349,6 +349,55 @@ class Schema
             self::createAll();   // shipments + індекси
             self::seedRules();   // нова подія «накладна й рух посилки»
         }
+        if ($ver < 35) {
+            // Фіскальні чеки.
+            //
+            // ПРРО належить КАСІ, а каса — торговій точці: гроші отримує
+            // конкретний магазин своїм ПРРО, і фіскальний номер зі зміною
+            // належать саме йому. Тому все, що описує касу, лежить у точці, а
+            // не лише в загальних налаштуваннях.
+            //
+            // Маршрут — це відповідь на питання «як ми доходимо до каси»:
+            //   cloud  — наш сервер говорить з хмарою постачальника (потрібен токен);
+            //   agent  — каса стоїть на ПК точки, ключ там же, а завдання їй
+            //            приносить агент, який сам стукає до нас; назовні нічого
+            //            не відкрито;
+            //   device — каса на тому ж пристрої, де працює продавець, і його
+            //            браузер звертається на localhost.
+            // Порожньо в точці — береться загальний маршрут із налаштувань,
+            // порожньо в людини — маршрут її точки.
+            self::addColumn('stores', 'fiscal_route', 'str null');
+            self::addColumn('stores', 'dm_url', 'str null');
+            self::addColumn('stores', 'dm_device', 'str null');
+            // Токен агента цієї точки. Ним агент доводить, що він саме звідти,
+            // і забирає лише її завдання. Зберігаємо хеш, а не сам токен:
+            // база з токенами — це база ключів до всіх кас мережі.
+            self::addColumn('stores', 'agent_hash', 'str null');
+            self::addColumn('stores', 'agent_seen_at', 'str null');
+            // Власна каса людини: продавець за своїм ПК або з телефона, у якому
+            // стоїть Device Manager зі своїм ключем.
+            self::addColumn('users', 'fiscal_route', 'str null');
+            self::addColumn('users', 'dm_url', 'str null');
+            self::addColumn('users', 'dm_device', 'str null');
+            self::addColumn('stores', 'vchasno_token', 'str null');
+            // Податкова група теж у точці: точки можуть належати різним ФОПам,
+            // і платник ПДВ поруч із неплатником — звичайна для мережі річ.
+            self::addColumn('stores', 'vchasno_taxgrp', 'int null');
+            // А в товару — своя, коли вона не залежить від полиці: підакцизне
+            // й пільгове лишається таким у будь-якій точці. Порожньо — береться
+            // група магазину (див. Fiscal::taxGroup).
+            self::addColumn('products', 'taxgrp', 'int null');
+            self::addColumn('products', 'uktzed', 'str null');
+            // Постачальник ПРРО пишеться в сам чек: його міняють, а повернення
+            // робить той самий ПРРО, що й продаж.
+            self::addColumn('fiscal_receipts', 'provider', "str default 'vchasno'");
+            self::addColumn('fiscal_receipts', 'route', "str default 'cloud'");
+            self::addColumn('fiscal_receipts', 'doc', 'text null');
+            self::addColumn('fiscal_receipts', 'task', "str default 'sell'");
+            self::addColumn('fiscal_receipts', 'result', 'text null');
+            self::createAll();   // fiscal_receipts + індекси
+            self::seedRules();   // нова подія «чек не пробито»
+        }
         Settings::set('schema_version', (string)self::VERSION);
     }
 
@@ -487,6 +536,10 @@ class Schema
                 'role' => "str default 'customer'", // admin|seller|editor|customer
                 'active' => 'bool default 1', 'tg_chat_id' => 'str null',
                 'viber_id' => 'str null', 'phone' => 'str null',
+                // Власна каса продавця: Device Manager на його ПК чи телефоні
+                // зі своїм ключем. Порожньо — працює касою своєї точки.
+                'fiscal_route' => 'str null',
+                'dm_url' => 'str null', 'dm_device' => 'str null',
                 'created_at' => 'ts',
             ],
             // Чий товар. own = 1 стоїть у бренда самого магазину — саме з нього
@@ -514,6 +567,23 @@ class Schema
                 'np_sender_phone' => 'str null',
                 'np_city' => 'str null', 'np_city_ref' => 'str null',
                 'np_warehouse' => 'str null', 'np_warehouse_ref' => 'str null',
+                // Каса цієї точки. ПРРО належить точці: чек мусить пробитись
+                // саме там, де стоїть покупець. Порожньо — точка працює на
+                // загальній касі з налаштувань.
+                //
+                // fiscal_route — як ми доходимо до каси: cloud | agent | device.
+                // dm_url і dm_device потрібні двом останнім: адреса Device
+                // Manager і назва ПРРО всередині нього.
+                'fiscal_route' => 'str null',
+                'dm_url' => 'str null', 'dm_device' => 'str null',
+                // Агент доводить, що він із цієї точки, своїм токеном. У базі
+                // лежить лише хеш: перелік токенів усіх кас мережі — надто
+                // дорога річ, щоб зберігати її у відкритому вигляді.
+                'agent_hash' => 'str null', 'agent_seen_at' => 'str null',
+                'vchasno_token' => 'str null',
+                // Типова податкова група точки: у мережі одна точка може бути
+                // платником ПДВ, а сусідня — ні (різні ФОПи).
+                'vchasno_taxgrp' => 'int null',
                 'active' => 'bool default 1', 'sort' => 'int default 0',
             ],
             // Партнери — не бренди. Бренд відповідає на питання «чий це товар»
@@ -556,6 +626,12 @@ class Schema
                 // Вага однієї штуки, кг — щоб форма накладної не питала те, що
                 // ми вже знаємо. Порожньо — береться типова з налаштувань.
                 'weight' => 'num null',
+                // Податкова група для фіскального чека. Порожньо — береться
+                // типова магазину: більшість товарів оподатковується однаково,
+                // і проставляти те саме число в кожній картці ніхто не стане.
+                // Заповнюють її там, де товар відрізняється від решти полиці.
+                'taxgrp' => 'int null',
+                'uktzed' => 'str null',   // код УКТЗЕД, якщо він потрібен у чеку
                 'image' => 'str null',
                 'created_at' => 'ts', 'updated_at' => 'ts',
             ],
@@ -722,11 +798,92 @@ class Schema
                 'created_by_user_id' => 'int null',
                 'created_at' => 'ts', 'updated_at' => 'str null',
             ],
+            /**
+             * Фіскальний чек.
+             *
+             * Теж на підзамовлення, і з тієї самої причини, що й накладна:
+             * гроші отримує конкретна точка своєю касою, тож замовлення на два
+             * магазини — це два продажі й два чеки.
+             *
+             * tag — наш незмінний ідентифікатор запиту, і саме він робить
+             * повтор безпечним: ПРРО впізнає за ним ту саму спробу й віддає
+             * той самий чек замість другого. Тому рядок створюється ДО запиту,
+             * а payload зберігає рівно те, що ми надіслали, — інакше повтор
+             * після обриву зв’язку відправляв би вже інший чек.
+             *
+             * provider і route пишемо в самому чеку, а не читаємо з налаштувань
+             * при потребі. Постачальника ПРРО міняють — і це нормально, — але
+             * чек, пробитий у Вчасно, повертається теж у Вчасно: повернення
+             * робить той самий ПРРО. Запис у рядку робить перехід безболісним:
+             * старі чеки далі знають свого постачальника, нові йдуть до нового.
+             *
+             * status:
+             *   queued  — чекає, поки його забере агент точки або браузер
+             *             продавця (у маршрутах agent/device наш сервер до каси
+             *             не ходить взагалі);
+             *   pending — надіслали, відповіді не було. Чек МІГ пробитись,
+             *             тому повторюємо тим самим tag;
+             *   done    — є фіскальний номер;
+             *   error   — ПРРО відмовив по суті, без людини не обійтись.
+             */
+            'fiscal_receipts' => [
+                'id' => 'id',
+                'order_id' => 'int',                 // підзамовлення (parent_id IS NOT NULL)
+                'parent_id' => 'int',                // головне — щоб картка читала одним запитом
+                'store_id' => 'int null',            // чия каса пробила
+                'provider' => "str default 'vchasno'",
+                'route' => "str default 'cloud'",    // cloud|agent|device
+                'type' => "str default 'sell'",      // sell|return|service
+                /*
+                 * Що саме робимо. Документи (sell/return) належать замовленню,
+                 * службові завдання — касі: відкрити зміну, зняти Z-звіт,
+                 * внести чи видати готівку.
+                 *
+                 * Вони живуть в одній таблиці навмисно. Черга до каси, мітка
+                 * проти дублів, повтор після обриву, стани — усе це в них
+                 * спільне до останнього рядка, а друга така сама таблиця
+                 * означала б дві копії найтоншого коду в системі. Ціна —
+                 * order_id = 0 у службових рядків; зовнішніх ключів тут немає,
+                 * тож це нічого не ламає.
+                 */
+                'task' => "str default 'sell'",      // sell|return|shift_open|shift_close|x_report|cash_in|cash_out
+                'of_receipt_id' => 'int null',       // для повернення — чек продажу, який повертаємо
+                'tag' => 'str',                      // мітка запиту: за нею ПРРО впізнає повтор
+                'payload' => 'text null',            // що саме надіслали — тіло для повтору
+                'doc' => 'text null',                // нейтральний чек: із нього будується тіло під будь-якого постачальника
+                'status' => "str default 'queued'",  // queued|pending|done|error
+                // Текстом, а не рядком: ПРРО пояснює відмову разом із деталями
+                // валідації («сума 10050, рядки 10000»), і обрізати саме те,
+                // заради чого це повідомлення читають, було б знущанням.
+                'error' => 'text null',
+                'attempts' => 'int default 0',
+                // Те, що повернув ПРРО. fiscal_number друкується в чеку й за ним
+                // чек шукають у ДПС; rro_number — сама каса; shift_link — зміна,
+                // у яку чек потрапив (за нею він і закривається Z-звітом).
+                'fiscal_number' => 'str null', 'rro_number' => 'str null',
+                'shift_link' => 'int null', 'doc_no' => 'int null',
+                'receipt_dt' => 'str null',          // час чека за ПРРО, YYYYMMDDHHMMSS
+                // Посилання на електронний чек для покупця. Теж текстом: у ньому
+                // сама адреса, номер, дата, сума й 64-символьний підпис — у 255
+                // символів воно впирається впритул.
+                'qr' => 'text null',
+                'cancel_id' => 'str null',           // ідентифікатор для скасування операції
+                // Тестова каса пробиває чеки без юридичної сили, офлайн-чек іде
+                // в ДПС пізніше. Обидва треба бачити очима, а не здогадуватись.
+                'is_offline' => 'bool default 0', 'is_test' => 'bool default 0',
+                'sum' => 'num default 0', 'pay_type' => 'int default 0', 'change' => 'num default 0',
+                // Відповідь каси на службове завдання: сума готівки після
+                // внесення, номер зміни після Z-звіту. Для чеків усе потрібне
+                // вже розкладено по стовпцях вище.
+                'result' => 'text null',
+                'created_by_user_id' => 'int null',
+                'created_at' => 'ts', 'updated_at' => 'str null',
+            ],
             // Історія замовлення: розділення, зміни статусів, передачі позицій між магазинами.
             // parent_id — завжди головне замовлення, щоб уся стрічка читалась одним запитом.
             'order_events' => [
                 'id' => 'id', 'parent_id' => 'int', 'order_id' => 'int null', 'user_id' => 'int null',
-                'type' => 'str', // created|status|transfer|note|shipment
+                'type' => 'str', // created|status|transfer|note|shipment|fiscal
                 'role' => 'str null', // роль, у якій діяли
                 'message' => 'text null', 'created_at' => 'ts',
             ],
@@ -821,6 +978,9 @@ class Schema
             // number — за ним шукає трекінг, phase — за нею відбираються ті
             // накладні, які ще має сенс перепитувати
             'shipments' => ['order_id', 'parent_id', 'number', 'phase'],
+            // tag — за ним впізнаємо повтор, status — за ним cron відбирає
+            // чеки, які лишились без відповіді
+            'fiscal_receipts' => ['order_id', 'parent_id', 'tag', 'status', 'of_receipt_id'],
             'rate_hits' => ['action', 'ident', 'created_at'],
             'subscribers' => ['token'],
             'order_items' => ['order_id'],

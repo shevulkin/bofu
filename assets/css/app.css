@@ -1272,3 +1272,19 @@ body.ce-on [data-ce].ce-just-saved{outline:2px solid var(--ok);outline-offset:3p
 .content-block:first-of-type{border-top:0;padding-top:0}
 .content-block-head{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;margin-bottom:10px}
 .content-block-head b{font-size:14.5px}
+
+/* ---------- чек, який пробивається просто зараз ---------- */
+/* Смужка над блоком чека в маршруті «каса на цьому пристрої»: поки браузер
+   несе завдання в Device Manager, продавець має бачити, що зараз відбувається,
+   — інакше пауза в півтори секунди читається як «нічого не сталось». */
+.fiscal-runner{display:flex;align-items:center;gap:10px;margin-top:14px;padding:10px 14px;
+  border:1px solid var(--bg3);border-radius:8px;font-size:13.5px}
+.fiscal-runner::before{content:"";width:14px;height:14px;flex:none;border-radius:50%;
+  border:2px solid var(--gold,#f0b429);border-top-color:transparent;animation:fiscal-spin .8s linear infinite}
+.fiscal-runner.is-ok::before{animation:none;border:0;background:none;content:"✓";
+  color:#5fbf6b;font-weight:700;width:auto;height:auto}
+.fiscal-runner.is-bad::before{animation:none;border:0;content:"✗";color:#e06666;
+  font-weight:700;width:auto;height:auto}
+.fiscal-runner.is-ok{border-color:#3c6b43}
+.fiscal-runner.is-bad{border-color:#7a3a3a}
+@keyframes fiscal-spin{to{transform:rotate(360deg)}}

@@ -346,6 +346,44 @@ USB-СКАНЕР: піднесіть сканер до етикетки — ві
               <input type="checkbox" name="handed" <?= $form['handed'] ? 'checked' : '' ?>><span class="tr"></span>
               Товар віддано покупцю</label>
           </div>
+
+          <?php /* Оплата питається лише там, де гроші беруть просто зараз:
+                   видача в точці. Замовлення на доставку оплатять при
+                   отриманні, і питати про це тут — питати навздогад. */ ?>
+          <?php if ($kasa_on): ?>
+            <div style="margin-top:14px" data-pos-pay <?= $form['delivery'] === 'pickup' ? '' : 'hidden' ?>
+                 data-help-title="Чим розрахувались"
+                 data-help="Йде у фіскальний чек: ДПС має бачити, готівка це чи картка.
+
+Готівкою — впишіть, скільки дали купюрами, і каса покаже решту. Порожнє поле означає «дали рівно стільки, скільки в чеку».
+
+Готівкова сума заокруглюється до 10 копійок (монет дрібніших немає) — округлення йде в чек окремим рядком, а не тихою зміною ціни.">
+              <label>Чим розрахувались</label>
+              <div class="pos-pays" style="display:flex;gap:14px;flex-wrap:wrap;margin-top:6px">
+                <?php foreach ($pay_types as $code => $label): ?>
+                  <label class="checkbox" style="margin:0">
+                    <input type="radio" name="pay_type" value="<?= (int)$code ?>" data-pos-pay-type
+                           <?= (int)$form['pay_type'] === (int)$code ? 'checked' : '' ?>>
+                    <?= e($label) ?></label>
+                <?php endforeach; ?>
+              </div>
+              <div style="display:flex;gap:10px;align-items:flex-end;margin-top:8px"
+                   data-pos-cash <?= (int)$form['pay_type'] === 0 ? '' : 'hidden' ?>>
+                <div style="flex:1">
+                  <label>Отримано готівкою</label>
+                  <input type="text" name="got" value="<?= e($form['got']) ?>" inputmode="decimal"
+                         placeholder="без решти" data-pos-got>
+                </div>
+                <div style="flex:1" class="dim" data-pos-change-box hidden>
+                  Решта: <b data-pos-change>—</b>
+                </div>
+                <?php /* Сума чека числом — решту рахує браузер, і брати її з
+                         відформатованого «1 250,50 грн» означало б розбирати
+                         пробіли й коми там, де сервер уже все порахував. */ ?>
+                <input type="hidden" data-pos-total value="<?= e(number_format((float)$totals['total'], 2, '.', '')) ?>">
+              </div>
+            </div>
+          <?php endif; ?>
         </div>
       </div>
 
