@@ -16,7 +16,19 @@ class YouTube
     /** Скільки відео тримаємо в пам'яті: більше за будь-який показ на сторінках */
     private const KEEP = 12;
 
-    public static function latest(int $limit = 3): array
+    /**
+     * Відео для сторінки. Ходить у мережу лише тоді, коли кешу немає взагалі.
+     *
+     * Раніше протухлий кеш означав, що перший відвідувач після цього моменту
+     * чекає на 16 послідовних запитів до YouTube (RSS плюс HEAD на кожне з
+     * 15 відео) — і платив за це секундами свого відкриття головної. Тепер
+     * оновлення живе в cron (`php bin/cli.php yt:refresh`), а сторінка бере
+     * те, що лежить, навіть якщо воно вчорашнє: застарілий список відео —
+     * дрібниця, а сторінка, що вантажиться пʼять секунд, — ні.
+     *
+     * $force = true — це і є виклик із cron: тільки він має право чекати.
+     */
+    public static function latest(int $limit = 3, bool $force = false): array
     {
         $channel = trim((string)Settings::get('youtube_channel', ''));
         if ($channel === '') return [];
@@ -26,6 +38,8 @@ class YouTube
         // старий формат кешу (без is_short) вважаємо застарілим
         if (is_array($cache) && $cache && !array_key_exists('is_short', $cache[0])) $fresh = false;
         if (is_array($cache) && $fresh) return self::pick($cache, $limit);
+        // Кеш є, але протух — віддаємо його. Оновить cron; сторінка не чекає.
+        if (!$force && is_array($cache) && $cache) return self::pick($cache, $limit);
 
         $videos = self::fetch($channel);
         if ($videos) {

@@ -6,7 +6,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title><?= e($page_title ?? 'Адмінка') ?></title>
 <meta name="theme-color" content="#141110">
-<link rel="icon" href="<?= e(asset('img/avatar.png')) ?>">
+<?php /* Легкий значок вкладки; велика іконка лишається манифесту й apple-touch */ ?>
+<link rel="icon" href="<?= e(asset('img/favicon.png')) ?>" sizes="64x64">
 <link rel="manifest" href="<?= e(url('/manifest.webmanifest')) ?>">
 <link rel="apple-touch-icon" href="<?= e(asset('img/avatar.png')) ?>">
 <link rel="stylesheet" href="<?= e(asset('css/fonts.css')) ?>">
@@ -23,7 +24,7 @@
 <div class="admin-wrap">
   <aside class="admin-side">
     <a class="brand" href="<?= e(url('/')) ?>">
-      <img src="<?= e(asset('img/avatar.png')) ?>" alt=""> <span class="brand-text" style="font-size:14px">BOFU · <?= Auth::isAdmin() ? 'Адмін' : 'Продавець' ?></span>
+      <img src="<?= e(asset('img/favicon.png')) ?>" width="34" height="34" alt=""> <span class="brand-text" style="font-size:14px">BOFU · <?= Auth::isAdmin() ? 'Адмін' : 'Продавець' ?></span>
     </a>
     <?php
     /**

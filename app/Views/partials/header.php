@@ -1,7 +1,7 @@
 <header class="topbar">
   <nav class="nav">
     <a class="brand" href="<?= e(url('/')) ?>">
-      <img src="<?= e(asset('img/avatar.png')) ?>" alt="<?= e(cfg('app_name')) ?>">
+      <img src="<?= e(asset('img/favicon.png')) ?>" width="34" height="34" alt="<?= e(cfg('app_name')) ?>">
       <span class="brand-text">BEEKEEPER OF UKRAINE</span>
     </a>
     <div class="nav-links">

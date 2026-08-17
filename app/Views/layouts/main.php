@@ -12,7 +12,11 @@
 <meta property="og:type" content="website">
 <meta property="og:image" content="<?= e(asset($og_image ?? (!empty($p) && !empty($jsonld_product) ? Catalog::photo($p) : 'img/avatar.png'))) ?>">
 <meta name="theme-color" content="#141110">
-<link rel="icon" href="<?= e(asset('img/avatar.png')) ?>">
+<?php /* Значок вкладки — окремий маленький файл, а не PWA-іконка. Та важить
+         137 КБ і потрібна такою лише манифесту й apple-touch-icon; у куті
+         вкладки з неї видно квадратик 16×16, за який покупець платив на кожній
+         сторінці більше, ніж за всі скрипти сайту разом. */ ?>
+<link rel="icon" href="<?= e(asset('img/favicon.png')) ?>" sizes="64x64">
 <link rel="stylesheet" href="<?= e(asset('css/fonts.css')) ?>">
 <link rel="stylesheet" href="<?= e(asset_v('css/app.css')) ?>">
 <link rel="canonical" href="<?= e((!empty($_SERVER['HTTPS']) ? 'https' : 'http') . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost') . strtok($_SERVER['REQUEST_URI'] ?? '/', '?')) ?>">
