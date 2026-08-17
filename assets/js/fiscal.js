@@ -13,7 +13,8 @@
  */
 (function () {
   var box = document.querySelector('[data-fiscal-runner]');
-  if (!box || !window.BOFU) return;
+  var probeBtn = document.querySelector('[data-fiscal-probe]');
+  if ((!box && !probeBtn) || !window.BOFU) return;
 
   var base = String(window.BOFU.base || '/').replace(/\/$/, '');
   var csrf = window.BOFU.csrf || '';
@@ -108,5 +109,62 @@
       .catch(function () { box.hidden = true; });
   }
 
-  tick();
+  /**
+   * Перевірка каси на цьому пристрої.
+   *
+   * Найцінніше тут — РОЗРІЗНИТИ дві різні біди, які для fetch виглядають
+   * однаково: каса не запущена й каса запущена, але браузер не пускає до неї
+   * сторінку сайту (для звертань у локальну мережу він вимагає окремого
+   * дозволу). Розрізняємо повторним запитом у режимі no-cors: якщо він
+   * проходить, значить, до каси ми достукались, і річ саме в дозволах.
+   */
+  if (probeBtn) {
+    var out = document.querySelector('[data-fiscal-probe-out]');
+    var show = function (text, kind) {
+      if (!out) return;
+      out.textContent = text;
+      out.className = 'fiscal-runner is-' + (kind || 'work');
+      out.hidden = false;
+    };
+
+    probeBtn.addEventListener('click', function () {
+      show('Питаємо касу…');
+      post('/admin/fiscal/probe', {})
+        .then(function (job) {
+          if (!job.ok) { show(job.error, 'bad'); return; }
+          return fetch(job.url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(job.body)
+          })
+            .then(function (r) { return r.json(); })
+            .then(function (answer) {
+              var info = answer && answer.info;
+              if (answer && answer.res === 0 && info) {
+                show('Каса відповідає: ПРРО ' + (info.fisid || '?')
+                  + ', зміна ' + (info.shift_status === 1 ? 'відкрита' : 'закрита')
+                  + (info.isFis === 0 ? ' · ТЕСТОВА, чеки без юридичної сили' : ''), 'ok');
+              } else {
+                show('Каса відповіла помилкою: ' + ((answer && answer.errortxt) || 'без пояснення'), 'bad');
+              }
+            })
+            .catch(function () {
+              // Не дійшли. Тепер зʼясовуємо, чи справа в дозволах браузера
+              return fetch(job.url, { method: 'POST', mode: 'no-cors', body: '{}' })
+                .then(function () {
+                  show('Device Manager працює, але браузер не пускає до нього сторінку сайту. '
+                    + 'Це обмеження браузера на звертання в локальну мережу, а не помилка каси. '
+                    + 'Тоді залишається маршрут «Каса точки» з агентом на ПК.', 'bad');
+                })
+                .catch(function () {
+                  show('Device Manager за адресою ' + job.url + ' не відповідає. Перевірте, '
+                    + 'що застосунок запущено на цьому ж пристрої та що назва каси збігається.', 'bad');
+                });
+            });
+        })
+        .catch(function () { show('Сайт не відповів. Оновіть сторінку.', 'bad'); });
+    });
+  }
+
+  if (box) tick();
 })();

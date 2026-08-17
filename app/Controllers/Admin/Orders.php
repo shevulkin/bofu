@@ -677,6 +677,39 @@ class Orders
     }
 
     /**
+     * Пробний запит до каси на цьому пристрої — нічого не проводить.
+     *
+     * Питаємо стан ПРРО (task 18): єдине завдання, яке не створює жодного
+     * документа. Потрібне рівно для одного — зрозуміти, чи браузер узагалі
+     * пускає сторінку сайту на localhost. Це найтонше місце маршруту
+     * «на пристрої»: сучасні браузери вимагають від локального сервера
+     * окремого дозволу, і поки Device Manager не встановлено, перевірити це
+     * ніяк.
+     *
+     * Рядка в базі не створюємо: пробний запит — не чек, і його місце не в
+     * журналі фіскальних документів.
+     */
+    public static function fiscalProbe(): never
+    {
+        Auth::requireCap('orders.fiscal');
+        $route = FiscalProvider::route(Auth::workStoreId(), Auth::id());
+        $gaps = FiscalProvider::missing($route);
+        if ($gaps) json_response(['ok' => false, 'error' => implode('; ', $gaps)]);
+        if ($route['route'] === 'cloud') {
+            json_response(['ok' => false, 'error' => 'Ваш маршрут — хмара: браузеру нікуди звертатись. '
+                . 'Перевірка хмарної каси — у Налаштуваннях, кнопка «Перевірити зʼєднання».']);
+        }
+
+        $cls = FiscalProvider::docClass($route['provider']);
+        json_response([
+            'ok' => true,
+            'url' => $cls::url($route),
+            'body' => $cls::body(['task' => 'status', 'tag' => 'probe-' . bin2hex(random_bytes(6))], $route),
+            'device' => $route['device'],
+        ]);
+    }
+
+    /**
      * Відповідь каси від браузера.
      *
      * Приймаємо як є — розбирає перекладач постачальника. Порожня відповідь
