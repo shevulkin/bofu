@@ -209,7 +209,7 @@ class Orders
             'step' => self::posStep($errors),
             // Про оплату питаємо, лише коли є куди пробити чек: магазин без
             // ПРРО не має відповідати на питання, яке ні на що не впливає.
-            'kasa_on' => Vchasno::anyEnabled(),
+            'kasa_on' => FiscalProvider::anyConfigured(),
             'pay_types' => Vchasno::PAY_TYPES,
             'np_enabled' => Settings::get('np_api_key') !== null && Settings::get('np_api_key') !== '',
             'page_title' => 'Каса — адмінка',

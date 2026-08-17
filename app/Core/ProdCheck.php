@@ -133,25 +133,76 @@ class ProdCheck
          * нічого. Виявляється це не одразу, тож питаємо саму касу, чи вона
          * фіскальна, — інакше перевірка звелася б до «токен непорожній».
          */
-        if (Vchasno::anyEnabled()) {
-            $st = Vchasno::status();
-            if (!$st['ok']) {
-                $out[] = self::row(self::BAD, 'Вчасно.Каса', 'не відповідає: ' . $st['error']);
-            } else {
-                $info = (array)($st['data']['info'] ?? []);
-                if (isset($info['isFis']) && (int)$info['isFis'] === 0) {
-                    $out[] = self::row(self::BAD, 'Вчасно.Каса',
+        if (!FiscalProvider::anyConfigured()) {
+            $out[] = self::row(self::WARN, 'Каса (ПРРО)',
+                'жодного маршруту не налаштовано — фіскальні чеки не пробиваються '
+                . '(якщо ПРРО не потрібен, це нормально)');
+        } else {
+            /*
+             * Питаємо стан по КОЖНІЙ точці окремо: каса належить точці, і
+             * «десь у мережі все добре» тут нічого не означає.
+             *
+             * Спитати саму касу можна лише в хмарному маршруті. Там, де ключ у
+             * магазині, наш сервер до неї не ходить — тому перевіряємо те, що
+             * справді в нашій владі: чи заповнене все для маршруту і чи виходив
+             * на звʼязок агент. Мовчазний агент — це точка, яка приймає гроші й
+             * не пробиває чеків, і дізнатись про це з першої скарги дорого.
+             */
+            foreach (DB::all('SELECT id, name, agent_seen_at FROM stores WHERE active = 1 ORDER BY sort, id') as $s) {
+                $storeId = (int)$s['id'];
+                $title = 'Каса: ' . $s['name'];
+                $route = FiscalProvider::route($storeId);
+                $gaps = FiscalProvider::missing($route);
+                if ($gaps) {
+                    // Точка без каси — не помилка сама по собі: вона може не мати ПРРО
+                    $out[] = self::row(self::WARN, $title, 'не налаштована: ' . implode('; ', $gaps));
+                    continue;
+                }
+
+                if ($route['route'] !== 'cloud') {
+                    $seen = trim((string)($s['agent_seen_at'] ?? ''));
+                    if ($route['route'] === 'device') {
+                        $out[] = self::row(self::OK, $title,
+                            'чеки пробиває каса на пристрої продавця (' . $route['device'] . ')');
+                    } elseif ($seen === '') {
+                        $out[] = self::row(self::BAD, $title,
+                            'агент жодного разу не виходив на звʼязок — чеки не буде кому пробити');
+                    } elseif (strtotime($seen) < time() - 900) {
+                        $out[] = self::row(self::BAD, $title,
+                            'агент мовчить із ' . date('d.m H:i', strtotime($seen)) . ' — чеки стоятимуть у черзі');
+                    } else {
+                        $out[] = self::row(self::OK, $title, 'агент на звʼязку, каса ' . $route['device']);
+                    }
+                    continue;
+                }
+
+                // Найдорожча помилка — забутий токен ТЕСТОВОЇ каси: чеки
+                // пробиваються, номери є, у картках усе зелене, а в ДПС не
+                // потрапляє нічого. Тому питаємо саму касу, чи вона фіскальна.
+                $st = Vchasno::status($storeId);
+                if (!$st['ok']) {
+                    $out[] = self::row(self::BAD, $title, 'не відповідає: ' . $st['error']);
+                    continue;
+                }
+                $info = \VchasnoDoc::status($st['data']);
+                if ($info['test']) {
+                    $out[] = self::row(self::BAD, $title,
                         'токен ТЕСТОВОЇ каси — чеки не матимуть юридичної сили й у ДПС не підуть');
-                } elseif (isset($info['sign_status']) && (int)$info['sign_status'] < 1) {
-                    $out[] = self::row(self::WARN, 'Вчасно.Каса',
+                } elseif (!$info['signed']) {
+                    $out[] = self::row(self::WARN, $title,
                         'ключ касира не завантажено у сховище кабінету — перший чек не буде кому підписати');
                 } else {
-                    $out[] = self::row(self::OK, 'Вчасно.Каса', 'каса ' . ($info['fisid'] ?? '?') . ' відповідає');
+                    $out[] = self::row(self::OK, $title, 'каса ' . ($info['rro'] ?: '?') . ' відповідає');
                 }
             }
-        } else {
-            $out[] = self::row(self::WARN, 'Вчасно.Каса',
-                'токена немає — фіскальні чеки не пробиваються (якщо ПРРО не потрібен, це нормально)');
+
+            // Чеки, які так і не пробились: на бойовому сервері це не «дрібниця
+            // в журналі», а продажі повз ДПС
+            $stuck = (int)DB::val("SELECT COUNT(*) FROM fiscal_receipts WHERE status = 'error'");
+            if ($stuck > 0) {
+                $out[] = self::row(self::BAD, 'Непробиті чеки',
+                    $stuck . ' — розберіться до запуску (адмінка → Каса → «Чеки, які не пройшли»)');
+            }
         }
 
         // Пошуковий індекс: галку ставлять на час налагодження й забувають зняти
