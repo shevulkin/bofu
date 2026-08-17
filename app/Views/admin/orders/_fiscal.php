@@ -11,7 +11,7 @@
  */
 $rows = $receipts[$cid] ?? [];
 $sale = null;
-foreach ($rows as $r) if ($r['type'] === 'sell' && in_array($r['status'], ['done', 'pending'], true)) $sale = $r;
+foreach ($rows as $r) if ($r['type'] === 'sell' && in_array($r['status'], ['done', 'pending', 'queued'], true)) $sale = $r;
 $gaps = $fiscal_gaps[$cid] ?? [];
 $broken = array_values(array_filter($rows, fn($r) => $r['status'] === 'error'));
 ?>
@@ -35,7 +35,7 @@ $broken = array_values(array_filter($rows, fn($r) => $r['status'] === 'error'));
           <?php if ($sale['shift_link']): ?> · зміна <?= (int)$sale['shift_link'] ?><?php endif; ?>
         </div>
       </div>
-      <span class="status-pill st-<?= $sale['status'] === 'done' ? 'done' : 'shipped' ?>">
+      <span class="status-pill st-<?= $sale['status'] === 'done' ? 'done' : ($sale['status'] === 'error' ? 'canceled' : 'shipped') ?>">
         <?= e(Fiscal::statusLabel($sale)) ?></span>
     </div>
 
@@ -61,6 +61,17 @@ $broken = array_values(array_filter($rows, fn($r) => $r['status'] === 'error'));
         інакше продаж так і рахуватиметься в ДПС.</p>
     <?php endif; ?>
 
+    <?php if ($sale['status'] === 'queued'): ?>
+      <?php /* Ключ лежить у магазині, і до каси йде не наш сервер. Це не
+               поломка й не очікування «десь у хмарі» — сказати треба саме те,
+               хто зараз несе чек, інакше продавець дивиться на екран і не
+               розуміє, чи взагалі щось відбувається. */ ?>
+      <p class="dim" style="margin:8px 0 0;font-size:12.5px">
+        <?= $sale['route'] === 'device'
+              ? 'Чек пробивається касою на цьому пристрої — за мить оновиться. Якщо нічого не змінилось, перевірте, чи запущено Device Manager.'
+              : 'Завдання чекає на агента цієї точки. Він забирає чеки кожні кілька секунд; якщо касовий ПК вимкнено, чек пробʼється, щойно його ввімкнуть.' ?></p>
+    <?php endif; ?>
+
     <?php if ($sale['status'] === 'pending'): ?>
       <p class="dim" style="margin:8px 0 0;font-size:12.5px">
         Каса не відповіла, тож достеменно невідомо, чи чек пробився.
@@ -70,7 +81,7 @@ $broken = array_values(array_filter($rows, fn($r) => $r['status'] === 'error'));
 
     <?php if ($mine && $can_fiscal): ?>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
-        <?php if ($sale['status'] === 'pending'): ?>
+        <?php if (in_array($sale['status'], ['pending', 'queued'], true)): ?>
           <form method="post" style="display:inline">
             <?= Csrf::field() ?>
             <input type="hidden" name="action" value="fiscal_retry">

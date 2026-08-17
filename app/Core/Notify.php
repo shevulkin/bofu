@@ -67,12 +67,21 @@ class Notify
         // Покупцю. Він не знає слова «підзамовлення» й не має його вчити: коли
         // рухається лише частина, {part} називає магазин і перелічує саме її
         // товари, а коли ціле замовлення — обидва рядки порожні й зникають.
-        'order_customer' => "📦 Замовлення {number} — {status}\n{part}\n{items}\nСума: {total} грн",
-        // Посилка. Номер накладної тут головне — саме його переписують у трекінг
-        // і називають у відділенні, тож він стоїть окремим рядком і першим після
-        // заголовка. {estimated}, {cod} і {part} порожніють самі, коли нема чого
-        // сказати: рядок із самих підстановок зникає (interpolate).
-        'order_shipment' => "🚚 Замовлення {number}\n{part}\nНакладна: {ttn}\n{status}\n{estimated}\n{cod}\n{url}",
+        //
+        // Тон цих двох подій відрізняється від решти навмисно. Усе вище читає
+        // персонал, і там цінується стислість телеграми. Ці два читає покупець,
+        // і для нього це лист від магазину, у якому він щойно лишив гроші, —
+        // тобто розмова, а не рядок із журналу. Звідси цілі речення, звертання
+        // на «ви» й підпис: людина має бачити, що з нею говорить магазин, а не
+        // спрацював тригер.
+        'order_customer' => "Ваше замовлення {number} — {status}.\n{part}\n{items}\nСума: {total} грн\n\n{shop}",
+        // Посилка. Номер накладної — головне: саме його переписують у трекінг і
+        // називають у відділенні, тож він стоїть окремим рядком і читається як
+        // документ, а не як частина фрази. {estimated}, {cod} і {part}
+        // порожніють самі, коли нема чого сказати: рядок із самих підстановок
+        // зникає (interpolate).
+        'order_shipment' => "{status}\n\nЗамовлення: {number}\n{part}\nЕкспрес-накладна: {ttn}\n{estimated}\n{cod}\n"
+                          . "\nВідстежити: {url}\n\n{shop}",
         'user_new'     => "👤 Новий користувач: {name} ({email})",
         'stock_low'    => "⚠️ Товар «{product}» закінчується: залишилось {qty} шт. ({store})",
         // Це не побажання клієнта, а сигнал попиту: {waiting} відповідає на
@@ -88,6 +97,34 @@ class Notify
         'fiscal_error' => "🧾 Чек не пробито: {number}, {sum} грн\n{error}\n{link}",
     ];
 
+    /**
+     * Тексти, які колись були типовими, а тепер замінені кращими.
+     *
+     * Правило зберігає свій шаблон копією в базі — щоб правка адміна пережила
+     * оновлення. Наслідок: зміна тексту в коді не доходить до тих, у кого рядок
+     * уже створений, тобто до всіх, крім нової установки. Раніше це лікували
+     * міграцією з UPDATE, але міграція — річ разова, а тут ідеться про
+     * формулювання, які ще не раз перепишуться.
+     *
+     * Тому просто: якщо в базі лежить дослівно старий типовий текст — його
+     * ніхто не редагував, і показувати треба новий. Щойно адмін змінить бодай
+     * літеру, рядок перестає збігатися й лишається його.
+     */
+    private const LEGACY_TEMPLATES = [
+        'order_customer' => ["📦 Замовлення {number} — {status}\n{part}\n{items}\nСума: {total} грн"],
+        'order_shipment' => ["🚚 Замовлення {number}\n{part}\nНакладна: {ttn}\n{status}\n{estimated}\n{cod}\n{url}"],
+    ];
+
+    /** Який текст показувати: збережений адміном, а інакше — типовий із коду */
+    public static function template(string $event, ?string $stored): string
+    {
+        $stored = (string)$stored;
+        $default = self::DEFAULT_TEMPLATES[$event] ?? '';
+        if ($stored === '') return $default;
+        if (in_array($stored, self::LEGACY_TEMPLATES[$event] ?? [], true)) return $default;
+        return $stored;
+    }
+
     /** Головна точка виклику: Notify::fire('order_new', ['number'=>..., ...], $storeId) */
     public static function fire(string $event, array $vars, ?int $storeId = null): void
     {
@@ -102,13 +139,13 @@ class Notify
                 default    => false,
             };
             if (!$channelOn) continue;
-            $tpl = $rule['template'] ?: (self::DEFAULT_TEMPLATES[$event] ?? '');
+            $tpl = self::template($event, $rule['template'] ?? null);
             $text = self::interpolate($tpl, $vars);
             $recipients = self::recipients($rule['recipients'], $storeId);
             foreach ($recipients as $user) {
                 // особистий вибір людини може лише прибрати зайве з того, що дозволив адмін
                 if (!self::wants((int)$user['id'], $event, (string)$rule['channel'])) continue;
-                try { self::send($rule['channel'], $user, $text, $vars); }
+                try { self::send($rule['channel'], $user, $text, $vars, $event); }
                 catch (Throwable $e) { self::log("send fail {$rule['channel']} u{$user['id']}: " . $e->getMessage()); }
             }
         }
@@ -128,8 +165,8 @@ class Notify
             $channel = (string)$rule['channel'];
             if (!self::channelEnabled($channel)) continue;
             if (!self::wants($userId, $event, $channel)) continue;
-            $tpl = $rule['template'] ?: (self::DEFAULT_TEMPLATES[$event] ?? '');
-            try { self::send($channel, $user, self::interpolate($tpl, $vars), $vars); }
+            $tpl = self::template($event, $rule['template'] ?? null);
+            try { self::send($channel, $user, self::interpolate($tpl, $vars), $vars, $event); }
             catch (Throwable $e) { self::log("send fail $channel u$userId: " . $e->getMessage()); }
         }
     }
@@ -150,8 +187,8 @@ class Notify
         if (!self::channelEnabled('email')) return;
         foreach (DB::all('SELECT * FROM notification_rules WHERE event = ? AND channel = ? AND enabled = 1',
                  [$event, 'email']) as $rule) {
-            $tpl = $rule['template'] ?: (self::DEFAULT_TEMPLATES[$event] ?? '');
-            try { self::email(['email' => $email], self::interpolate($tpl, $vars), $vars); }
+            $tpl = self::template($event, $rule['template'] ?? null);
+            try { self::email(['email' => $email], self::interpolate($tpl, $vars), $vars, $event); }
             catch (Throwable $e) { self::log("send fail email guest ($event): " . $e->getMessage()); }
         }
     }
@@ -413,14 +450,48 @@ class Notify
         return $out;
     }
 
-    private static function send(string $channel, array $user, string $text, array $vars): void
+    private static function send(string $channel, array $user, string $text, array $vars, string $event = ''): void
     {
         switch ($channel) {
             case 'telegram': self::telegram($user, $text); break;
             case 'viber':    if (!empty($user['viber_id'])) Viber::send($user['viber_id'], $text); break;
-            case 'email':    self::email($user, $text, $vars); break;
+            case 'email':    self::email($user, $text, $vars, $event); break;
             case 'push':     self::push($user, $text); break;
         }
+    }
+
+    /**
+     * Тема листа. Одна на подію, з підстановками з того самого набору, що й тіло.
+     *
+     * До цього кожен лист із сайту приходив із темою «Beekeeper of Ukraine —
+     * сповіщення». У скриньці, де двадцять непрочитаних, це рівно нуль
+     * інформації: людина мусить відкрити лист, щоб дізнатись, чи він про її
+     * замовлення, чи про розсилку. Тема — єдине, що видно до відкриття, і
+     * зайняти її словом «сповіщення» — це змарнувати єдиний рядок, який
+     * гарантовано прочитають.
+     */
+    public const SUBJECTS = [
+        'order_new'      => 'Нове замовлення {number}',
+        'order_status'   => 'Замовлення {number} — {status}',
+        'order_customer' => 'Ваше замовлення {number} — {status}',
+        // {headline} — коротка фраза про саме цю подію з посилкою; тримати в
+        // темі повний статус («прибуло у відділення Нової Пошти за адресою…»)
+        // означало б обрізаний рядок у більшості поштових програм
+        'order_shipment' => 'Замовлення {number} — {headline}',
+        'user_new'       => 'Новий користувач: {name}',
+        'stock_low'      => 'Закінчується: {product}',
+        'stock_wanted'   => 'Просять повідомити про наявність: {product}',
+        'stock_back'     => '«{product}» знову в наявності',
+    ];
+
+    public static function subject(string $event, array $vars): string
+    {
+        $tpl = self::SUBJECTS[$event] ?? '';
+        if ($tpl === '') return cfg('app_name');
+        // Незаповнена підстановка лишила б у темі «{number}» — краще вже
+        // просто назва магазину, ніж службові дужки в скриньці клієнта
+        $out = trim(self::interpolate($tpl, $vars));
+        return ($out === '' || str_contains($out, '{')) ? cfg('app_name') : $out;
     }
 
     public static function telegram(array $user, string $text): void
@@ -430,7 +501,7 @@ class Notify
         Telegram::send((string)$chat, $text);
     }
 
-    public static function email(array $user, string $text, array $vars): void
+    public static function email(array $user, string $text, array $vars, string $event = ''): void
     {
         if (empty($user['email'])) return;
         $to = filter_var((string)$user['email'], FILTER_VALIDATE_EMAIL);
@@ -440,7 +511,9 @@ class Notify
         $from = (string)Settings::get('mail_from', 'noreply@' . ($_SERVER['HTTP_HOST'] ?? 'localhost'));
         $from = str_replace(["\r", "\n"], '', $from);
         if (!filter_var($from, FILTER_VALIDATE_EMAIL)) $from = 'noreply@' . ($_SERVER['HTTP_HOST'] ?? 'localhost');
-        $subject = '=?UTF-8?B?' . base64_encode(cfg('app_name') . ' — сповіщення') . '?=';
+        // Тема кодується base64 не для краси: кирилиця в заголовку листа
+        // інакше приїжджає крякозяброю в частині поштових програм
+        $subject = '=?UTF-8?B?' . base64_encode(self::subject($event, $vars)) . '?=';
         $headers = "MIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n" .
                    "From: " . $from . "\r\n";
         @mail($to, $subject, $text, $headers);

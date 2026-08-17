@@ -189,6 +189,12 @@ class App
         // Довідник відправників — вміст особистого кабінету НП, тож лише персоналу
         // й лише POST: право перевіряється всередині разом із CSRF
         if ($path === '/api/np/senders' && $method === 'POST') { Controllers\Api::npSenders(); }
+        // Агент каси: єдине вікно між сайтом і ПРРО, у якого ключ лежить у
+        // магазині. Без сесії й без CSRF — агент не браузер; його впізнають за
+        // токеном точки. Ліміт усередині: агент стукає раз на пару секунд, і
+        // це нормально, а от підбір токена має впертись у стелю.
+        if ($path === '/api/fiscal/pull' && $method === 'POST') { Controllers\Api::fiscalPull(); }
+        if ($path === '/api/fiscal/push' && $method === 'POST') { Controllers\Api::fiscalPush(); }
         if ($path === '/api/push/subscribe' && $method === 'POST') { Controllers\Api::pushSubscribe(); }
         if ($path === '/api/viber/webhook' && $method === 'POST') { Controllers\Api::viberWebhook(); }
 
@@ -226,6 +232,11 @@ class App
             '/admin/orders'             => [$A.'Orders', 'index', 'orders.view'],
             '/admin/orders/new'         => [$A.'Orders', 'pos', 'orders.create'],
             '/admin/orders/search'      => [$A.'Orders', 'search', 'orders.create'],
+            // Маршрут «каса на цьому пристрої»: до Device Manager на машині
+            // продавця може достукатись лише його ж вкладка, тож завдання їй
+            // видає сайт, а результат вона приносить назад.
+            '/admin/fiscal/next'        => [$A.'Orders', 'fiscalNext', 'orders.fiscal'],
+            '/admin/fiscal/done'        => [$A.'Orders', 'fiscalDone', 'orders.fiscal'],
             '/admin/products/codes'     => [$A.'Products', 'codes', 'products.manage'],
             // Каса «Вчасно»: зміна, звіти, звірка товарів. Чеки окремих
             // замовлень тут не живуть — вони в картках замовлень.

@@ -1,25 +1,23 @@
-<div class="admin-head"><h1 class="h-serif">Вчасно.Каса</h1></div>
+<div class="admin-head"><h1 class="h-serif">Каса (ПРРО)</h1></div>
 
 <p class="card-lead" style="margin:-14px 0 22px">
-  Стан ПРРО, зміна та звіти. Самі чеки живуть у картках замовлень — тут лише те,
-  що стосується каси цілком. Зміну <b>не обовʼязково відкривати руками</b>:
-  якщо вона закрита, каса відкриє її сама разом із першим чеком. А от закривати
-  її треба — Z-звіт хоча б раз на добу вимагає закон.
+  Стан каси, зміна та звіти. Самі чеки живуть у картках замовлень — тут лише те, що
+  стосується каси цілком. Зміну <b>не обовʼязково відкривати руками</b>: якщо вона закрита,
+  каса відкриє її сама разом із першим чеком. А от закривати треба — Z-звіт хоча б раз на
+  добу вимагає закон.
 </p>
 
 <?php if (!$cases): ?>
   <div class="admin-card dim">
-    Жодної каси не налаштовано. Токен беруть у кабінеті
-    <a href="https://kasa.vchasno.ua/" target="_blank" rel="noopener">kasa.vchasno.ua</a>
-    (Дії з касою → Налаштування каси → Токен) і вписують у
-    <a href="<?= e(url('/admin/settings')) ?>">Налаштуваннях</a>,
-    а якщо в кожної точки своя каса — у <a href="<?= e(url('/admin/stores')) ?>">картках магазинів</a>.
+    Жодної каси не налаштовано. Оберіть маршрут у
+    <a href="<?= e(url('/admin/settings')) ?>">Налаштуваннях</a> — і, якщо в точок каси різні,
+    у <a href="<?= e(url('/admin/stores')) ?>">картках магазинів</a>.
   </div>
 <?php else: ?>
 
 <?php if (count($cases) > 1): ?>
   <div class="admin-card" style="margin-bottom:18px">
-    <div class="dim" style="font-size:13px;margin-bottom:8px">Каса</div>
+    <div class="dim" style="font-size:13px;margin-bottom:8px">Точка</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <?php foreach ($cases as $c): ?>
         <a class="btn <?= $c['id'] === $case['id'] ? 'btn-gold' : 'btn-line' ?> btn-sm"
@@ -29,77 +27,119 @@
   </div>
 <?php endif; ?>
 
+<?php $route = $case['route']; $isCloud = $route['route'] === 'cloud'; ?>
 <div class="admin-card">
-  <h2 class="h-serif"><?= e($case['name']) ?></h2>
-  <?php if (!$status || !$status['ok']): ?>
-    <p class="dim" style="margin:8px 0 0">
-      Каса не відповіла: <?= e($status['error'] ?? 'немає токена') ?>.
-      Перевірити токен можна в <a href="<?= e(url('/admin/settings')) ?>">Налаштуваннях</a> кнопкою «Перевірити інтеграції».
+  <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap">
+    <h2 class="h-serif" style="margin:0"><?= e($case['name']) ?></h2>
+    <span class="dim" style="font-size:12.5px"><?= e($route['label']) ?></span>
+  </div>
+
+  <?php if ($case['gaps']): ?>
+    <p class="dim" style="margin:10px 0 0;color:var(--warn,#f0b429)">
+      Каса поки не працює: <?= e(implode('; ', $case['gaps'])) ?>.
     </p>
-  <?php else: ?>
-    <?php
-      $shift = (int)($info['shift_status'] ?? -1);
-      $open = $shift === Vchasno::SHIFT_OPEN;
-      $test = isset($info['isFis']) && (int)$info['isFis'] === 0;
-    ?>
-    <div style="display:flex;gap:24px;flex-wrap:wrap;margin-top:6px">
+  <?php endif; ?>
+
+  <?php if ($isCloud && $status && !$status['ok']): ?>
+    <p class="dim" style="margin:10px 0 0">
+      Каса не відповіла: <?= e($status['error']) ?>.
+      Перевірити токен можна в <a href="<?= e(url('/admin/settings')) ?>">Налаштуваннях</a>
+      кнопкою «Перевірити інтеграції».
+    </p>
+  <?php elseif ($isCloud && $info): ?>
+    <div style="display:flex;gap:24px;flex-wrap:wrap;margin-top:10px">
       <div>
         <div class="dim" style="font-size:12.5px">Фіскальний номер каси</div>
-        <b><?= e((string)($info['fisid'] ?? '—')) ?></b>
+        <b><?= e($info['rro'] ?: '—') ?></b>
       </div>
       <div>
         <div class="dim" style="font-size:12.5px">ЄДРПОУ</div>
-        <b><?= e((string)($info['edrpou'] ?? '—')) ?></b>
+        <b><?= e($info['edrpou'] ?: '—') ?></b>
       </div>
       <div>
         <div class="dim" style="font-size:12.5px">Зміна</div>
-        <b><?= $open ? 'відкрита' : ($shift === Vchasno::SHIFT_CLOSED ? 'закрита' : 'ще не відкривалась') ?></b>
-        <?php if ($open && ($info['shift_dt'] ?? '') !== ''): ?>
-          <span class="dim">з <?= e((string)$info['shift_dt']) ?></span>
+        <b><?= $info['shift'] === 1 ? 'відкрита' : ($info['shift'] === 0 ? 'закрита' : 'ще не відкривалась') ?></b>
+        <?php if ($info['shift'] === 1 && $info['shift_at'] !== ''): ?>
+          <span class="dim">з <?= e($info['shift_at']) ?></span>
         <?php endif; ?>
       </div>
       <div>
         <div class="dim" style="font-size:12.5px">Готівка в скриньці</div>
-        <b><?= e(price_fmt((float)($info['safe'] ?? 0))) ?></b>
+        <b><?= e(price_fmt($info['safe'])) ?></b>
       </div>
       <div>
         <div class="dim" style="font-size:12.5px">Звʼязок із ДПС</div>
-        <b><?= (int)($info['online_status'] ?? 0) === 1 ? 'онлайн' : 'офлайн' ?></b>
+        <b><?= $info['online'] ? 'онлайн' : 'офлайн' ?></b>
       </div>
     </div>
-
-    <?php if ($test): ?>
+    <?php if ($info['test']): ?>
       <p class="dim" style="margin:14px 0 0;color:var(--warn,#f0b429)">
         Це <b>тестова каса</b>: чеки з неї не мають юридичної сили й у ДПС не потрапляють.
-        Так перевіряють інтеграцію — але перед відкриттям магазину підставте токен фіскальної каси.
+        Так перевіряють інтеграцію — але перед відкриттям магазину підставте робочий ПРРО.
+      </p>
+    <?php endif; ?>
+    <?php if (!$info['signed']): ?>
+      <p class="dim" style="margin:10px 0 0;color:var(--warn,#f0b429)">
+        Ключ касира не завантажено у сховище — перший чек не буде кому підписати.
       </p>
     <?php endif; ?>
 
+  <?php else: ?>
+    <?php /* Ключ лежить у магазині — синхронно спитати касу ми не можемо
+             взагалі. Чесно кажемо, що бачимо: чи виходив на звʼязок агент і
+             що вийшло з останніх службових завдань. */ ?>
+    <div style="display:flex;gap:24px;flex-wrap:wrap;margin-top:10px">
+      <div>
+        <div class="dim" style="font-size:12.5px">Каса в Device Manager</div>
+        <b><?= e($route['device'] ?: '— не вказано') ?></b>
+      </div>
+      <div>
+        <div class="dim" style="font-size:12.5px">Адреса</div>
+        <b><?= e($route['url']) ?></b>
+      </div>
+      <?php if ($route['route'] === 'agent'): ?>
+        <div>
+          <div class="dim" style="font-size:12.5px">Агент</div>
+          <b><?= $case['agent']['alive'] ? 'на звʼязку'
+                : ($case['agent']['seen'] !== '' ? 'мовчить' : 'не запускався') ?></b>
+          <?php if ($case['agent']['seen'] !== ''): ?>
+            <span class="dim"><?= e(date('d.m H:i', strtotime($case['agent']['seen']))) ?></span>
+          <?php endif; ?>
+        </div>
+      <?php endif; ?>
+    </div>
+    <?php if ($route['route'] === 'agent' && !$case['agent']['ready']): ?>
+      <p class="dim" style="margin:10px 0 0;color:var(--warn,#f0b429)">
+        Токен агента ще не створено —
+        <a href="<?= e(url('/admin/stores')) ?>" style="color:inherit;text-decoration:underline">картка точки</a>.
+        Без нього завдання нікому забирати.
+      </p>
+    <?php endif; ?>
+    <p class="dim" style="margin:10px 0 0;font-size:12.5px">
+      Стан каси показує сам Device Manager — у нього свій веб-інтерфейс на тому ж ПК.
+      Звідси ми можемо лише <b>поставити завдання в чергу</b>: його забере
+      <?= $route['route'] === 'agent' ? 'агент точки' : 'браузер продавця' ?>.
+    </p>
+  <?php endif; ?>
+
+  <?php if (!$case['gaps']): ?>
     <form method="post" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:16px">
       <?= Csrf::field() ?>
       <input type="hidden" name="case" value="<?= e($case['id']) ?>">
-      <?php if (!$open): ?>
-        <button class="btn btn-line btn-sm" type="submit" name="_action" value="shift_open"
-                data-help-title="Відкрити зміну"
-                data-help="Потрібне рідко: якщо зміна закрита, каса відкриє її сама разом із першим чеком.
+      <button class="btn btn-line btn-sm" type="submit" name="_action" value="shift_open"
+              data-help-title="Відкрити зміну"
+              data-help="Потрібне рідко: якщо зміна закрита, каса відкриє її сама разом із першим чеком.
 
 Ця кнопка знадобиться, коли треба зробити службове внесення до першого продажу — внести розмінну готівку на початку дня.">▶ Відкрити зміну</button>
-      <?php endif; ?>
       <button class="btn btn-line btn-sm" type="submit" name="_action" value="x_report"
               data-help-title="X-звіт"
-              data-help="Проміжний звіт: скільки набігло від початку зміни. Нічого не закриває, робити його можна скільки завгодно разів.
+              data-help="Проміжний звіт: скільки набігло від початку зміни. Нічого не закриває, робити його можна скільки завгодно разів.">📄 X-звіт</button>
+      <button class="btn btn-line btn-sm" type="submit" name="_action" value="shift_close"
+              onclick="return confirm('Закрити зміну Z-звітом? Після цього чеки цієї зміни вже не змінити.')"
+              data-help-title="Z-звіт — закриття зміни"
+              data-help="Підсумковий звіт за зміну. Закон вимагає закривати зміну щонайменше раз на 24 години — інакше каса перестане приймати чеки.
 
-Сам звіт зʼявиться в кабінеті «Вчасно.Каси».">📄 X-звіт</button>
-      <?php if ($open): ?>
-        <button class="btn btn-line btn-sm" type="submit" name="_action" value="z_report"
-                onclick="return confirm('Закрити зміну Z-звітом? Після цього чеки цієї зміни вже не змінити.')"
-                data-help-title="Z-звіт — закриття зміни"
-                data-help="Підсумковий звіт за зміну. Закон вимагає закривати зміну щонайменше раз на 24 години — інакше каса перестане приймати чеки.
-
-Після Z-звіту зміна закривається, а наступний чек відкриє нову.
-
-Це можна поставити в cron: php bin/cli.php vchasno:z">🔒 Z-звіт (закрити зміну)</button>
-      <?php endif; ?>
+Це можна поставити в cron: php bin/cli.php vchasno:z — команда сама вибере, куди слати завдання по кожній точці.">🔒 Z-звіт (закрити зміну)</button>
     </form>
 
     <details style="margin-top:16px">
@@ -126,16 +166,46 @@
   <?php endif; ?>
 </div>
 
+<?php if ($service): ?>
+  <div class="admin-card" style="margin-top:18px">
+    <h2 class="h-serif">Службові завдання</h2>
+    <p class="dim" style="margin:-6px 0 14px">
+      Зміна, звіти й готівка цієї точки. Там, де ключ у магазині, це саме черга: видно,
+      що завдання поставлено й що з нього вийшло.
+    </p>
+    <table class="tbl">
+      <tr><th>Що</th><th>Стан</th><th class="num">Сума</th><th>Коли</th><th>Каса відповіла</th></tr>
+      <?php
+        $names = ['shift_open' => 'Відкриття зміни', 'shift_close' => 'Z-звіт', 'x_report' => 'X-звіт',
+                  'cash_in' => 'Внесення', 'cash_out' => 'Видача'];
+      ?>
+      <?php foreach ($service as $t): $res = json_decode((string)$t['result'], true) ?: []; ?>
+        <tr>
+          <td><?= e($names[$t['task']] ?? $t['task']) ?></td>
+          <td class="dim"><?= e(Fiscal::statusLabel($t)) ?><?= $t['error'] ? ' — ' . e((string)$t['error']) : '' ?></td>
+          <td class="num"><?= (float)$t['sum'] > 0 ? e(price_fmt((float)$t['sum'])) : '—' ?></td>
+          <td class="dim"><?= e(date('d.m H:i', strtotime((string)$t['created_at']))) ?></td>
+          <td class="dim" style="font-size:12.5px">
+            <?php if (isset($res['safe'])): ?>готівка <?= e(price_fmt((float)$res['safe'])) ?><?php endif; ?>
+            <?php if (isset($res['shift_link'])): ?> · зміна <?= (int)$res['shift_link'] ?><?php endif; ?>
+          </td>
+        </tr>
+      <?php endforeach; ?>
+    </table>
+  </div>
+<?php endif; ?>
+
 <?php if ($broken): ?>
   <div class="admin-card" style="margin-top:18px">
     <h2 class="h-serif">Чеки, які не пройшли</h2>
     <p class="dim" style="margin:-6px 0 14px">
       Продаж без чека — це продаж повз ДПС, тож вони зібрані тут, а не лише в картках замовлень.
-      «Відповіді ще немає» означає, що каса змовчала: такий чек міг і пробитись, тому повторний
-      запит іде з тією самою міткою й другого чека з нього не вийде.
+      «У черзі» означає, що завдання чекає на агента точки або на браузер продавця.
+      «Відповіді ще немає» — що каса змовчала: такий чек міг і пробитись, тому повторний запит
+      іде з тією самою міткою й другого чека з нього не вийде.
     </p>
     <table class="tbl">
-      <tr><th>Замовлення</th><th>Що</th><th class="num">Сума</th><th>Коли</th><th>Причина</th></tr>
+      <tr><th>Замовлення</th><th>Що</th><th class="num">Сума</th><th>Коли</th><th>Стан</th></tr>
       <?php foreach ($broken as $r): ?>
         <tr>
           <td><a href="<?= e(url('/admin/orders/' . (int)$r['parent_id'])) ?>"><?= e((string)($r['number'] ?? '—')) ?></a></td>
@@ -146,14 +216,12 @@
         </tr>
       <?php endforeach; ?>
     </table>
-    <?php if ($case): ?>
-      <form method="post" style="margin-top:12px">
-        <?= Csrf::field() ?>
-        <input type="hidden" name="case" value="<?= e($case['id']) ?>">
-        <button class="btn btn-line btn-sm" type="submit" name="_action" value="retry_all">
-          ↻ Перепитати касу про непевні</button>
-      </form>
-    <?php endif; ?>
+    <form method="post" style="margin-top:12px">
+      <?= Csrf::field() ?>
+      <input type="hidden" name="case" value="<?= e($case['id']) ?>">
+      <button class="btn btn-line btn-sm" type="submit" name="_action" value="retry_all">
+        ↻ Перепитати касу про непевні</button>
+    </form>
   </div>
 <?php endif; ?>
 
@@ -185,7 +253,7 @@
 <div class="admin-card" style="margin-top:18px">
   <h2 class="h-serif">Товари</h2>
   <p class="dim" style="margin:-6px 0 12px">
-    Звірити наш каталог із каталогом кабінету — щоб у їхніх звітах наш товар був одним рядком,
+    Звірити наш каталог із каталогом кабінету ПРРО — щоб у звітах наш товар був одним рядком,
     а не двома половинками під різними назвами.
   </p>
   <a class="btn btn-line btn-sm" href="<?= e(url('/admin/vchasno/goods')) ?>">Звірка товарів →</a>

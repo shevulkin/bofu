@@ -365,6 +365,14 @@
                  і потрібна кнопка повернення. А от пробивати новий на скасоване
                  нема чого — це скаже сам блок. */ ?>
         <?php if ($kasa_on && ($c['status'] !== 'canceled' || !empty($receipts[$cid]))) include __DIR__ . '/_fiscal.php'; ?>
+        <?php /* Смужка «пробиваємо чек» — лише там, де його несе сам браузер.
+                 Показуємо один раз на замовлення, під першою частиною: чек
+                 пробивається по черзі, і два однакові рядки збивали б з пантелику. */ ?>
+        <?php if ($fiscal_jobs > 0 && $c === reset($children)): ?>
+          <div class="fiscal-runner" data-fiscal-runner data-parent="<?= (int)$parent['id'] ?>">
+            <span data-fiscal-status>Готуємо чек…</span>
+          </div>
+        <?php endif; ?>
       </div>
     <?php endforeach; ?>
 
@@ -667,4 +675,10 @@
     sync();
   })();
   </script>
+<?php endif; ?>
+
+<?php /* Скрипт вантажимо лише тоді, коли є що нести на касу: у решті випадків
+         це зайвий файл на кожне відкриття картки замовлення. */ ?>
+<?php if ($fiscal_jobs > 0): ?>
+  <script src="<?= e(asset_v('js/fiscal.js')) ?>" defer></script>
 <?php endif; ?>

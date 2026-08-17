@@ -113,6 +113,13 @@ class SettingsAdmin
             // тоді, коли покупець стоїть біля каси.
             $tax = (int)($_POST['vchasno_taxgrp'] ?? 0);
             Settings::set('vchasno_taxgrp', (string)(isset(\Vchasno::TAX_GROUPS[$tax]) ? $tax : 2));
+            // Постачальник ПРРО й маршрут за замовчуванням. Приймаємо лише з
+            // переліку: підставлене значення означало б чеки, які нікуди не
+            // йдуть, і зʼясувалось би це на першому ж продажі.
+            $prov = (string)($_POST['fiscal_provider'] ?? '');
+            Settings::set('fiscal_provider', isset(\FiscalProvider::PROVIDERS[$prov]) ? $prov : 'vchasno');
+            $route = (string)($_POST['fiscal_route'] ?? '');
+            Settings::set('fiscal_route', isset(\FiscalProvider::ROUTES[$route]) ? $route : 'cloud');
             foreach (self::VCHASNO_KEYS as $key) {
                 // Чистимо тим самим фільтром, що й самі чеки: ПРРО має вузьку
                 // абетку, і емодзі в підписі касира завалило б кожен чек —
@@ -161,6 +168,8 @@ class SettingsAdmin
             'np_enabled' => \NovaPoshta::enabled(),
             'np_payers' => \Shipments::PAYERS, 'np_payments' => \Shipments::PAYMENTS,
             'tax_groups' => \Vchasno::TAX_GROUPS,
+            'fiscal_providers' => \FiscalProvider::PROVIDERS,
+            'fiscal_routes' => \FiscalProvider::ROUTES,
             // Точки з власною касою: щоб було видно, на кого загальний токен
             // не поширюється, і не довелось шукати це по картках магазинів
             'vchasno_own' => \DB::all("SELECT name, vchasno_taxgrp FROM stores

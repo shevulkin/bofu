@@ -307,6 +307,34 @@
       </p>
     <?php endif; ?>
     <div class="form-grid">
+      <div class="field" data-help-title="Постачальник ПРРО"
+           data-help="Хто саме пробиває ваші чеки.
+
+Логіка чека від постачальника не залежить: рядки, знижки, податкові групи й повернення живуть у нас. Тому постачальника можна змінити — а вже пробиті чеки залишаться за тим, хто їх видав, бо повернення робить той самий ПРРО, що й продаж.">
+        <label>Постачальник ПРРО</label>
+        <select name="fiscal_provider">
+          <?php $curProv = (string)Settings::get('fiscal_provider', 'vchasno'); ?>
+          <?php foreach ($fiscal_providers as $key => $p): ?>
+            <option value="<?= e($key) ?>"<?= $curProv === $key ? ' selected' : '' ?>><?= e($p['label']) ?></option>
+          <?php endforeach; ?>
+        </select>
+      </div>
+      <div class="field" data-help-title="Як доходимо до каси"
+           data-help="Маршрут за замовчуванням. Точка може мати свій (Магазини), а продавець — власний (його профіль); тут — те, що діє, коли ніде більше нічого не вказано.
+
+«Хмара постачальника» — чек пробиває наш сервер, ключ підпису лежить у постачальника. Найпростіше, але ключ доводиться віддати.
+
+«Каса точки» — ключ на флешці чи в папці на касовому ПК, а завдання йому приносить агент, який сам стукає до сайту. Назовні в магазині не відкрито нічого, і телефон продавця працює звідусіль.
+
+«Каса на цьому пристрої» — Device Manager стоїть у самого продавця, і чек несе його ж вкладка. Вмикається в профілі людини.">
+        <label>Як доходимо до каси</label>
+        <select name="fiscal_route">
+          <?php $curRoute = (string)Settings::get('fiscal_route', 'cloud'); ?>
+          <?php foreach ($fiscal_routes as $key => $label): ?>
+            <option value="<?= e($key) ?>"<?= $curRoute === $key ? ' selected' : '' ?>><?= e($label) ?></option>
+          <?php endforeach; ?>
+        </select>
+      </div>
       <div class="field" data-help-title="Податкова група за замовчуванням"
            data-help="Ставка, з якою товар потрапляє в чек і в ДПС.
 

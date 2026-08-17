@@ -3,44 +3,55 @@ declare(strict_types=1);
 
 namespace Controllers\Admin;
 
-use DB, View, Auth, Settings, Catalog, RateLimit, Fiscal, Sheet, VchasnoGoods;
+use DB, View, Auth, Settings, Catalog, RateLimit, Fiscal, FiscalProvider, Sheet, VchasnoGoods;
 
 /**
- * Каса «Вчасно»: те, що стосується самої каси, а не окремого замовлення.
+ * Каса: те, що стосується самої каси, а не окремого замовлення.
  *
  * Зміна, звіти й готівка в скриньці — це стан торгової точки; чеки живуть у
- * картках замовлень, і дублювати їх тут ні до чого. Виняток один: чеки, які
- * не пробились, — їх шукають не по замовленнях, а «покажіть усе, що впало».
+ * картках замовлень, і дублювати їх тут ні до чого. Виняток один: чеки, які не
+ * пройшли, — їх шукають не по замовленнях, а «покажіть усе, що впало».
  *
- * Товари — окрема сторінка. Каталог звіряють раз на кілька місяців, а зміну
- * відкривають щоранку, і змішувати ці дві роботи в одному екрані означало б
- * щоразу прокручувати чуже.
+ * Каса = торгова точка. Навіть коли всі точки працюють на одному ПРРО, питання
+ * «чи відкрита зміна» ставлять про конкретний магазин, а не про мережу.
+ *
+ * Важливе: у маршрутах, де ключ лежить у магазині, наш сервер до каси не
+ * ходить — тому кнопки не «роблять», а СТАВЛЯТЬ У ЧЕРГУ. Різницю видно на
+ * екрані: інакше людина тисне «Z-звіт», нічого не відбувається, і вона тисне
+ * ще п'ять разів.
  */
 class Kasa
 {
-    /** Куди складаємо вивантаження з їхнього кабінету, поки з ним працюють */
+    /** Куди складаємо вивантаження з кабінету, поки з ним працюють */
     private const UPLOAD_DIR = BOFU_ROOT . '/storage/vchasno';
 
     /**
-     * Каси, до яких у нас є доступ.
+     * Каси, до яких у нас є доступ: по одній на активну точку.
      *
-     * Каса належить точці, але точка може працювати й на спільній: тоді запис
-     * один на всіх. Показуємо саме каси, а не магазини, — Z-звіт закриває
-     * зміну каси, і людині треба бачити, скільки їх насправді.
-     *
-     * @return array<int, array{id:string, store_id:?int, name:string}>
+     * @return array<int, array{id:string,store_id:int,name:string,route:array,gaps:array,agent:array}>
      */
     private static function cases(): array
     {
         $out = [];
-        foreach (DB::all("SELECT id, name FROM stores
-                          WHERE vchasno_token IS NOT NULL AND vchasno_token <> '' AND active = 1
-                          ORDER BY sort, id") as $s) {
-            $out[] = ['id' => (string)(int)$s['id'], 'store_id' => (int)$s['id'], 'name' => (string)$s['name']];
-        }
-        if (trim((string)Settings::get('vchasno_token', '')) !== '') {
-            $out[] = ['id' => 'main', 'store_id' => null,
-                      'name' => $out ? 'Спільна каса (решта точок)' : 'Каса магазину'];
+        foreach (DB::all('SELECT * FROM stores WHERE active = 1 ORDER BY sort, id') as $s) {
+            $route = FiscalProvider::route((int)$s['id']);
+            $gaps = FiscalProvider::missing($route);
+            // Точка без налаштованої каси в перелік не потрапляє: показувати
+            // екран, який уміє лише сказати «токена немає», сенсу немає.
+            if ($gaps && $route['source'] === 'global' && $route['route'] === 'cloud') continue;
+            $seen = trim((string)($s['agent_seen_at'] ?? ''));
+            $out[] = [
+                'id' => (string)(int)$s['id'],
+                'store_id' => (int)$s['id'],
+                'name' => (string)$s['name'],
+                'route' => $route,
+                'gaps' => $gaps,
+                'agent' => [
+                    'seen' => $seen,
+                    'alive' => $seen !== '' && strtotime($seen) > time() - 300,
+                    'ready' => trim((string)($s['agent_hash'] ?? '')) !== '',
+                ],
+            ];
         }
         return $out;
     }
@@ -60,25 +71,29 @@ class Kasa
 
         if (is_post() && $case) self::action($case);
 
-        // Статус питаємо на кожне відкриття: зміна могла закритись сама
-        // (Z-звіт із іншої програми, доба скінчилась), і показувати
-        // збережений колись стан гірше, ніж не показувати нічого.
-        $status = $case ? \Vchasno::status($case['store_id']) : null;
+        // Стан питаємо лише там, де до каси ходить наш сервер. У решті
+        // маршрутів синхронної відповіді немає й бути не може — там про стан
+        // говорять журнал службових завдань і те, чи виходив на звʼязок агент.
+        $status = null;
+        if ($case && $case['route']['route'] === 'cloud' && !$case['gaps']) {
+            $status = \Vchasno::status($case['store_id']);
+        }
 
         View::show('admin/vchasno/index', [
             'cases' => $cases,
             'case' => $case,
             'status' => $status,
-            'info' => $status && $status['ok'] ? (array)($status['data']['info'] ?? []) : [],
-            // Чеки, які не пробились: тут їх шукають, коли «щось пішло не так»,
-            // а не гортаючи замовлення по одному
+            'info' => $status && $status['ok'] ? \VchasnoDoc::status($status['data']) : [],
+            'service' => $case ? Fiscal::serviceLog($case['store_id']) : [],
             'broken' => DB::all("SELECT f.*, o.number FROM fiscal_receipts f
                                  LEFT JOIN orders o ON o.id = f.order_id
-                                 WHERE f.status <> 'done' ORDER BY f.id DESC LIMIT 30"),
+                                 WHERE f.status NOT IN ('done') AND f.type <> 'service'
+                                 ORDER BY f.id DESC LIMIT 30"),
             'recent' => DB::all("SELECT f.*, o.number FROM fiscal_receipts f
                                  LEFT JOIN orders o ON o.id = f.order_id
-                                 WHERE f.status = 'done' ORDER BY f.id DESC LIMIT 20"),
-            'page_title' => 'Вчасно.Каса — адмінка',
+                                 WHERE f.status = 'done' AND f.type <> 'service'
+                                 ORDER BY f.id DESC LIMIT 20"),
+            'page_title' => 'Каса — адмінка',
         ], 'layouts/admin');
     }
 
@@ -97,41 +112,45 @@ class Kasa
         $back = '/admin/vchasno?case=' . rawurlencode($case['id']);
         RateLimit::guard('vchasno_kasa', 60, 3600);
 
-        $say = static function (array $r, string $ok) use ($back): never {
-            flash($r['ok'] ? 'success' : 'error', $r['ok'] ? $ok : 'Каса відмовила: ' . $r['error']);
-            redirect($back);
-        };
+        $tasks = [
+            'shift_open' => 'Відкриття зміни',
+            'x_report' => 'X-звіт',
+            'shift_close' => 'Z-звіт',
+            'cash_in' => 'Внесення',
+            'cash_out' => 'Видача',
+        ];
 
-        if ($action === 'shift_open') {
-            $say(\Vchasno::openShift($cashier, $case['store_id']), 'Зміну відкрито.');
+        if (isset($tasks[$action])) {
+            $extra = ['cashier' => $cashier];
+            if ($action === 'cash_in' || $action === 'cash_out') {
+                $extra['sum'] = (float)str_replace(',', '.', (string)($_POST['sum'] ?? ''));
+                $extra['comment'] = (string)($_POST['comment'] ?? '');
+            }
+            $r = Fiscal::service($action, $case['store_id'], Auth::id(), $extra);
+            // Три різні відповіді, і плутати їх не можна: «зроблено» каже лише
+            // хмара, решта маршрутів чесно каже «поставили в чергу».
+            if ($r['state'] === 'queued') {
+                flash('success', $tasks[$action] . ': завдання пішло на касу — результат зʼявиться нижче.');
+            } elseif ($r['ok']) {
+                flash('success', $tasks[$action] . ': виконано.');
+            } else {
+                flash('error', $tasks[$action] . ' не виконано. ' . $r['error']);
+            }
+            redirect($back);
         }
-        if ($action === 'x_report') {
-            $r = \Vchasno::xReport($cashier, $case['store_id']);
-            $say($r, 'X-звіт сформовано — його видно в кабінеті каси.');
-        }
-        if ($action === 'z_report') {
-            $r = \Vchasno::zReport($cashier, $case['store_id']);
-            $say($r, 'Z-звіт сформовано, зміну закрито.');
-        }
-        if ($action === 'cash_in' || $action === 'cash_out') {
-            $sum = (float)str_replace(',', '.', (string)($_POST['sum'] ?? ''));
-            if ($sum <= 0) { flash('error', 'Вкажіть суму більшу за нуль.'); redirect($back); }
-            $comment = (string)($_POST['comment'] ?? '');
-            $r = $action === 'cash_in'
-                ? \Vchasno::cashIn($sum, $comment, $case['store_id'])
-                : \Vchasno::cashOut($sum, $comment, $case['store_id']);
-            $say($r, ($action === 'cash_in' ? 'Внесення' : 'Видачу') . ' проведено: ' . price_fmt($sum) . '.');
-        }
+
         if ($action === 'retry_all') {
             $done = 0; $left = 0;
             foreach (Fiscal::due(20) as $r) {
                 $res = Fiscal::retry($r, Auth::id());
                 $res['ok'] ? $done++ : $left++;
             }
+            $back2 = Fiscal::requeueStale();
             flash($left ? 'error' : 'success',
-                $done || $left
+                ($done || $left)
                     ? "Перепитано: пройшло — $done, досі без відповіді — $left."
-                    : 'Непевних чеків немає — перепитувати нічого.');
+                      . ($back2 ? " Повернуто в чергу: $back2." : '')
+                    : ($back2 ? "Повернуто в чергу: $back2." : 'Непевних чеків немає — перепитувати нічого.'));
             redirect($back);
         }
     }
@@ -173,11 +192,11 @@ class Kasa
             'parsed' => $parsed,
             'report' => $report,
             'tax_groups' => \Vchasno::TAX_GROUPS,
-            'page_title' => 'Вчасно.Каса: товари — адмінка',
+            'page_title' => 'Каса: товари — адмінка',
         ], 'layouts/admin');
     }
 
-    /** Наш каталог у файл, який приймає їхній імпорт */
+    /** Наш каталог у файл, який приймає імпорт кабінету */
     private static function exportGoods(?int $storeId): never
     {
         $rows = VchasnoGoods::export($storeId);
@@ -194,19 +213,18 @@ class Kasa
     }
 
     /**
-     * Прийняти вивантаження з їхнього кабінету.
+     * Прийняти вивантаження з кабінету.
      *
      * Файл кладемо в storage і памʼятаємо в сесії, а не тримаємо в ній самі
-     * товари: каталог на кілька тисяч позицій роздув би сесію, яку читає
-     * кожен запит сайту. Живе він до кінця роботи з ним — кнопка «прибрати»
-     * поруч.
+     * товари: каталог на кілька тисяч позицій роздув би сесію, яку читає кожен
+     * запит сайту. Живе він до кінця роботи з ним — кнопка «прибрати» поруч.
      */
     private static function uploadGoods(?int $storeId): never
     {
         $f = $_FILES['file'] ?? null;
         $back = '/admin/vchasno/goods' . ($storeId ? '?store=' . $storeId : '');
         if (!$f || ($f['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
-            flash('error', 'Файл не завантажився. Оберіть вивантаження з кабінету «Вчасно.Каси» (xlsx або csv).');
+            flash('error', 'Файл не завантажився. Оберіть вивантаження товарів із кабінету ПРРО (xlsx або csv).');
             redirect($back);
         }
         if ((int)$f['size'] > 8 * 1024 * 1024) {

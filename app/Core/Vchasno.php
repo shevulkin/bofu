@@ -146,6 +146,27 @@ class Vchasno
         return self::post('/api/v3/fiscal/execute', $body, $storeId);
     }
 
+    /**
+     * Надіслати вже зібране тіло і віддати відповідь як є.
+     *
+     * Цим ходить Fiscal: тіло йому будує перекладач постачальника (VchasnoDoc),
+     * і розбирати відповідь теж має він — інакше знання про формат Вчасно
+     * розповзлось би по двох місцях, і при заміні постачальника довелося б
+     * шукати друге.
+     *
+     * Порожній масив означає «відповіді не було»: чек МІГ пробитись, і
+     * вирішувати, що з цим робити, — теж не наша справа, а Fiscal.
+     */
+    public static function exec(array $body, ?int $storeId = null): array
+    {
+        $r = self::post('/api/v3/fiscal/execute', $body, $storeId);
+        if (self::unclear($r)) return [];
+        // Помилку рівня HTTP (не прийняли токен) віддаємо у тій самій формі,
+        // у якій ПРРО повертає свої відмови: далі її розбирає один код.
+        if (!$r['ok'] && !$r['data']) return ['res' => 1, 'errortxt' => $r['error']];
+        return $r['data'];
+    }
+
     /** Стан ПРРО: чи відкрита зміна, чи бачить каса ДПС, скільки готівки в скриньці */
     public static function status(?int $storeId = null): array
     {

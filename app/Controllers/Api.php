@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 namespace Controllers;
 
-use DB, Auth, Csrf, Settings, WebPush, Viber, NovaPoshta;
+use DB, Auth, Csrf, Settings, WebPush, Viber, NovaPoshta, Fiscal, FiscalProvider;
 
 class Api
 {
@@ -96,6 +96,70 @@ class Api
         $ev = json_decode($body, true) ?: [];
         try { Viber::handleEvent($ev); } catch (\Throwable $e) { \Notify::log('viber: ' . $e->getMessage()); }
         json_response(['status' => 0]);
+    }
+
+    /**
+     * Черга фіскальних завдань для агента точки.
+     *
+     * Це єдине вікно між нашим сайтом і касою, у якої ключ лежить у магазині.
+     * Агент СТУКАЄ ДО НАС сам — назовні в магазині не відкрито нічого, і
+     * Device Manager далі слухає лише localhost. Обмін навмисно тупий: ми
+     * віддаємо готове тіло запиту, агент несе його на касу й повертає
+     * відповідь як є. Він не знає ні про постачальника, ні про формат чека, і
+     * не має знати: інакше кожну зміну в чеку довелося б розвозити по всіх
+     * касових ПК мережі.
+     *
+     * Автентифікація — токеном точки, без сесії й без CSRF: агент не браузер.
+     * У базі лежить лише хеш токена, тож перелік кас мережі не витягти навіть
+     * із дампа.
+     */
+    public static function fiscalPull(): never
+    {
+        $in = self::agentInput();
+        $store = FiscalProvider::storeByAgentToken((string)($in['token'] ?? ''));
+        if (!$store) json_response(['ok' => false, 'error' => 'Токен не прийнято'], 403);
+
+        // Позначку «агент на звʼязку» ставимо на кожен стук: у картці точки
+        // видно, чи взагалі є кому пробивати чеки, ще до першого продажу.
+        DB::update('stores', ['agent_seen_at' => now()], 'id = ?', [(int)$store['id']]);
+
+        $jobs = Fiscal::takeForStore((int)$store['id'], (int)($in['limit'] ?? 5));
+        json_response(['ok' => true, 'store' => (string)$store['name'], 'jobs' => $jobs]);
+    }
+
+    /**
+     * Відповідь каси від агента.
+     *
+     * Приймаємо її як є — розбирає перекладач постачальника. Порожня відповідь
+     * означає «каса не відповіла»: чек лишиться непевним і повернеться в чергу
+     * (повтор безпечний, бо мітка та сама).
+     */
+    public static function fiscalPush(): never
+    {
+        $in = self::agentInput();
+        $store = FiscalProvider::storeByAgentToken((string)($in['token'] ?? ''));
+        if (!$store) json_response(['ok' => false, 'error' => 'Токен не прийнято'], 403);
+
+        $receipt = Fiscal::byId((int)($in['id'] ?? 0));
+        // Чужий чек агент не закриє навіть із правильним токеном: завдання
+        // належить точці, і саме це тут перевіряється.
+        if (!$receipt || (int)$receipt['store_id'] !== (int)$store['id']) {
+            json_response(['ok' => false, 'error' => 'Такого завдання в цієї точки немає'], 404);
+        }
+        DB::update('stores', ['agent_seen_at' => now()], 'id = ?', [(int)$store['id']]);
+
+        $r = Fiscal::applyRaw((int)$receipt['id'], (array)($in['response'] ?? []),
+            $receipt['created_by_user_id'] ? (int)$receipt['created_by_user_id'] : null);
+        json_response(['ok' => $r['ok'], 'state' => $r['state'], 'error' => $r['error']]);
+    }
+
+    /** Тіло запиту агента: JSON, бо агент не форма */
+    private static function agentInput(): array
+    {
+        \RateLimit::guard('fiscal_agent', 3000, 3600, null, true);
+        $raw = (string)file_get_contents('php://input');
+        $in = json_decode($raw, true);
+        return is_array($in) ? $in : [];
     }
 
     public static function pushSubscribe(): never

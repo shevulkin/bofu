@@ -3,10 +3,32 @@ declare(strict_types=1);
 
 namespace Controllers;
 
-use DB, View, Auth, Csrf, AuthTokens, Telegram, Viber, Newsletter, Notify, Addresses, Settings;
+use DB, View, Auth, Csrf, AuthTokens, Telegram, Viber, Newsletter, Notify, Addresses, Settings, FiscalProvider;
 
 class Profile
 {
+    /**
+     * Своя каса продавця.
+     *
+     * Порожній маршрут означає «як у моїй точці» — і це нормальний стан для
+     * більшості: власну касу заводить той, у кого Device Manager стоїть на
+     * власному ПК чи телефоні зі своїм ключем.
+     */
+    private static function kasa(array $u): never
+    {
+        if (!Auth::can('orders.fiscal')) { flash('error', 'Немає прав пробивати чеки.'); redirect('/profile'); }
+        $route = trim((string)($_POST['fiscal_route'] ?? ''));
+        $url = trim((string)($_POST['dm_url'] ?? ''));
+        DB::update('users', [
+            'fiscal_route' => isset(FiscalProvider::ROUTES[$route]) ? $route : null,
+            // Лише http/https: у це поле рано чи пізно вставлять щось стороннє
+            'dm_url' => preg_match('~^https?://~i', $url) ? mb_substr(rtrim($url, '/'), 0, 200) : null,
+            'dm_device' => mb_substr(trim((string)($_POST['dm_device'] ?? '')), 0, 100) ?: null,
+        ], 'id = ?', [(int)$u['id']]);
+        flash('success', $route === '' ? 'Працюєте касою своєї точки.' : 'Налаштування каси збережено.');
+        redirect('/profile');
+    }
+
     public static function index(): never
     {
         if (!Auth::check()) redirect('/');
@@ -22,6 +44,12 @@ class Profile
             }
             if (str_starts_with((string)($_POST['_action'] ?? ''), 'address_')) {
                 self::address((string)$_POST['_action']);
+            }
+            // «Моя каса» — особисте налаштування продавця, як і канали
+            // сповіщень: Device Manager стоїть на ЙОГО ПК чи телефоні, з його
+            // ключем, і ніхто інший про це не знає краще за нього.
+            if (($_POST['_action'] ?? '') === 'kasa') {
+                self::kasa($u);
             }
             // normPhoneAny, а не normPhone: закордонний покупець оформлює замовлення
             // з номером +49… (Checkout), і гейт у App.php такий номер пропускає —
@@ -47,6 +75,11 @@ class Profile
         $fresh = DB::row('SELECT * FROM users WHERE id = ?', [$u['id']]);
         View::show('account/profile', [
             'u' => $fresh,
+            // Блок «моя каса» бачить лише той, хто взагалі пробиває чеки, і
+            // лише там, де є куди їх пробивати: покупцю ці слова ні про що
+            'can_fiscal' => Auth::can('orders.fiscal') && FiscalProvider::anyConfigured(),
+            'fiscal_routes' => FiscalProvider::ROUTES,
+            'fiscal_default' => FiscalProvider::DM_DEFAULT_URL,
             'addresses' => Addresses::forUser((int)$u['id']),
             'addr_limit' => Addresses::LIMIT,
             'np_enabled' => (string)Settings::get('np_api_key', '') !== '',

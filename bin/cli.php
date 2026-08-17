@@ -162,16 +162,24 @@ switch ($cmd) {
          *     *_/5 * * * * php /home/USER/site/bin/cli.php vchasno:retry
          */
         $due = Fiscal::due((int)($argv[2] ?? 50));
-        if (!$due) {
-            echo "Непевних чеків немає.\n";
-            exit(0);
-        }
         $done = $left = 0;
         foreach ($due as $r) {
             $res = Fiscal::retry($r);
             $res['ok'] ? $done++ : $left++;
         }
-        echo "Перепитано: " . count($due) . ", пройшло: $done, досі без відповіді: $left\n";
+        /*
+         * Окремо — завдання, які забрав агент і не повернув: вимкнули касовий
+         * ПК, обірвався інтернет. Повертаємо їх у чергу; це безпечно рівно
+         * тому, що мітка незмінна — якщо чек усе-таки пробився, друга спроба
+         * поверне його ж, а не пробʼє новий.
+         */
+        $requeued = Fiscal::requeueStale();
+        if (!$due && !$requeued) {
+            echo "Непевних чеків немає.\n";
+            exit(0);
+        }
+        echo "Перепитано: " . count($due) . ", пройшло: $done, досі без відповіді: $left"
+           . ($requeued ? ", повернуто в чергу: $requeued" : '') . "\n";
         exit(0);
     case 'vchasno:z':
         /*
@@ -187,31 +195,34 @@ switch ($cmd) {
          * закрита за всіх нічого не означає. Закриту повторно не чіпаємо —
          * про це скаже сама каса, і це не помилка.
          */
-        $cases = [];
-        foreach (DB::all("SELECT id, name FROM stores
-                          WHERE vchasno_token IS NOT NULL AND vchasno_token <> '' AND active = 1") as $s) {
-            $cases[] = [(int)$s['id'], (string)$s['name']];
+        $stores = DB::all('SELECT id, name FROM stores WHERE active = 1 ORDER BY sort, id');
+        $any = false; $bad = 0;
+        foreach ($stores as $s) {
+            $storeId = (int)$s['id'];
+            $name = (string)$s['name'];
+            $route = FiscalProvider::route($storeId);
+            if (FiscalProvider::missing($route)) continue;   // каси в цієї точки немає
+            $any = true;
+
+            // Там, де до каси ходить наш сервер, спершу питаємо, чи зміна
+            // взагалі відкрита: зайвий Z-звіт нічого не зламає, але й нічого
+            // не дасть, а в журналі виглядатиме як помилка.
+            if ($route['route'] === 'cloud') {
+                $st = Vchasno::status($storeId);
+                if (!$st['ok']) { echo "  ✗ $name: $st[error]\n"; $bad++; continue; }
+                if ((int)($st['data']['info']['shift_status'] ?? -1) !== Vchasno::SHIFT_OPEN) {
+                    echo "  · $name: зміна вже закрита\n";
+                    continue;
+                }
+            }
+            $r = Fiscal::service('shift_close', $storeId, null, ['cashier' => 'cron']);
+            if ($r['state'] === 'queued') echo "  → $name: завдання поставлено в чергу агенту\n";
+            elseif ($r['ok']) echo "  ✓ $name: зміну закрито\n";
+            else { echo "  ✗ $name: $r[error]\n"; $bad++; }
         }
-        if (trim((string)Settings::get('vchasno_token', '')) !== '') $cases[] = [null, 'спільна каса'];
-        if (!$cases) {
+        if (!$any) {
             echo "Жодної каси не налаштовано — закривати нічого.\n";
             exit(0);
-        }
-        $bad = 0;
-        foreach ($cases as [$storeId, $name]) {
-            $st = Vchasno::status($storeId);
-            if (!$st['ok']) {
-                echo "  ✗ $name: $st[error]\n";
-                $bad++;
-                continue;
-            }
-            if ((int)($st['data']['info']['shift_status'] ?? -1) !== Vchasno::SHIFT_OPEN) {
-                echo "  · $name: зміна вже закрита\n";
-                continue;
-            }
-            $z = Vchasno::zReport('cron', $storeId);
-            if ($z['ok']) echo "  ✓ $name: зміну закрито\n";
-            else { echo "  ✗ $name: $z[error]\n"; $bad++; }
         }
         exit($bad ? 1 : 0);
     case 'seed':

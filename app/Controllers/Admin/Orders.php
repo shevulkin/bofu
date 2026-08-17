@@ -4,7 +4,7 @@ declare(strict_types=1);
 namespace Controllers\Admin;
 
 use DB, View, Auth, Cart, Catalog, Customers, OrderFlow, AuthTokens, Newsletter, Pos, Promo, Settings,
-    Shipments, NovaPoshta, RateLimit, Fiscal, Vchasno;
+    Shipments, NovaPoshta, RateLimit, Fiscal, FiscalProvider, Vchasno;
 
 /**
  * Адмінка замовлень.
@@ -623,11 +623,11 @@ class Orders
         //
         // Помилка чека замовлення не скасовує: товар уже віддали. Вона стає
         // повідомленням продавцю й кнопкою в картці — там, де її й виправляють.
-        $fiscalErrors = [];
+        $fiscal = ['errors' => [], 'queued' => 0];
         if ($form['handed'] && $form['delivery'] === 'pickup' && Auth::can('orders.fiscal')) {
             $parent = OrderFlow::order((int)$placed['id']);
             if ($parent) {
-                $fiscalErrors = Fiscal::afterPosSale($placed['children'], $parent, [
+                $fiscal = Fiscal::afterPosSale($placed['children'], $parent, [
                     'pay_type' => $form['pay_type'],
                     'got' => (float)str_replace(',', '.', $form['got']),
                     'cashier' => (string)(Auth::user()['name'] ?? ''),
@@ -638,16 +638,89 @@ class Orders
         // Чек закрито: власний кошик продавця повертається, смужка на вітрині гасне
         Pos::stop();
 
-        if ($fiscalErrors) {
+        if ($fiscal['errors']) {
             // Голосно й окремо від «оформлено»: непробитий чек — це продаж
             // повз ДПС, і продавець має піти в картку, а не в наступний продаж.
             flash('error', 'Замовлення ' . $number . ' оформлено, але ЧЕК НЕ ПРОБИТО. '
-                . implode(' ', $fiscalErrors) . ' Спробуйте ще раз у картці замовлення.');
+                . implode(' ', $fiscal['errors']) . ' Спробуйте ще раз у картці замовлення.');
         } else {
             flash('success', 'Замовлення ' . $number . ' оформлено'
-                . ($userId ? '' : ' (покупець анонімний)') . '.' . self::receiptNote($placed['children']));
+                . ($userId ? '' : ' (покупець анонімний)') . '.'
+                // Чек у черзі — нормальний стан там, де ключ лежить у магазині:
+                // до каси йде агент точки або сам браузер. Картка замовлення
+                // покаже, коли він пробʼється.
+                . ($fiscal['queued'] ? ' Чек пробивається на касі — за мить оновиться нижче.' : '')
+                . self::receiptNote($placed['children']));
         }
         redirect('/admin/orders/' . $placed['id']);
+    }
+
+    /**
+     * Завдання для браузера продавця — маршрут «каса на цьому пристрої».
+     *
+     * Тут ключ лежить у Device Manager на тій самій машині, де відкрита
+     * адмінка, тож донести до нього запит може лише сама вкладка: наш сервер
+     * до localhost продавця не достукається ніколи.
+     *
+     * Віддаємо тільки свої завдання (queuedForUser відбирає за тим, хто їх
+     * створив) і тільки тому, хто має право пробивати чеки.
+     */
+    public static function fiscalNext(): never
+    {
+        Auth::requireCap('orders.fiscal');
+        $parentId = (int)($_POST['parent_id'] ?? 0) ?: null;
+        $jobs = [];
+        foreach (Fiscal::queuedForUser((int)Auth::id(), $parentId) as $r) {
+            $jobs[] = Fiscal::job($r);
+        }
+        json_response(['ok' => true, 'jobs' => $jobs]);
+    }
+
+    /**
+     * Відповідь каси від браузера.
+     *
+     * Приймаємо як є — розбирає перекладач постачальника. Порожня відповідь
+     * означає «каса не відповіла»: чек лишається непевним, а не помилковим,
+     * і його можна перепитати тією ж міткою.
+     */
+    public static function fiscalDone(): never
+    {
+        Auth::requireCap('orders.fiscal');
+        $receipt = Fiscal::byId((int)($_POST['id'] ?? 0));
+        // Чужий чек не закриє навіть свій продавець: завдання належить тому,
+        // хто його створив, і лише в маршруті «на пристрої» браузер узагалі
+        // має до нього стосунок.
+        if (!$receipt || (string)$receipt['route'] !== 'device'
+            || (int)$receipt['created_by_user_id'] !== (int)Auth::id()) {
+            json_response(['ok' => false, 'error' => 'Це завдання не ваше'], 403);
+        }
+        $raw = json_decode((string)($_POST['response'] ?? ''), true);
+        $r = Fiscal::applyRaw((int)$receipt['id'], is_array($raw) ? $raw : [], Auth::id());
+        json_response([
+            'ok' => $r['ok'], 'state' => $r['state'], 'error' => $r['error'],
+            'number' => (string)($r['receipt']['fiscal_number'] ?? ''),
+        ]);
+    }
+
+    /**
+     * Що сказати продавцю про чек.
+     *
+     * Станів три, і плутати їх не можна. «У черзі» — не помилка й не успіх:
+     * завдання складене, а до каси йде агент точки або сам браузер, бо ключ
+     * лежить у магазині. Сказати тут «пробито» було б брехнею, а «не вийшло» —
+     * марною тривогою.
+     */
+    private static function fiscalSaid(array $r, string $prefix = 'Чек не пробито. '): string
+    {
+        if (($r['state'] ?? '') === 'queued') {
+            return 'Завдання пішло на касу — чек зʼявиться тут за мить.';
+        }
+        if (!$r['ok']) return $prefix . $r['error'];
+        $rc = $r['receipt'] ?? [];
+        return ($rc['type'] ?? 'sell') === 'return'
+            ? 'Чек повернення пробито: ' . ($rc['fiscal_number'] ?? '')
+            : 'Чек пробито: ' . ($rc['fiscal_number'] ?? '')
+              . ((float)($rc['change'] ?? 0) > 0 ? '. Решта: ' . price_fmt((float)$rc['change']) : '');
     }
 
     /**
@@ -798,7 +871,13 @@ class Orders
             'receipts' => $receipts,
             'fiscal_gaps' => $fiscalGaps,
             'can_fiscal' => Auth::can('orders.fiscal'),
-            'kasa_on' => Vchasno::anyEnabled(),
+            // Скільки чеків цього замовлення чекають, поки їх понесе сам
+            // браузер (маршрут «каса на цьому пристрої»). Нуль — і скрипт
+            // навіть не вантажиться: зайвий запит на кожне відкриття картки
+            // ні до чого.
+            'fiscal_jobs' => Auth::can('orders.fiscal')
+                ? count(Fiscal::queuedForUser((int)Auth::id(), (int)$parent['id'])) : 0,
+            'kasa_on' => FiscalProvider::anyConfigured(),
             'pay_types' => Vchasno::PAY_TYPES,
             'statuses' => self::STATUSES,
             'can_manage_parent' => Auth::can('orders.manage'),
@@ -1101,10 +1180,7 @@ class Orders
                 'got' => (float)str_replace(',', '.', (string)($_POST['got'] ?? '')),
                 'cashier' => (string)(Auth::user()['name'] ?? ''),
             ], Auth::id());
-            flash($r['ok'] ? 'success' : 'error', $r['ok']
-                ? 'Чек пробито: ' . $r['receipt']['fiscal_number']
-                  . ((float)$r['receipt']['change'] > 0 ? '. Решта: ' . price_fmt((float)$r['receipt']['change']) : '')
-                : 'Чек не пробито. ' . $r['error']);
+            flash($r['ok'] ? 'success' : 'error', self::fiscalSaid($r));
             redirect($back);
         }
 
@@ -1119,18 +1195,14 @@ class Orders
         if ($action === 'fiscal_retry') {
             RateLimit::guard('fiscal', 60, 3600);
             $r = Fiscal::retry($receipt, Auth::id());
-            flash($r['ok'] ? 'success' : 'error', $r['ok']
-                ? 'Каса відповіла: чек ' . $r['receipt']['fiscal_number']
-                : 'Досі не виходить. ' . $r['error']);
+            flash($r['ok'] ? 'success' : 'error', self::fiscalSaid($r, 'Досі не виходить. '));
             redirect($back);
         }
 
         if ($action === 'fiscal_return') {
             RateLimit::guard('fiscal', 60, 3600);
             $r = Fiscal::refund($receipt, Auth::id(), (string)(Auth::user()['name'] ?? ''));
-            flash($r['ok'] ? 'success' : 'error', $r['ok']
-                ? 'Чек повернення пробито: ' . $r['receipt']['fiscal_number']
-                : 'Повернення не проведено. ' . $r['error']);
+            flash($r['ok'] ? 'success' : 'error', self::fiscalSaid($r, 'Повернення не проведено. '));
             redirect($back);
         }
 
