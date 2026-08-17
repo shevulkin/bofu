@@ -21,6 +21,13 @@
 
   function esc(s) { var d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
 
+  // Курсор у поле сканера ставимо лише там, де це нічого не коштує. На телефоні
+  // фокус — це клавіатура на півекрана, і вона вилазила б після кожного тапу по
+  // плитці, ховаючи саму плитку. З USB-сканером усе навпаки: без фокуса він
+  // просто нікуди не друкує.
+  var hardKeys = !window.matchMedia || window.matchMedia('(hover:hover) and (pointer:fine)').matches;
+  function focusScan() { if (hardKeys && scanEl) scanEl.focus(); }
+
   // ── кроки ───────────────────────────────────────────────────────────────
   // Перемикання тут, а не запитами: чек живе в сесії, і бігати за ним на
   // сервер щоразу, коли натиснули «Далі», нема потреби. Форма одна на всі
@@ -50,7 +57,9 @@
     });
     // Курсор у поле сканера: на кроці товарів працюють саме з нього, і
     // клікати в нього мишею після кожного переходу не має бути потреби
-    if (n === 2 && scanEl) scanEl.focus();
+    if (n === 2) focusScan();
+    // Розкритий чек лишається розкритим на телефоні й накриває наступний крок
+    closeCart();
     if (!quiet) window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
@@ -66,6 +75,24 @@
     if (!go) return;
     e.preventDefault();
     goto(parseInt(go.getAttribute('data-go'), 10) || 1);
+  });
+
+  // ── чек-смужка на телефоні ──────────────────────────────────────────────
+  // На вузькому екрані чек живе смужкою внизу: сума й кількість видно завжди,
+  // список позицій розкривається дотиком. На великому екрані смужки немає
+  // взагалі (CSS), і весь цей код там просто нічого не робить.
+  var cartEl = form.querySelector('[data-pos-cart]');
+  var cartToggle = form.querySelector('[data-pos-cart-toggle]');
+
+  function closeCart() {
+    if (!cartEl) return;
+    cartEl.classList.remove('is-open');
+    if (cartToggle) cartToggle.setAttribute('aria-expanded', 'false');
+  }
+
+  if (cartToggle) cartToggle.addEventListener('click', function () {
+    var open = cartEl.classList.toggle('is-open');
+    cartToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
   });
 
   function say(text, bad) {
@@ -144,11 +171,64 @@
       act('add', { product_id: tile.getAttribute('data-product'), variant_id: tile.getAttribute('data-variant') });
       // Курсор повертається у поле сканера: продавець із сканером у руках не
       // має щоразу клікати в нього мишею після тапу по плитці.
-      if (scanEl) scanEl.focus();
+      focusScan();
       return;
     }
     var qty = e.target.closest('[data-pos-qty]');
     if (qty) act('qty', { key: qty.getAttribute('data-pos-qty'), qty: qty.getAttribute('data-to') });
+  });
+
+  // ── категорії ───────────────────────────────────────────────────────────
+  // Фільтр міняє плитку — і тільки її. Раніше це було посилання, тобто
+  // відкриття каси заново: крок скидався на «хто покупець», а незбережені поля
+  // оформлення зникали. Тепер вибір їде прихованим полем (щоб пережити ті
+  // перезавантаження, які таки бувають), а плитку приносить сервер.
+  var catsBox = form.querySelector('[data-pos-cats]');
+  var catEl = document.getElementById('posCat');
+  var tilesBox = form.querySelector('.pos-tiles');
+
+  /** Адреса фото всередині url('…') в атрибуті style: лапки й дужки з назви
+      файлу вирвались би і з рядка, і з атрибута, тож кодуємо їх відсотком */
+  function cssUrl(u) {
+    return String(u == null ? '' : u).replace(/['"()\\\s]/g, function (c) {
+      return '%' + ('0' + c.charCodeAt(0).toString(16)).slice(-2);
+    });
+  }
+
+  function drawTiles(items) {
+    if (!tilesBox) return;
+    if (!items.length) {
+      tilesBox.innerHTML = '<p class="dim">У цій категорії немає активних товарів.</p>';
+      return;
+    }
+    tilesBox.innerHTML = items.map(function (t) {
+      var stock = t.stock > 0 ? t.stock + ' шт.' : (t.made_to_order ? 'під замовлення' : 'немає');
+      return '<button type="button" class="pos-tile' + (t.stock <= 0 ? ' is-empty' : '') + '" ' +
+        'data-pos-add data-product="' + (t.product_id | 0) + '" data-variant="' + (t.variant_id | 0) + '">' +
+        '<span class="pos-tile-photo" style="background-image:url(\'' + cssUrl(t.photo) + '\')"></span>' +
+        '<span class="pos-tile-name">' + esc(t.title) + '</span>' +
+        (t.variant_name ? '<span class="pos-tile-var">' + esc(t.variant_name) + '</span>' : '') +
+        '<span class="pos-tile-foot"><b>' + esc(t.price_label) + '</b>' +
+        '<span class="' + (t.stock > 0 ? 'dim' : 'pos-tile-zero') + '">' + esc(stock) + '</span>' +
+        '</span></button>';
+    }).join('');
+  }
+
+  if (catsBox && tilesBox) catsBox.addEventListener('click', function (e) {
+    var chip = e.target.closest('[data-pos-cat]');
+    if (!chip) return;
+    var id = chip.getAttribute('data-pos-cat');
+    Array.prototype.forEach.call(catsBox.querySelectorAll('.chip'), function (c) {
+      c.classList.toggle('active', c === chip);
+    });
+    if (catEl) catEl.value = id;
+    tilesBox.style.opacity = '.5';
+    fetch(POS.tilesUrl + '?cat=' + encodeURIComponent(id) +
+          '&store_id=' + encodeURIComponent(storeSel ? storeSel.value : ''))
+      .then(function (r) { return r.json(); })
+      .then(function (d) { drawTiles(d.items || []); })
+      .catch(function () { say('Не вдалося завантажити цю категорію — спробуйте ще раз', true); })
+      .then(function () { tilesBox.style.opacity = ''; });
   });
 
   // ── сканер і пошук ──────────────────────────────────────────────────────

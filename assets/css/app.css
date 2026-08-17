@@ -943,9 +943,17 @@ body.help-on [data-help] *{pointer-events:none}
    тож батько має бути саме полем, а не блоком доставки цілком. */
 .pos-field{position:relative}
 @media (max-width:640px){
-  /* На телефоні три колонки перетворюють підписи на стовпчик літер */
-  .pos-steps{grid-template-columns:1fr}
-  .pos-step-s{padding-left:0}
+  /* На телефоні стрічка кроків має бути смужкою, а не трьома картками:
+     розкладена в стовпчик, вона займала третину екрана, і до товарів на
+     другому кроці доводилось прокручувати. Тому три кнопки в ряд, номер над
+     підписом (так «Отримання» вміщується без обрізання), а підсумки кроків
+     ховаємо: суму видно в смужці чека внизу, а покупця — на своєму кроці. */
+  .pos-steps{gap:6px;margin-bottom:12px}
+  .pos-step{flex-direction:column;flex-wrap:nowrap;align-items:center;gap:3px;
+    padding:7px 4px;text-align:center;font-size:12px}
+  .pos-step-n{width:20px;height:20px;font-size:12px}
+  .pos-step-t{font-size:12px;line-height:1.2}
+  .pos-step-s{display:none}
   .pos-nav .btn,.pos-nav .btn-gold{flex:1;min-width:0}
 }
 /* Два стовпці: ліворуч те, з чого набирають чек, праворуч сам чек. Чек
@@ -953,6 +961,9 @@ body.help-on [data-help] *{pointer-events:none}
 .pos-wrap{display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,380px);gap:18px;align-items:start}
 .pos-top{display:flex;gap:14px;align-items:end;flex-wrap:wrap}
 .pos-check{position:sticky;top:12px}
+/* Смужка чека — тільки для телефона: на великому екрані чек стоїть праворуч
+   цілком, і згортати там нема чого */
+.pos-cart-bar{display:none}
 .pos-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
 .pos-tile{display:flex;flex-direction:column;gap:4px;text-align:left;cursor:pointer;
   background:var(--bg2);border:1px solid var(--line);border-radius:6px;padding:10px;
@@ -1128,10 +1139,42 @@ body.help-on [data-help] *{pointer-events:none}
 .pos-actions .btn-gold{flex:1;min-width:200px}
 @media (max-width:900px){
   .pos-wrap{grid-template-columns:1fr}
-  /* На телефоні чек іде першим: продавець дивиться в нього, а не в плитку */
-  .pos-goods{order:2}
-  .pos-check{order:1;position:static}
+  /* На телефоні першим іде те, з чим працюють руками: сканер і плитка. Чек
+     стояв тут зверху, і через нього до товарів доводилось прокручувати
+     півекрана на кожному продажі — тепер він унизу смужкою (нижче). */
+  .pos-goods{order:1}
+  .pos-check{order:2;position:static}
   .pos-tiles{grid-template-columns:repeat(auto-fill,minmax(130px,1fr))}
+  /* Категорії в один рядок із горизонтальною прокруткою: десяток категорій
+     переносом займав три рядки й знову відсував товари вниз */
+  .pos-cats{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;
+    scrollbar-width:none;padding-bottom:2px}
+  .pos-cats::-webkit-scrollbar{display:none}
+  .pos-cats .chip{flex:0 0 auto}
+
+  /* ── чек як смужка внизу ──
+     Приліплений до низу екрана: завжди видно, скільки набрано й на яку суму,
+     і завжди під рукою «Далі». Список позицій розкривається дотиком по
+     смужці — його дивляться зрідка, а плитку весь час. */
+  /* top:auto обовʼязково — базовий .pos-check «липкий» із top:12px, і разом із
+     bottom:0 смужка розтягнулась би на весь екран */
+  .pos-cart{position:fixed;top:auto;left:0;right:0;bottom:0;z-index:120;
+    background:var(--bg2);border-top:2px solid var(--gold);
+    box-shadow:0 -10px 30px rgba(0,0,0,.45);padding:8px 12px}
+  .pos-cart-bar{display:flex;align-items:center;gap:10px}
+  .pos-cart-peek{flex:1;min-width:0;display:flex;align-items:center;gap:8px;
+    background:none;border:0;padding:6px 0;color:var(--text);font-family:inherit;
+    font-size:14px;cursor:pointer;text-align:left}
+  .pos-cart-peek b{white-space:nowrap}
+  .pos-cart-sum{margin-left:auto;color:var(--gold);font-size:16px}
+  .pos-cart-caret{color:var(--gold);font-size:11px;transition:transform .15s}
+  .pos-cart.is-open .pos-cart-caret{transform:rotate(180deg)}
+  /* Розкритий список не має накрити екран цілком: до плитки над ним ще
+     повертаються, не згортаючи чек */
+  .pos-cart-body{display:none;max-height:60vh;overflow-y:auto;padding-top:8px}
+  .pos-cart.is-open .pos-cart-body{display:block}
+  /* Місце під смужку, щоб останній ряд плитки не ховався за нею */
+  .pos-pane[data-pane="2"]{padding-bottom:64px}
 }
 
 /* Смужка продажу на вітрині — та сама ідея, що й у режимі редагування:

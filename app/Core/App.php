@@ -234,6 +234,9 @@ class App
             '/admin/orders'             => [$A.'Orders', 'index', 'orders.view'],
             '/admin/orders/new'         => [$A.'Orders', 'pos', 'orders.create'],
             '/admin/orders/search'      => [$A.'Orders', 'search', 'orders.create'],
+            // Плитка однієї категорії: фільтр у касі не має відкривати сторінку
+            // заново — разом з нею скидався крок і набране в полях
+            '/admin/orders/tiles'       => [$A.'Orders', 'tiles', 'orders.create'],
             // Маршрут «каса на цьому пристрої»: до Device Manager на машині
             // продавця може достукатись лише його ж вкладка, тож завдання їй
             // видає сайт, а результат вона приносить назад.

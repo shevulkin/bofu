@@ -166,15 +166,24 @@ USB-СКАНЕР: піднесіть сканер до етикетки — ві
           <?php endif; ?>
         </div>
 
+        <?php /* Категорія перемикається на місці, а не посиланням. Посилання —
+                 це відкриття сторінки заново, а разом із ним повернення на
+                 перший крок і втрата всього, що вже набрано у формі: продавець
+                 тицяв фільтр, а опинявся на «хто покупець».
+
+                 Вибрана категорія їде прихованим полем у формі, щоб пережити ті
+                 два перезавантаження, які в каси таки бувають, — зміну точки й
+                 повернення з помилкою оформлення. */ ?>
         <?php if ($cats): ?>
-          <div class="cat-chips" style="margin-bottom:12px">
-            <a class="chip <?= $cat ? '' : 'active' ?>" href="<?= e(url('/admin/orders/new')) ?>">Усі</a>
+          <div class="cat-chips pos-cats" data-pos-cats style="margin-bottom:12px">
+            <button type="button" class="chip <?= $cat ? '' : 'active' ?>" data-pos-cat="0">Усі</button>
             <?php foreach ($cats as $c): ?>
-              <a class="chip <?= $cat === (int)$c['id'] ? 'active' : '' ?>"
-                 href="<?= e(url('/admin/orders/new?cat=' . (int)$c['id'])) ?>"><?= e($c['name']) ?></a>
+              <button type="button" class="chip <?= $cat === (int)$c['id'] ? 'active' : '' ?>"
+                      data-pos-cat="<?= (int)$c['id'] ?>"><?= e($c['name']) ?></button>
             <?php endforeach; ?>
           </div>
         <?php endif; ?>
+        <input type="hidden" name="cat" id="posCat" value="<?= (int)$cat ?>">
 
         <?php /* Плитка: тап = +1 у чек. На кількох десятках позицій це швидше за
                  будь-який пошук, і саме так влаштовані каси в невеликих магазинах. */ ?>
@@ -204,41 +213,57 @@ USB-СКАНЕР: піднесіть сканер до етикетки — ві
         </div>
       </div>
 
-      <div class="pos-check">
-        <div class="admin-card pos-lines-card" style="padding:16px">
-          <h2 class="h-serif" style="font-size:18px;margin-bottom:12px">Чек</h2>
-          <table class="tbl pos-lines" id="posLines">
-            <?php foreach ($lines as $r): ?>
-              <tr>
-                <td>
-                  <?= e($r['product']['name']) ?>
-                  <?php if ($r['variant']): ?><div class="dim"><?= e($r['variant']['name']) ?></div><?php endif; ?>
-                </td>
-                <td class="num" style="white-space:nowrap">
-                  <button type="button" class="pos-qty-btn" data-pos-qty="<?= e($r['key']) ?>" data-to="<?= (int)$r['qty'] - 1 ?>">−</button>
-                  <b><?= (int)$r['qty'] ?></b>
-                  <button type="button" class="pos-qty-btn" data-pos-qty="<?= e($r['key']) ?>" data-to="<?= (int)$r['qty'] + 1 ?>">+</button>
-                </td>
-                <td class="num"><?= e(price_fmt($r['sum'])) ?></td>
-                <td><button type="button" class="btn btn-line btn-xs" data-pos-qty="<?= e($r['key']) ?>" data-to="0">×</button></td>
-              </tr>
-            <?php endforeach; ?>
-          </table>
-          <p class="dim" id="posEmpty" <?= $lines ? 'hidden' : '' ?> style="margin:0">
-            Чек порожній. Тапніть по плитці, піднесіть сканер до етикетки — або вийдіть на сайт і додавайте звідти.
-          </p>
-          <div class="pos-total">Разом <b id="posTotal"><?= e(price_fmt($totals['total'])) ?></b></div>
+      <?php /* Чек. На великому екрані він стоїть праворуч від плитки й весь час
+               перед очима. На телефоні місця для другої колонки немає, і чек
+               перетворюється на смужку внизу: видно, скільки позицій і на яку
+               суму, а сам список розкривається дотиком. Так на екран одразу
+               потрапляють товари — те, з чим працюють, — а не список набраного,
+               заради якого раніше доводилось прокручувати півекрана. */ ?>
+      <div class="pos-check pos-cart" data-pos-cart>
+        <div class="pos-cart-bar">
+          <button type="button" class="pos-cart-peek" data-pos-cart-toggle aria-expanded="false">
+            <span class="pos-cart-caret" aria-hidden="true">▲</span>
+            <span>Чек · <b data-sum-count><?= count($lines) ?></b> поз.</span>
+            <b class="pos-cart-sum" data-sum-total><?= e(price_fmt($totals['total'])) ?></b>
+          </button>
+          <button type="button" class="btn btn-gold btn-sm" data-go="3">Далі →</button>
         </div>
+        <div class="pos-cart-body">
+          <div class="admin-card pos-lines-card" style="padding:16px">
+            <h2 class="h-serif" style="font-size:18px;margin-bottom:12px">Чек</h2>
+            <table class="tbl pos-lines" id="posLines">
+              <?php foreach ($lines as $r): ?>
+                <tr>
+                  <td>
+                    <?= e($r['product']['name']) ?>
+                    <?php if ($r['variant']): ?><div class="dim"><?= e($r['variant']['name']) ?></div><?php endif; ?>
+                  </td>
+                  <td class="num" style="white-space:nowrap">
+                    <button type="button" class="pos-qty-btn" data-pos-qty="<?= e($r['key']) ?>" data-to="<?= (int)$r['qty'] - 1 ?>">−</button>
+                    <b><?= (int)$r['qty'] ?></b>
+                    <button type="button" class="pos-qty-btn" data-pos-qty="<?= e($r['key']) ?>" data-to="<?= (int)$r['qty'] + 1 ?>">+</button>
+                  </td>
+                  <td class="num"><?= e(price_fmt($r['sum'])) ?></td>
+                  <td><button type="button" class="btn btn-line btn-xs" data-pos-qty="<?= e($r['key']) ?>" data-to="0">×</button></td>
+                </tr>
+              <?php endforeach; ?>
+            </table>
+            <p class="dim" id="posEmpty" <?= $lines ? 'hidden' : '' ?> style="margin:0">
+              Чек порожній. Тапніть по плитці, піднесіть сканер до етикетки — або вийдіть на сайт і додавайте звідти.
+            </p>
+            <div class="pos-total">Разом <b id="posTotal"><?= e(price_fmt($totals['total'])) ?></b></div>
+          </div>
 
-        <div class="pos-nav">
-          <button type="button" class="btn btn-line" data-go="1">← Покупець</button>
-          <button type="button" class="btn btn-gold" data-go="3">Далі: отримання →</button>
-        </div>
-        <a class="btn btn-line" style="width:100%;margin-top:10px" href="<?= e(url('/shop')) ?>"
-           data-help-title="Кнопка «Вийти на сайт»"
-           data-help="Відкриває вітрину, не втрачаючи чек: унизу зʼявиться смужка продажу, і кнопки «У кошик» на сайті додаватимуть товар у цей самий чек.
+          <div class="pos-nav">
+            <button type="button" class="btn btn-line" data-go="1">← Покупець</button>
+            <button type="button" class="btn btn-gold" data-go="3">Далі: отримання →</button>
+          </div>
+          <a class="btn btn-line" style="width:100%;margin-top:10px" href="<?= e(url('/shop')) ?>"
+             data-help-title="Кнопка «Вийти на сайт»"
+             data-help="Відкриває вітрину, не втрачаючи чек: унизу зʼявиться смужка продажу, і кнопки «У кошик» на сайті додаватимуть товар у цей самий чек.
 
 Це для випадку, коли покупцеві треба показати картку товару — фото, опис, характеристики. Повернутись до каси можна з тієї ж смужки.">Вийти на сайт →</a>
+        </div>
       </div>
     </div>
   </section>
@@ -418,7 +443,8 @@ window.POS = {
   base: '<?= e(url('/')) ?>',
   csrf: '<?= e(Csrf::token()) ?>',
   postUrl: '<?= e(url('/admin/orders/new')) ?>',
-  searchUrl: '<?= e(url('/admin/orders/search')) ?>'
+  searchUrl: '<?= e(url('/admin/orders/search')) ?>',
+  tilesUrl: '<?= e(url('/admin/orders/tiles')) ?>'
 };
 </script>
 <?php /* Читання штрихкодів своїми силами — потрібне там, де браузер не вміє
