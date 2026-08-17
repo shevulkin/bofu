@@ -85,14 +85,17 @@ class Kasa
             'status' => $status,
             'info' => $status && $status['ok'] ? \VchasnoDoc::status($status['data']) : [],
             'service' => $case ? Fiscal::serviceLog($case['store_id']) : [],
-            'broken' => DB::all("SELECT f.*, o.number FROM fiscal_receipts f
+            // Чеки — лише обраної точки. У мережі точки можуть належати різним
+            // ФОПам, і зводити їхні чеки в один список означало б показувати
+            // бухгалтеру однієї людини виторг іншої.
+            'broken' => $case ? DB::all("SELECT f.*, o.number FROM fiscal_receipts f
                                  LEFT JOIN orders o ON o.id = f.order_id
-                                 WHERE f.status NOT IN ('done') AND f.type <> 'service'
-                                 ORDER BY f.id DESC LIMIT 30"),
-            'recent' => DB::all("SELECT f.*, o.number FROM fiscal_receipts f
+                                 WHERE f.status NOT IN ('done') AND f.type <> 'service' AND f.store_id = ?
+                                 ORDER BY f.id DESC LIMIT 30", [$case['store_id']]) : [],
+            'recent' => $case ? DB::all("SELECT f.*, o.number FROM fiscal_receipts f
                                  LEFT JOIN orders o ON o.id = f.order_id
-                                 WHERE f.status = 'done' AND f.type <> 'service'
-                                 ORDER BY f.id DESC LIMIT 20"),
+                                 WHERE f.status = 'done' AND f.type <> 'service' AND f.store_id = ?
+                                 ORDER BY f.id DESC LIMIT 20", [$case['store_id']]) : [],
             'page_title' => 'Каса — адмінка',
         ], 'layouts/admin');
     }

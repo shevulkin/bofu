@@ -152,6 +152,29 @@ class Fiscal
         return self::storeTaxGroup($storeId);
     }
 
+    /**
+     * Чиїм іменем підписано документ.
+     *
+     * Чек продажу підписує ТОЙ, ХТО ПРОДАВ — його імʼя приходить сюди першим
+     * аргументом і завжди перемагає. Решта — для документів, яких не пробивав
+     * ніхто живий: нічного Z-звіту з cron. Там береться підпис точки (у мережі
+     * точки бувають різних ФОПів, і бухгалтер у них різний), далі загальний, а
+     * як і його немає — назва магазину.
+     *
+     * Вигадувати щось на кшталт «cron» не можна: у фіскальному документі це
+     * читається як прізвище касира, якого не існує.
+     */
+    public static function cashier(?string $name, ?int $storeId): string
+    {
+        $name = trim((string)$name);
+        if ($name !== '') return $name;
+        if ($storeId) {
+            $own = trim((string)(DB::val('SELECT vchasno_cashier FROM stores WHERE id = ?', [$storeId]) ?? ''));
+            if ($own !== '') return $own;
+        }
+        return trim((string)Settings::get('vchasno_cashier', ''));
+    }
+
     /** Типова група магазину (або загальна, якщо в точки своєї немає) */
     public static function storeTaxGroup(?int $storeId): int
     {
@@ -298,7 +321,7 @@ class Fiscal
 
         $doc = [
             'task' => 'sell',
-            'cashier' => (string)($in['cashier'] ?? ''),
+            'cashier' => self::cashier($in['cashier'] ?? null, $storeId),
             'sum' => round($sum, 2),
             'round' => $round,
             'comment_down' => (string)Settings::get('vchasno_comment_down', ''),
@@ -357,7 +380,7 @@ class Fiscal
         $sum = round((float)$receipt['sum'], 2);
         $doc = [
             'task' => 'return',
-            'cashier' => $cashier,
+            'cashier' => self::cashier($cashier, $receipt['store_id'] ? (int)$receipt['store_id'] : null),
             'sum' => round((float)($sold['sum'] ?? $sum), 2),
             'round' => round((float)($sold['round'] ?? 0), 2),
             'comment_down' => 'Повернення за чеком ' . (string)$receipt['fiscal_number'],
@@ -563,7 +586,7 @@ class Fiscal
         $gaps = FiscalProvider::missing($route);
         if ($gaps) return self::no('Каса недоступна: ' . implode('; ', $gaps) . '.');
 
-        $doc = ['task' => $task, 'cashier' => (string)($extra['cashier'] ?? '')];
+        $doc = ['task' => $task, 'cashier' => self::cashier($extra['cashier'] ?? null, $storeId)];
         if ($task === 'cash_in' || $task === 'cash_out') {
             $sum = round((float)($extra['sum'] ?? 0), 2);
             if ($sum <= 0) return self::no('Вкажіть суму більшу за нуль.');

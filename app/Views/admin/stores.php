@@ -193,7 +193,18 @@
                 <input type="text" name="store[<?= (int)$s['id'] ?>][dm_device]"
                        value="<?= e($s['dm_device'] ?? '') ?>" placeholder="kasa1" spellcheck="false">
               </div>
+              <div style="flex:1;min-width:200px">
+                <label class="dim" style="font-size:12px">Підпис під нічним Z-звітом</label>
+                <input type="text" name="store[<?= (int)$s['id'] ?>][vchasno_cashier]"
+                       value="<?= e($s['vchasno_cashier'] ?? '') ?>" maxlength="100"
+                       placeholder="як у Налаштуваннях">
+              </div>
             </div>
+            <p class="dim" style="margin:8px 0 0;font-size:12px">
+              Підпис потрібен лише документам, яких не пробивав ніхто живий, — нічному Z-звіту.
+              <b>Чеки продажу завжди підписані іменем того, хто продав</b>, і це поле їх не стосується.
+              Заповнюйте, якщо точка належить іншому ФОПу.
+            </p>
 
             <p class="dim" style="margin:8px 0 0;font-size:12px">
               <b>Хмара</b> — чек пробиває наш сервер, ключ підпису лежить у постачальника.
