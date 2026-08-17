@@ -35,6 +35,7 @@ class OwnersAdmin
             $id = (int)$o['id'];
             $rows[] = $o + [
                 'stores' => Owners::stores($id),
+                'kassy' => Owners::cashRegisters($id),
                 'problems' => Owners::problems($o),
                 'income' => Owners::income($id),
                 'income_prev' => Owners::income($id, (int)date('Y') - 1),

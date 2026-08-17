@@ -166,6 +166,16 @@
   <?php endif; ?>
 </div>
 
+<?php if ($fiscal_jobs > 0): ?>
+  <?php /* Завдання, які чекають на браузер саме цієї людини. Найчастіше це
+           нічний Z-звіт: cron поставив його в чергу, а виконати його може лише
+           пристрій, на якому стоїть каса. */ ?>
+  <div class="fiscal-runner" data-fiscal-runner data-parent="" style="margin-top:18px">
+    <span data-fiscal-status>Виконуємо завдання, що чекали на цей пристрій…</span>
+  </div>
+  <script src="<?= e(asset_v('js/fiscal.js')) ?>" defer></script>
+<?php endif; ?>
+
 <?php if ($service): ?>
   <div class="admin-card" style="margin-top:18px">
     <h2 class="h-serif">Службові завдання</h2>

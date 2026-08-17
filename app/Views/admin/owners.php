@@ -130,10 +130,40 @@
             <b><?= e(price_fmt($o['income_prev'])) ?></b>
           </div>
         <?php endif; ?>
-        <div>
-          <div class="dim" style="font-size:12.5px">Точки</div>
-          <b><?= $o['stores'] ? e(implode(', ', $o['stores'])) : '—' ?></b>
-        </div>
+      </div>
+
+      <?php /* Каси власника: ПРРО реєструють на торгову точку, тож у ФОПа з
+               двома магазинами кас теж дві, і в Device Manager вони звуться
+               по-різному. Ключ при цьому один — його завантажують в обидві.
+               Без цієї таблички зʼясовувати, чий «kasa2», доводилось би по
+               картках магазинів по одній. */ ?>
+      <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--bg3)">
+        <div class="dim" style="font-size:12.5px;margin-bottom:8px">Точки й каси цього власника</div>
+        <?php if (!$o['kassy']): ?>
+          <div class="dim">Точок не призначено — оберіть їх у таблиці внизу сторінки.</div>
+        <?php else: ?>
+          <table class="tbl">
+            <tr><th>Точка</th><th>Як доходимо до каси</th><th>Каса</th></tr>
+            <?php foreach ($o['kassy'] as $storeId => $k): ?>
+              <tr>
+                <td><?= e($k['store']) ?></td>
+                <td class="dim"><?= e($k['route']) ?></td>
+                <td>
+                  <?php if ($k['ready']): ?>
+                    <b><?= e($k['device'] ?: '—') ?></b>
+                  <?php else: ?>
+                    <span class="dim">не налаштована —
+                      <a href="<?= e(url('/admin/stores')) ?>" style="color:inherit;text-decoration:underline">картка точки</a></span>
+                  <?php endif; ?>
+                </td>
+              </tr>
+            <?php endforeach; ?>
+          </table>
+          <p class="dim" style="margin:8px 0 0;font-size:12px">
+            Ключ у цього власника один на всі його каси — його завантажують у кожен ПРРО окремо,
+            у Device Manager. Назва каси тут і назва в Device Manager мають збігатися точно.
+          </p>
+        <?php endif; ?>
       </div>
     </div>
   <?php endforeach; ?>
