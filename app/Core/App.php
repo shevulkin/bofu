@@ -239,6 +239,9 @@ class App
             // видає сайт, а результат вона приносить назад.
             '/admin/fiscal/next'        => [$A.'Orders', 'fiscalNext', 'orders.fiscal'],
             '/admin/fiscal/done'        => [$A.'Orders', 'fiscalDone', 'orders.fiscal'],
+            // Пробний запит до каси на пристрої: нічого не проводить, лише
+            // показує, чи браузер узагалі пускає сторінку на localhost
+            '/admin/fiscal/probe'       => [$A.'Orders', 'fiscalProbe', 'orders.fiscal'],
             '/admin/products/codes'     => [$A.'Products', 'codes', 'products.manage'],
             // Каса «Вчасно»: зміна, звіти, звірка товарів. Чеки окремих
             // замовлень тут не живуть — вони в картках замовлень.

@@ -183,6 +183,30 @@
         </div>
         <button class="btn btn-gold" type="submit" style="margin-top:16px">💾 Зберегти касу</button>
       </form>
+
+      <?php /* Перевірка стоїть окремою формою: вона нічого не зберігає й нічого
+               не проводить — лише питає касу про стан. Це найтонше місце цього
+               маршруту, бо браузер може не пустити сторінку сайту на локальну
+               адресу, і зʼясувати це треба до першого продажу, а не під час. */ ?>
+      <?php if ((string)($u['fiscal_route'] ?? '') === 'device'): ?>
+        <div class="admin-card">
+          <h2 class="h-serif" style="font-size:20px">Перевірка каси</h2>
+          <p class="dim" style="margin-bottom:14px">
+            Питає Device Manager на цьому ж пристрої про стан — <b>нічого не пробиває</b>.
+            Робіть це з того самого пристрою, де стоїть Device Manager, і в тому браузері,
+            у якому працюватимете.
+          </p>
+          <button class="btn btn-line" type="button" data-fiscal-probe>🔌 Перевірити касу на цьому пристрої</button>
+          <div class="fiscal-runner" data-fiscal-probe-out hidden></div>
+        </div>
+        <?php /* Профіль малюється вітринним шаблоном, а не адмінським, тож
+                 window.BOFU тут не оголошено — скрипт без нього мовчки нічого
+                 не робив би. */ ?>
+        <script>
+          window.BOFU = window.BOFU || { base: '<?= e(url('/')) ?>', csrf: '<?= e(Csrf::token()) ?>' };
+        </script>
+        <script src="<?= e(asset_v('js/fiscal.js')) ?>" defer></script>
+      <?php endif; ?>
     <?php endif; ?>
 
     <div class="admin-card">
