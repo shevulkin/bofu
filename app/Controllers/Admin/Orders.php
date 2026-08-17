@@ -187,7 +187,10 @@ class Orders
         if ($stores && !in_array($storeId, array_map(fn($s) => (int)$s['id'], $stores), true)) {
             $storeId = (int)$stores[0]['id'];
         }
-        $cat = (int)($_GET['cat'] ?? 0);
+        // Категорія плитки їде у формі, а не лише в адресі: сторінка
+        // перезавантажується при зміні точки й при помилці оформлення, і
+        // повертати плитку до «Усі» на кожному такому колі ні до чого.
+        $cat = (int)($_POST['cat'] ?? $_GET['cat'] ?? 0);
         $d = Pos::data();
 
         View::show('admin/orders/pos', [
@@ -827,6 +830,33 @@ class Orders
             'made_to_order' => !empty($p['made_to_order']),
         ];
     }
+
+    /**
+     * Плитка однієї категорії.
+     *
+     * Раніше категорію перемикали посиланням, і каса відкривалась заново: крок
+     * скидався на перший, а незбережені поля оформлення зникали. Плитка — це
+     * єдине, що змінюється від вибору категорії, тож і віддаємо тільки її.
+     */
+    public static function tiles(): never
+    {
+        Auth::requireCap('orders.create');
+        $storeId = (int)($_GET['store_id'] ?? 0);
+        $allowed = array_map(fn($s) => (int)$s['id'], self::createStores());
+        if (!in_array($storeId, $allowed, true)) $storeId = 0;
+        $cat = (int)($_GET['cat'] ?? 0);
+
+        $items = [];
+        foreach (Pos::tiles($storeId ?: null, $cat ?: null) as $t) {
+            $t['price_label'] = price_fmt($t['price']);
+            // Адресу фото збирає сервер: у браузера немає ні бази префіксів,
+            // ні версії файлу
+            $t['photo'] = asset($t['photo']);
+            $items[] = $t;
+        }
+        json_response(['items' => $items]);
+    }
+
     /**
      * Одна сторінка і для головного замовлення, і для підзамовлення: завжди видно
      * замовлення цілком, а керування зʼявляється лише там, де є права.
