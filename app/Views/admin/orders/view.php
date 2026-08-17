@@ -21,6 +21,13 @@
             <?= e($c['store_name'] ?: 'Магазин не призначено') ?>
             <?php if ($c['store_city']): ?><span class="dim" style="font-size:14px"><?= e($c['store_city']) ?></span><?php endif; ?>
           </h2>
+          <?php /* Чий це виторг. Показуємо лише там, де власників кілька:
+                   інакше рядок повторював би те, що й так очевидно. */ ?>
+          <?php if (count($owners) > 1 && ($owner_of[$cid] ?? null)): ?>
+            <div class="dim" style="font-size:12.5px;width:100%;margin-top:-4px">
+              <?= e(Owners::label($owner_of[$cid])) ?> — свій ПРРО і свій чек
+            </div>
+          <?php endif; ?>
           <div style="display:flex;align-items:center;gap:10px">
             <span class="dim"><?= e($c['number']) ?><?= $total_parts > 1 ? ' · частина ' . (int)$c['seq'] : '' ?></span>
             <span class="status-pill st-<?= e($c['status']) ?>"><?= e($statuses[$c['status']] ?? $c['status']) ?></span>
