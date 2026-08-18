@@ -7,7 +7,7 @@ declare(strict_types=1);
  */
 class Schema
 {
-    public const VERSION = 39;
+    public const VERSION = 40;
 
     /** Оновлення існуючої бази до поточної версії без втрати даних */
     public static function upgrade(): void
@@ -476,6 +476,34 @@ class Schema
              */
             self::addColumn('categories', 'parent_id', 'int null');
             self::createAll();   // індекс по parent_id
+        }
+        if ($ver < 40) {
+            /*
+             * Оферта й політика конфіденційності переїжджають у код.
+             *
+             * Обидва документи стандартні: їхній зміст диктують закон і GDPR,
+             * а не бізнес. Тому вони живуть у LegalText і показуються самі,
+             * без налаштування, — а блок контенту лишається перевизначенням
+             * для того, хто напише свій текст.
+             *
+             * Щоб старі бази теж дістали повний текст, чистимо блок — тоді
+             * сторінка бере вбудований. Але чистимо **лише** чорновик, який
+             * туди поклали ми: якщо власник уже написав своє, міграція, що це
+             * затирає, гірша за відсутню. Впізнаємо чорновик за першими його
+             * словами — цього досить і не вимагає зберігати весь старий текст.
+             */
+            $drafts = [
+                'page_offer' => 'Цей документ є публічною пропозицією (офертою) укласти договір',
+                'page_privacy' => 'Які дані ми збираємо.',
+            ];
+            foreach ($drafts as $key => $signature) {
+                $body = (string)DB::val(DB::driver() === 'sqlite'
+                    ? 'SELECT body FROM content_blocks WHERE "key" = ?'
+                    : 'SELECT body FROM content_blocks WHERE `key` = ?', [$key]);
+                if ($body === '' || str_starts_with(ltrim($body), $signature)) {
+                    Content::set($key, ['body' => null]);
+                }
+            }
         }
         Settings::set('schema_version', (string)self::VERSION);
     }
