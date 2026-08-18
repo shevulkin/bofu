@@ -605,13 +605,41 @@ footer{border-top:1px solid var(--line);padding:52px 0 40px;margin-top:40px}
 /* ---------- адаптив ---------- */
 @media (max-width:1000px){
   .grid-4{grid-template-columns:repeat(3,minmax(0,1fr))}
-  .hero{grid-template-columns:1fr;padding:56px 24px}
-  .hero-img img{height:420px}
+  /* Одна колонка — і фото їде під текст, у самий низ: спершу заголовок,
+     підзаголовок, дві кнопки й три пункти списку, і лише потім обличчя.
+     Для персонального бренду це найгірший можливий порядок — людину впізнають
+     раніше, ніж дочитують.
+
+     Фото піднімаємо одразу під заголовок. display:contents розчиняє
+     текстову обгортку, і її діти стають клітинками тієї самої сітки — тоді
+     order розставляє їх упереміш із фото без жодної зміни розмітки. Обгортка
+     семантики не несе (звичайний div), тож нічого не втрачається.
+
+     Порядок: назва → обличчя → пояснення → кнопки → пункти. Кнопки лишаються
+     на першому-другому екрані, бо фото навмисно нижче. */
+  .hero{grid-template-columns:1fr;padding:56px 24px;gap:0}
+  .hero > div:first-child{display:contents}
+  .hero-badge{order:1}
+  .hero h1{order:2}
+  .hero-img{order:3;margin:20px 0 2px}
+  .hero .lead{order:4}
+  /* margin-top тут не потрібен: у .lead уже є свої 30px знизу, а в сітці
+     відступи сусідів не схлопуються — разом виходило 56px порожнечі рівно
+     там, де кнопки й так ледве вміщались у перший екран */
+  .hero-actions{order:5;margin-top:0}
+  .hero-points{order:6}
+  /* Нижче за десктопні 560: фото має показати обличчя, а не зайняти екран
+     цілком — під ним одразу мають початися пояснення й кнопки */
+  .hero-img img{height:380px;object-position:center top}
   .product-page{grid-template-columns:1fr;gap:32px}
   .filters-row{grid-template-columns:1fr 1fr;}
 }
 @media (max-width:760px){
   h1{font-size:38px} h2{font-size:30px}
+  /* На телефоні фото ще нижче: разом із заголовком воно має лишити місце
+     кнопкам. «Обрати курс» на першому екрані важливіша за зайві сто пікселів
+     портрета — обличчя однаково впізнається й тут. */
+  .hero-img img{height:280px}
   .section{padding:56px 0}
   .grid-3,.grid-4{grid-template-columns:repeat(2,minmax(0,1fr))}
   .gallery-grid{grid-template-columns:1fr 1fr}
