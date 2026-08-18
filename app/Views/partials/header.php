@@ -1,3 +1,14 @@
+<?php
+/*
+ * Категорії для меню шапки.
+ *
+ * Питаємо їх прямо тут, як footer питає контакти: шапка малюється на кожній
+ * сторінці вітрини, і носити цей список через кожен контролер означало б
+ * пам'ятати про нього в кожному новому. Запит один і на кожній сторінці
+ * однаковий.
+ */
+$navCats = Catalog::categoryTree();
+?>
 <header class="topbar">
   <nav class="nav">
     <a class="brand" href="<?= e(url('/')) ?>">
@@ -7,7 +18,36 @@
     <div class="nav-links">
       <a href="<?= e(url('/about')) ?>">Про мене</a>
       <a href="<?= e(url('/courses')) ?>">Курси</a>
-      <a href="<?= e(url('/shop')) ?>">Магазин</a>
+      <?php /* «Магазин» — це пункт меню й одночасно вхід у категорії. Сама
+               назва лишається звичайним посиланням у каталог, а стрілка поруч
+               відкриває список розділів: покупець, який знає, що йому треба,
+               потрапляє в потрібний розділ одним кліком із будь-якої сторінки,
+               а не через каталог і панель фільтрів.
+
+               Стрілка — окрема кнопка, а не клік по «Магазину»: інакше пункт
+               меню перестав би вести туди, куди обіцяє. Без JS меню не
+               розкриється, і це не втрата — посилання в каталог працює, а вже
+               там ті самі розділи стоять панеллю. */ ?>
+      <?php if ($navCats): ?>
+        <span class="nav-drop" data-nav-drop>
+          <a href="<?= e(url('/shop')) ?>">Магазин</a>
+          <button type="button" class="nav-drop-btn" data-nav-drop-btn
+                  aria-controls="navShopMenu" aria-expanded="false" aria-label="Категорії магазину">
+            <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 5l5 6 5-6"/></svg>
+          </button>
+          <div class="nav-drop-menu" id="navShopMenu" data-nav-drop-menu hidden>
+            <a class="nav-drop-all" href="<?= e(url('/shop')) ?>">Усі товари</a>
+            <?php foreach ($navCats as $c): ?>
+              <a href="<?= e(url('/shop?cat=' . $c['slug'])) ?>"><?= e($c['name']) ?></a>
+              <?php foreach ($c['children'] ?? [] as $k): ?>
+                <a class="nav-drop-sub" href="<?= e(url('/shop?cat=' . $k['slug'])) ?>"><?= e($k['name']) ?></a>
+              <?php endforeach; ?>
+            <?php endforeach; ?>
+          </div>
+        </span>
+      <?php else: ?>
+        <a href="<?= e(url('/shop')) ?>">Магазин</a>
+      <?php endif; ?>
       <a href="<?= e(url('/diploma')) ?>">Диплом</a>
       <a href="<?= e(url('/social')) ?>">Соцмережі</a>
       <a href="<?= e(url('/partners')) ?>">Партнери</a>
@@ -69,7 +109,29 @@
     </form>
     <a href="<?= e(url('/about')) ?>">Про мене</a>
     <a href="<?= e(url('/courses')) ?>">Курси</a>
-    <a href="<?= e(url('/shop')) ?>">Магазин</a>
+    <?php /* Той самий вибір, що й у шапці, але згорнутий: у мобільному меню
+             сім пунктів сайту, і розгорнутий список категорій відсунув би
+             половину з них за край екрана. */ ?>
+    <?php if ($navCats): ?>
+      <span class="m-drop">
+        <a href="<?= e(url('/shop')) ?>">Магазин</a>
+        <button type="button" class="nav-drop-btn" data-nav-drop-btn
+                aria-controls="navShopMenuMobile" aria-expanded="false" aria-label="Категорії магазину">
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 5l5 6 5-6"/></svg>
+        </button>
+      </span>
+      <div class="m-drop-menu" id="navShopMenuMobile" data-nav-drop-menu hidden>
+        <a class="nav-drop-all" href="<?= e(url('/shop')) ?>">Усі товари</a>
+        <?php foreach ($navCats as $c): ?>
+          <a href="<?= e(url('/shop?cat=' . $c['slug'])) ?>"><?= e($c['name']) ?></a>
+          <?php foreach ($c['children'] ?? [] as $k): ?>
+            <a class="nav-drop-sub" href="<?= e(url('/shop?cat=' . $k['slug'])) ?>"><?= e($k['name']) ?></a>
+          <?php endforeach; ?>
+        <?php endforeach; ?>
+      </div>
+    <?php else: ?>
+      <a href="<?= e(url('/shop')) ?>">Магазин</a>
+    <?php endif; ?>
     <a href="<?= e(url('/diploma')) ?>">Диплом</a>
     <a href="<?= e(url('/social')) ?>">Соцмережі</a>
     <a href="<?= e(url('/partners')) ?>">Партнери</a>
