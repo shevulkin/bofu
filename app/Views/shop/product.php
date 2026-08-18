@@ -1,14 +1,25 @@
 <section class="section" style="padding-top:40px">
   <div class="container">
-    <p style="margin-bottom:26px"><a href="<?= e(url('/shop' . ($cat ? '?cat=' . $cat['slug'] : ''))) ?>">← <?= e($cat['name'] ?? 'Магазин') ?></a></p>
+    <p style="margin-bottom:26px"><a href="<?= e(shop_url($cat['slug'] ?? null)) ?>">← <?= e($cat['name'] ?? 'Магазин') ?></a></p>
     <div class="product-page">
-      <div class="product-gallery">
+      <?php /* data-lightbox вмикає перегляд на весь екран; список фото модуль
+               збирає сам із того, у чого є data-full. Мініатюри лишаються
+               мініатюрами (data-lb-skip) — у них своя дія, підмінити головне
+               фото; збільшує клік по великому. */ ?>
+      <div class="product-gallery" data-lightbox>
         <?php $mainPhoto = $images[0]['path']; ?>
-        <img id="mainPhoto" src="<?= e(asset($mainPhoto)) ?>" alt="<?= e($p['name']) ?>">
+        <?php /* Список фото для перегляду беруть мініатюри — вони і є повним
+                 переліком. Головне фото лише відкриває перегляд на тому кадрі,
+                 який зараз показано (data-lb-open), інакше перше фото
+                 потрапило б у список двічі. Коли фото одне, мініатюр немає —
+                 тоді список складає саме воно. */ ?>
+        <img id="mainPhoto" src="<?= e(asset($mainPhoto)) ?>" alt="<?= e($p['name']) ?>"
+             data-lb-open<?= count($images) > 1 ? '' : ' data-full="' . e(asset($mainPhoto)) . '"' ?>
+             title="Натисніть, щоб роздивитись">
         <?php if (count($images) > 1): ?>
           <div class="thumbs" id="productThumbs">
             <?php foreach ($images as $i => $img): ?>
-              <button type="button" class="thumb <?= $i === 0 ? 'active' : '' ?>" data-full="<?= e(asset($img['path'])) ?>"
+              <button type="button" class="thumb <?= $i === 0 ? 'active' : '' ?>" data-full="<?= e(asset($img['path'])) ?>" data-lb-skip
                       aria-label="Фото <?= $i + 1 ?> з <?= count($images) ?>">
                 <img src="<?= e(asset(Images::displayThumb($img['path']))) ?>" alt="<?= e($p['name']) ?> — фото <?= $i + 1 ?>" loading="lazy">
               </button>
@@ -156,10 +167,9 @@
                 <td>
                   <?php if (!empty($a['color'])): ?><i class="swatch" style="background:<?= e($a['color']) ?>"></i> <?php endif; ?>
                   <?php if (!empty($a['filterable']) && !empty($a['attr_slug'])): ?>
-                    <a href="<?= e(url('/shop?' . http_build_query([
-                        'cat' => $cat['slug'] ?? null,
+                    <a href="<?= e(shop_url($cat['slug'] ?? null, [
                         'attr' => [$a['attr_slug'] => [$a['value']]],
-                      ]))) ?>" title="Показати всі товари з таким значенням"><?= e($a['value']) ?></a>
+                      ])) ?>" title="Показати всі товари з таким значенням"><?= e($a['value']) ?></a>
                   <?php else: ?><?= e($a['value']) ?><?php endif; ?>
                 </td>
               </tr>

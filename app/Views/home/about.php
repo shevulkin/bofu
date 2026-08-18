@@ -11,9 +11,9 @@
     </div>
     <div class="kicker" style="margin-top:72px">Портфоліо</div>
     <h2>Галерея</h2>
-    <div class="gallery-grid" style="margin-top:26px"<?= edit_mark('gallery') ?>>
+    <div class="gallery-grid" data-lightbox style="margin-top:26px"<?= edit_mark('gallery') ?>>
       <?php foreach ($gallery as $g): ?>
-        <div class="gallery-item"><img src="<?= e(asset(Images::displayThumb($g[1]))) ?>" alt="<?= e($g[0]) ?>" loading="lazy"><span><?= e($g[0]) ?></span></div>
+        <div class="gallery-item" data-full="<?= e(asset($g[1])) ?>"><img src="<?= e(asset(Images::displayThumb($g[1]))) ?>" alt="<?= e($g[0]) ?>" loading="lazy"><span><?= e($g[0]) ?></span></div>
       <?php endforeach; ?>
     </div>
   </div>

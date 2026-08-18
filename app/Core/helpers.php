@@ -69,6 +69,34 @@ function asset_abs(string $path): string {
     return site_origin() . asset($path);
 }
 
+/**
+ * Адреса каталогу: `/shop`, `/shop/med`, `/shop/med?sort=price`.
+ *
+ * Одне місце, де вирішується, як виглядає посилання на категорію. Раніше рядок
+ * `'/shop?cat=' . $slug` був розсипаний по десятку шаблонів і двох контролерах —
+ * і будь-яка зміна форми адреси означала полювання по всьому проєкту.
+ *
+ * Категорія живе в шляху, а не в параметрі: `?cat=med` описує фільтр, а розділ
+ * каталогу — це окрема сторінка зі своїм заголовком, описом і крихтами.
+ * Фільтри ж (сортування, ціна, бренд) лишаються параметрами — вони й справді
+ * уточнюють ту саму сторінку, а не створюють нову.
+ */
+function shop_url(?string $catSlug = null, array $params = []): string {
+    $params = array_filter($params, fn($v) => $v !== null && $v !== '' && $v !== []);
+    return url(shop_path($catSlug)) . ($params ? '?' . http_build_query($params) : '');
+}
+
+/**
+ * Той самий шлях, але без базового префікса: `/shop/med`.
+ *
+ * Для тих, хто додає префікс сам, — sitemap (він будує абсолютні адреси) і
+ * розмітка крихт (там шлях іде в abs_url). Прогнати такий шлях ще раз через
+ * url() означало б /bofu/bofu/shop/med.
+ */
+function shop_path(?string $catSlug = null): string {
+    return $catSlug !== null && $catSlug !== '' ? '/shop/' . $catSlug : '/shop';
+}
+
 /** Схема й домен без шляху: https://bofu.ua */
 function site_origin(): string {
     $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
