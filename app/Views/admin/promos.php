@@ -214,109 +214,14 @@
 </div>
 
 <div class="admin-card">
-  <h2 class="h-serif" data-help-title="Оптові знижки"
-      data-help="Знижка за кількість: чим більше штук бере покупець, тим дешевша штука.
-
-Від акції відрізняється тим, за що дається. Акція здешевлює товар усім і на певний строк; опт здешевлює його тому, хто бере партію, і діє завжди. Тому в шкали немає дат — це умова продажу, а не подія. Потрібна тимчасова знижка за кількість — робіть акцію, там її й видно як акцію.
-
-Шкала спрацьовує в кошику сама: покупець набирає пʼять штук і бачить нову ціну без жодного листування.">
-    Оптові знижки</h2>
-  <p class="card-lead" style="margin:-6px 0 18px">
-    Шкала має три яруси: загальна для магазину, шкала розділу й шкала окремого товару.
-    Діє <b>найближчий заповнений</b>, цілком — шкала товару замінює шкалу розділу, а не додається до неї.
-    Тому опт можна зробити не лише більшим, а й меншим за розділ.
+  <h2 class="h-serif">Оптові знижки</h2>
+  <p class="card-lead" style="margin:-6px 0 14px">
+    Знижка за кількість переїхала на <b>власну сторінку</b>: у шкал є питання, якого немає в
+    акцій, — котра з них справді діє після того, як яруси перебили один одного. Це видно лише
+    таблицею з підрахунком, і на цій сторінці вона б не помістилась.
   </p>
-
-  <?php
-    $tierCats = array_values(array_filter($categories, fn($c) => ($c['type'] ?? 'product') === 'product'));
-    $tierCatName = '';
-    foreach ($categories as $c) if ((int)$c['id'] === (int)$tier_cat) $tierCatName = (string)$c['name'];
-  ?>
-  <form method="get" action="<?= e(url('/admin/promos')) ?>" style="display:flex;gap:12px;align-items:end;flex-wrap:wrap;margin-bottom:18px">
-    <div data-help-title="Який ярус редагуємо"
-         data-help="Перемикає форму нижче між загальною шкалою магазину й шкалою окремого розділу.
-
-Загальна діє на товари, у яких немає ні своєї шкали, ні шкали розділу. Це запасний варіант — заповнюйте її лише тоді, коли опт у вас однаковий майже скрізь.
-
-Шкала розділу перебиває загальну для всіх товарів цього розділу й усіх його підрозділів.
-
-Шкалу окремого товару тут не задають — вона в картці товару, у блоці «Оптова знижка».">
-      <label>Ярус</label>
-      <select name="tier_cat" onchange="this.form.submit()">
-        <option value="0">— загальна шкала магазину</option>
-        <?php foreach ($tierCats as $c): ?>
-          <option value="<?= (int)$c['id'] ?>"<?= (int)$tier_cat === (int)$c['id'] ? ' selected' : '' ?>><?= e(cat_label($c)) ?></option>
-        <?php endforeach; ?>
-      </select>
-    </div>
-    <noscript><button class="btn btn-line btn-sm" type="submit">Показати</button></noscript>
-  </form>
-
-  <form method="post" action="<?= e(url('/admin/promos')) ?>">
-    <?= Csrf::field() ?>
-    <input type="hidden" name="_action" value="qty_tiers">
-    <input type="hidden" name="tier_category_id" value="<?= (int)$tier_cat ?>">
-    <div style="display:flex;gap:32px;flex-wrap:wrap;align-items:flex-start">
-      <div style="flex:1;min-width:300px;max-width:520px">
-        <h3 style="margin:0 0 10px;font-size:15px">
-          <?= $tier_cat ? 'Шкала розділу «' . e($tierCatName) . '»' : 'Загальна шкала магазину' ?>
-        </h3>
-        <?= View::partial('partials/qty_tiers', ['tiers' => $tier_rows, 'name' => 'tier']) ?>
-      </div>
-      <div style="width:260px" data-help-title="Стеля знижки за замовчуванням"
-           data-help="Найбільша сумарна знижка на одну позицію, коли її не задали в самому товарі чи фасовці.
-
-Знижки складаються: акція 15% плюс опт 7% плюс промокод 10% дають 32%. Кожен ярус окремо здається невеликим, тому дійти до цін, яких ніхто не планував, легко й непомітно. Стеля обрізає саме суму.
-
-Тридцять — розумний початок. Нижче опт майже не відчувається на великих партіях, вище знижка перестає виглядати як знижка.
-
-Стеля не чіпає ціну, яку ви призначили самі: якщо акція вже дає більше за стелю, вона лишається як є. Обмежується те, що додається зверху.
-
-У промокоду може бути своя стеля — тоді діє найменша з двох.">
-        <label>Стеля знижки за замовчуванням, %</label>
-        <input type="number" min="0" max="100" step="0.01" name="max_discount_default"
-               value="<?= e(Settings::get('max_discount_default', (string)Catalog::DEFAULT_MAX_DISCOUNT)) ?>">
-        <p class="dim" style="margin:8px 0 0;font-size:13px">
-          Діє на всі товари, де стелю не заповнено окремо. У картці товару й у фасовці її можна змінити.
-        </p>
-      </div>
-    </div>
-    <div class="admin-save" style="margin-top:18px">
-      <button class="btn btn-gold btn-sm" type="submit">💾 Зберегти шкалу</button>
-    </div>
-  </form>
-
-  <?php
-    $hasAny = $tier_map['global'] || $tier_map['categories'] || $tier_map['products'];
-  ?>
-  <div style="margin-top:24px;border-top:1px solid var(--line);padding-top:18px">
-    <h3 style="margin:0 0 10px;font-size:15px" data-help-title="Що зараз заповнено"
-        data-help="Усі яруси, у яких шкала справді є. Потрібен, щоб не шукати причину, чому введена знижка не спрацювала: її міг перебити ярус нижче.
-
-Пригадаймо порядок: шкала товару перебиває шкалу розділу, а шкала розділу — загальну. Перебиває цілком, а не додається.
-
-Товари зі своєю шкалою рахуються числом, а не списком: їх бувають сотні, а питання тут одне — чи є щось нижче за ярус, який ви редагуєте.">
-      Що зараз заповнено</h3>
-    <?php if (!$hasAny): ?>
-      <p class="dim" style="margin:0">Жодної шкали ще немає — опт не спрацює ні на чому.</p>
-    <?php else: ?>
-      <ul class="dim" style="margin:0;padding-left:18px;line-height:1.9">
-        <?php if ($tier_map['global']): ?>
-          <li>Загальна: <b><?= e(QtyDiscounts::line($tier_map['global'])) ?></b></li>
-        <?php endif; ?>
-        <?php foreach ($tier_map['categories'] as $cid => $info): ?>
-          <li>Розділ «<?= e($info['name']) ?>»: <b><?= e(QtyDiscounts::line($info['tiers'])) ?></b>
-            — <a href="<?= e(url('/admin/promos?tier_cat=' . (int)$cid)) ?>">змінити</a></li>
-        <?php endforeach; ?>
-        <?php if ($tier_map['products']): ?>
-          <li>Товарів із власною шкалою: <b><?= (int)$tier_map['products'] ?></b>
-            — вона перебиває і розділ, і загальну</li>
-        <?php endif; ?>
-      </ul>
-    <?php endif; ?>
-  </div>
+  <a class="btn btn-line btn-sm" href="<?= e(url("/admin/wholesale")) ?>">Оптові знижки →</a>
 </div>
-
 <div class="admin-card">
   <h2 class="h-serif" data-help-title="Промокоди"
       data-help="Знижка за словом, яке покупець вводить у кошику сам.

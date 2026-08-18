@@ -30,8 +30,14 @@ class BundlesAdmin
                     'active' => 1,
                     'sort' => (int)DB::val('SELECT COALESCE(MAX(sort),0)+1 FROM bundles'),
                 ]);
+                // Склад приймаємо одразу: набір без товарів не існує як річ,
+                // і крок «створіть спершу порожній» був би вигаданим.
+                $errors = self::saveItems($id);
+                foreach ($errors as $err) flash('error', $err);
                 Bundles::forget();
-                flash('success', 'Набір створено — тепер додайте до нього товари');
+                flash('success', $errors || !Bundles::find($id)['items']
+                    ? 'Набір створено — лишилось додати до нього товари'
+                    : 'Набір створено');
                 redirect('/admin/bundles?id=' . $id);
             }
 

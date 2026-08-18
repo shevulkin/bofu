@@ -6,12 +6,6 @@
  * @var array      $products товари для вибору
  * @var array      $variants фасовки: [product_id => [{id,name}]]
  */
-/* Рядки складу додаються кнопкою. Скільки товарів у наборі, знає лише той,
-   хто його складає: зашите число одному лишає порожні рядки, а іншому не дає
-   дописати наступний, не зберігши спершу. Новому набору даємо два — менше
-   за два позицій у наборі не буває за визначенням. */
-$rows = $b ? $b['items'] : [];
-while (count($rows) < 2) $rows[] = ['product_id' => 0, 'variant_id' => null, 'qty' => 1];
 ?>
 <div class="admin-head">
   <h1 class="h-serif">Набори</h1>
@@ -34,9 +28,10 @@ while (count($rows) < 2) $rows[] = ['product_id' => 0, 'variant_id' => null, 'qt
   </p>
 </div>
 
-<form class="admin-card" method="post" action="<?= e(url('/admin/bundles')) ?>"
-      style="display:flex;gap:14px;align-items:end;flex-wrap:wrap">
+<form class="admin-card" method="post" action="<?= e(url('/admin/bundles')) ?>">
   <?= Csrf::field() ?><input type="hidden" name="_action" value="add">
+  <h2 class="h-serif">Новий набір</h2>
+  <div style="display:flex;gap:14px;align-items:end;flex-wrap:wrap;margin-bottom:18px">
   <div style="flex:1;min-width:220px" data-help-title="Назва набору"
        data-help="Те, що покупець побачить у підсумках кошика: «Набір «Подарунковий» −108 грн».
 
@@ -54,7 +49,27 @@ while (count($rows) < 2) $rows[] = ['product_id' => 0, 'variant_id' => null, 'qt
     <select name="kind"><option value="percent">відсоток</option><option value="fixed">фіксована ціна</option></select>
   </div>
   <div style="width:120px"><label>Значення</label><input type="text" name="value" placeholder="10"></div>
-  <button class="btn btn-gold btn-sm" type="submit">+ Створити</button>
+  </div>
+
+  <?php /* Склад питаємо одразу, а не після збереження назви. Набір без товарів
+           не існує як річ, тож крок «створіть спершу порожній набір» був би
+           вигаданим: людина заповнює назву й одразу шукає, де обрати товари. */ ?>
+  <div style="max-width:760px" data-help-title="Склад набору"
+       data-help="Що саме має зустрітись у кошику, щоб знижка спрацювала.
+
+Товарів має бути принаймні два різні — набір з одного це звичайна акція, і для неї є свій блок на сторінці «Акції та промокоди».
+
+«Будь-яка фасовка» означає, що покупцю все одно, яку банку брати: набір збереться з тієї, що вже лежить у кошику. Обирайте конкретну лише тоді, коли інша справді не годиться.
+
+Кількість більша за одиницю робить набір кратним: «2 меду + 1 прополіс» спрацює на 4 меду і 2 прополіси — двічі.">
+    <h3 style="margin:0 0 10px;font-size:15px">Склад</h3>
+    <?= View::partial('partials/bundle_items', [
+          'items' => [], 'products' => $products, 'variants' => $variants]) ?>
+  </div>
+
+  <div class="admin-save" style="margin-top:18px">
+    <button class="btn btn-gold btn-sm" type="submit">+ Створити набір</button>
+  </div>
 </form>
 
 <?php if (!$list): ?>
@@ -127,29 +142,8 @@ while (count($rows) < 2) $rows[] = ['product_id' => 0, 'variant_id' => null, 'qt
 
 Порожній рядок нічого не задає. Щоб прибрати позицію — оберіть у ній «— товар —» і збережіть.">
       Склад</h2>
-    <div class="row-list">
-      <?php foreach ($rows as $i => $it): $pid = (int)($it['product_id'] ?? 0); ?>
-        <div class="grid-row bundle-row">
-          <select name="item[<?= $i ?>][product_id]" class="js-bundle-product" data-row="<?= $i ?>">
-            <option value="0">— товар —</option>
-            <?php foreach ($products as $p): ?>
-              <option value="<?= (int)$p['id'] ?>"<?= $pid === (int)$p['id'] ? ' selected' : '' ?>><?= e($p['name']) ?></option>
-            <?php endforeach; ?>
-          </select>
-          <select name="item[<?= $i ?>][variant_id]" class="js-bundle-variant" data-row="<?= $i ?>"
-                  data-selected="<?= (int)($it['variant_id'] ?? 0) ?>">
-            <option value="0">будь-яка фасовка</option>
-            <?php foreach ($variants[$pid] ?? [] as $v): ?>
-              <option value="<?= (int)$v['id'] ?>"<?= (int)($it['variant_id'] ?? 0) === (int)$v['id'] ? ' selected' : '' ?>><?= e($v['name']) ?></option>
-            <?php endforeach; ?>
-          </select>
-          <input type="number" min="1" step="1" name="item[<?= $i ?>][qty]"
-                 value="<?= max(1, (int)($it['qty'] ?? 1)) ?>" title="Скільки штук цього товару входить у набір">
-          <button class="btn btn-danger btn-xs bundle-row-del" type="button" title="Прибрати позицію">✕</button>
-        </div>
-      <?php endforeach; ?>
-    </div>
-    <button class="btn btn-line btn-sm" type="button" id="bundleItemAdd" style="margin-top:12px">+ Додати товар</button>
+    <?= View::partial("partials/bundle_items", [
+          "items" => $b["items"], "products" => $products, "variants" => $variants]) ?>
 
     <?php if ($preview): ?>
       <div style="margin-top:20px;border-top:1px solid var(--line);padding-top:16px">
@@ -199,74 +193,3 @@ while (count($rows) < 2) $rows[] = ['product_id' => 0, 'variant_id' => null, 'qt
 <?php endif; ?>
 <?php endif; ?>
 
-<script>
-/* Фасовки залежать від обраного товару, тому перемальовуються на місці.
-   Весь довідник віддається сторінці одразу: наборів мало, товарів у них
-   одиниці, і запит на кожен вибір коштував би дорожче за сам список. */
-(function () {
-  var VARIANTS = <?= json_js($variants) ?>;
-  var PRODUCTS = <?= json_js(array_map(fn($p) => ['id' => (int)$p['id'], 'name' => (string)$p['name']], $products)) ?>;
-  var list = document.querySelector('.row-list');
-  var add = document.getElementById('bundleItemAdd');
-  if (!list) return;
-
-  function fillVariants(sel) {
-    var row = sel.getAttribute('data-row');
-    var box = document.querySelector('.js-bundle-variant[data-row="' + row + '"]');
-    if (!box) return;
-    var items = VARIANTS[sel.value] || [];
-    box.innerHTML = '<option value="0">будь-яка фасовка</option>';
-    items.forEach(function (v) {
-      var o = document.createElement('option');
-      o.value = v.id; o.textContent = v.name;
-      box.appendChild(o);
-    });
-  }
-
-  function bind(row) {
-    var sel = row.querySelector('.js-bundle-product');
-    if (sel) sel.addEventListener('change', function () { fillVariants(sel); });
-    var del = row.querySelector('.bundle-row-del');
-    if (del) del.addEventListener('click', function () {
-      /* Нижче двох рядків не опускаємось: набір із одного товару однаково
-         не збережеться, і краще не давати зайти в стан, який відхилять. */
-      if (list.children.length > 2) row.remove();
-      else {
-        row.querySelector('.js-bundle-product').value = '0';
-        fillVariants(row.querySelector('.js-bundle-product'));
-      }
-    });
-  }
-
-  Array.prototype.forEach.call(list.children, bind);
-
-  /* Номер нового рядка — більший за всі наявні, а не кількість рядків: після
-     видалення посередині лічильник збігся б із живим рядком, і два товари
-     приїхали б під одним імʼям. */
-  function nextIndex() {
-    var max = -1;
-    list.querySelectorAll('[name^="item["]').forEach(function (i) {
-      var m = i.name.match(/\[(\d+)\]/);
-      if (m) max = Math.max(max, parseInt(m[1], 10));
-    });
-    return max + 1;
-  }
-
-  if (add) add.addEventListener('click', function () {
-    var k = nextIndex();
-    var opts = '<option value="0">— товар —</option>';
-    PRODUCTS.forEach(function (p) { opts += '<option value="' + p.id + '">' + p.name + '</option>'; });
-    var row = document.createElement('div');
-    row.className = 'grid-row bundle-row';
-    row.innerHTML =
-      '<select name="item[' + k + '][product_id]" class="js-bundle-product" data-row="' + k + '">' + opts + '</select>' +
-      '<select name="item[' + k + '][variant_id]" class="js-bundle-variant" data-row="' + k + '">' +
-        '<option value="0">будь-яка фасовка</option></select>' +
-      '<input type="number" min="1" step="1" name="item[' + k + '][qty]" value="1">' +
-      '<button class="btn btn-danger btn-xs bundle-row-del" type="button" title="Прибрати позицію">✕</button>';
-    list.appendChild(row);
-    bind(row);
-    row.querySelector('select').focus();
-  });
-})();
-</script>
