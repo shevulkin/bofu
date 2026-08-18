@@ -56,7 +56,7 @@ $roEdit = $canEdit ? '' : 'disabled';
         <label>Категорія</label>
         <select name="category_id" id="catSelect" <?= $roEdit ?>>
           <?php foreach ($categories as $c): ?>
-            <option value="<?= (int)$c['id'] ?>" <?= ($p['category_id'] ?? 0) == $c['id'] ? 'selected' : '' ?>><?= e($c['name']) ?></option>
+            <option value="<?= (int)$c['id'] ?>" <?= ($p['category_id'] ?? 0) == $c['id'] ? 'selected' : '' ?>><?= e(cat_label($c)) ?></option>
           <?php endforeach; ?>
         </select>
       </div>

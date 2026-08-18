@@ -14,7 +14,9 @@ class Home
         $gallery = json_decode(Content::get('gallery', 'body', '[]'), true) ?: [];
         $faq = json_decode(Content::get('faq', 'body', '[]'), true) ?: [];
         View::show('home/index', [
-            'categories' => Catalog::categories(),
+            // Лише верхній рівень: головна показує, з чого складається магазин,
+            // а не весь його зміст. Розгортати гілку є де — у самому каталозі.
+            'categories' => Catalog::rootCategories(),
             'featured' => $featured,
             'gallery_preview' => array_slice($gallery, 0, 3),
             'faq' => $faq,

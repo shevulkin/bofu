@@ -116,7 +116,7 @@
 
 Якщо потрібна знижка на кілька категорій — створіть окрему акцію на кожну.">
       <label>Категорія</label><select name="category_id">
-      <option value="">Всі</option><?php foreach ($categories as $c): ?><option value="<?= (int)$c['id'] ?>"><?= e($c['name']) ?></option><?php endforeach; ?></select></div>
+      <option value="">Всі</option><?php foreach ($categories as $c): ?><option value="<?= (int)$c['id'] ?>"><?= e(cat_label($c)) ?></option><?php endforeach; ?></select></div>
     <div data-help-title="Товар"
          data-help="Звужує акцію до одного конкретного товару. «Всі» — без обмеження.
 

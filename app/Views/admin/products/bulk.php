@@ -34,7 +34,7 @@ $roCard = $canCard ? '' : 'disabled';
     <select name="cat">
       <option value="">Всі</option>
       <?php foreach ($categories as $c): ?>
-        <option value="<?= (int)$c['id'] ?>" <?= $f['cat'] === (int)$c['id'] ? 'selected' : '' ?>><?= e($c['name']) ?></option>
+        <option value="<?= (int)$c['id'] ?>" <?= $f['cat'] === (int)$c['id'] ? 'selected' : '' ?>><?= e(cat_label($c)) ?></option>
       <?php endforeach; ?>
     </select>
   </div>

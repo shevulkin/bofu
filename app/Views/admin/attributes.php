@@ -106,7 +106,7 @@ $typeOptions = function (string $current): string {
       <label>Категорії (нічого не обрано = для всіх)</label>
       <div class="pick-grid">
         <?php foreach ($categories as $c): ?>
-          <label class="checkbox"><input type="checkbox" name="categories[]" value="<?= (int)$c['id'] ?>"> <?= e($c['name']) ?></label>
+          <label class="checkbox"><input type="checkbox" name="categories[]" value="<?= (int)$c['id'] ?>"> <?= e(cat_label($c)) ?></label>
         <?php endforeach; ?>
       </div>
     </div>
@@ -191,7 +191,7 @@ $typeOptions = function (string $current): string {
         <div class="pick-grid">
           <?php foreach ($categories as $c): ?>
             <label class="checkbox"><input type="checkbox" name="categories[]" value="<?= (int)$c['id'] ?>"
-              <?= in_array((int)$c['id'], $a['category_ids'], true) ? 'checked' : '' ?>> <?= e($c['name']) ?></label>
+              <?= in_array((int)$c['id'], $a['category_ids'], true) ? 'checked' : '' ?>> <?= e(cat_label($c)) ?></label>
           <?php endforeach; ?>
         </div>
       </div>

@@ -331,6 +331,8 @@ input:disabled,select:disabled,textarea:disabled{opacity:.45;cursor:not-allowed}
   .co-submit{display:none}
   /* палець — не курсор: 44 px мінімум */
   .chip{min-height:44px;display:inline-flex;align-items:center}
+  /* стрілка підрозділів — та сама вимога: у неї цілять пальцем найчастіше */
+  .chip-more{min-height:44px;min-width:44px}
   /* Згорнута картка: зверху видно головне — що купуємо і скільки коштує, —
      а деталі за одним дотиком. Розгорнутою вона відсувала форму на 900 px. */
   #coFold > summary{cursor:pointer;display:flex;align-items:center;gap:8px;margin:0}
@@ -428,6 +430,30 @@ input:disabled,select:disabled,textarea:disabled{opacity:.45;cursor:not-allowed}
 .attr-values .checkbox{font-size:13.5px;color:var(--muted)}
 .attr-values .checkbox:hover{color:var(--text)}
 .cat-chips{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:26px}
+
+/* ---------- панель розділів із підрозділами ---------- */
+.cat-nav{margin-bottom:26px}
+.cat-nav .cat-chips{margin-bottom:0}
+/* Розділ і його стрілка — одна деталь із двома діями: перейти в розділ і
+   подивитись, що в ньому лежить. Тому вони склеєні в одну рамку. */
+.chip-group{display:inline-flex}
+.chip-group>.chip{border-top-right-radius:0;border-bottom-right-radius:0}
+.chip-more{display:inline-flex;align-items:center;justify-content:center;min-width:34px;padding:0 9px;
+  background:transparent;border:1px solid var(--line2);border-left:0;border-radius:0 2px 2px 0;
+  color:var(--muted);cursor:pointer;transition:all .15s}
+.chip-more:hover{border-color:var(--gold);color:var(--gold)}
+.chip-more svg{transition:transform .18s}
+.chip-group.is-open .chip-more{border-color:var(--gold);color:var(--gold)}
+.chip-group.is-open .chip-more svg{transform:rotate(180deg)}
+/* обраний розділ підсвічує й свою стрілку — інакше рамка виглядає розірваною */
+.chip-group>.chip.active+.chip-more{border-color:var(--gold);color:var(--gold)}
+/* розділ, усередині якого стоїть обраний підрозділ: не «тут ви є», а «ви звідси» */
+.chip.in-branch{border-color:var(--gold);color:var(--gold)}
+.cat-subs{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;padding:14px 16px;
+  background:var(--bg2);border:1px solid var(--line);border-radius:4px}
+.cat-subs[hidden]{display:none}
+/* підрозділ — крок усередину, а не ще один розділ: без версалок і дрібніший */
+.chip-sub{text-transform:none;letter-spacing:0;font-size:12.5px;padding:7px 14px}
 
 /* ---------- кошик ---------- */
 .cart-table{width:100%;border-collapse:collapse}

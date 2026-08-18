@@ -34,12 +34,55 @@
       </div>
     <?php endif; ?>
 
-    <div class="cat-chips">
-      <a class="chip <?= !$current_cat ? 'active' : '' ?>" href="<?= e(url('/shop')) ?>">Усі</a>
-      <?php foreach ($categories as $c): ?>
-        <a class="chip <?= ($current_cat['id'] ?? null) == $c['id'] ? 'active' : '' ?>" href="<?= e(url('/shop?cat=' . $c['slug'])) ?>"><?= e($c['name']) ?></a>
+    <?php /* Панель розділів. Підрозділи не лежать поруч із розділами одним
+             довгим рядом, а ховаються за стрілкою: інакше «Мед» і чотири його
+             сорти займають пів екрана й вибирати доводиться з тридцяти чипів.
+
+             Стрілка нічого не завантажує — вона розгортає підрозділи на місці,
+             і людина переходить одразу в потрібний, минаючи сотню позицій
+             усього розділу.
+
+             Без JS стрілка не спрацює, тож підрозділи мусять бути досяжні й
+             так: розділ відкривається звичайним посиланням, а на його сторінці
+             ряд підрозділів уже розгорнутий. Пошуковик із тієї ж причини бачить
+             посилання на всі підрозділи — вони в розмітці, лише сховані. */ ?>
+    <?php
+      $curId = (int)($current_cat['id'] ?? 0);
+      // відкрита гілка: розділ обраного підрозділу або сам обраний розділ
+      $openId = (int)($parent_cat['id'] ?? 0) ?: $curId;
+    ?>
+    <nav class="cat-nav" aria-label="Розділи каталогу">
+      <div class="cat-chips">
+        <a class="chip <?= !$current_cat ? 'active' : '' ?>" href="<?= e(url('/shop')) ?>">Усі</a>
+        <?php foreach ($cat_tree as $c): $cid = (int)$c['id']; $kids = $c['children'] ?? []; ?>
+          <?php if (!$kids): ?>
+            <a class="chip <?= $curId === $cid ? 'active' : '' ?>" href="<?= e(url('/shop?cat=' . $c['slug'])) ?>"><?= e($c['name']) ?></a>
+          <?php else: $open = $openId === $cid; ?>
+            <span class="chip-group<?= $open ? ' is-open' : '' ?>">
+              <?php /* сам розділ лишається клікабельним: у ньому є й власні
+                       товари, і ті, що в підрозділах */ ?>
+              <a class="chip <?= $curId === $cid ? 'active' : ($open ? 'in-branch' : '') ?>"
+                 href="<?= e(url('/shop?cat=' . $c['slug'])) ?>"><?= e($c['name']) ?></a>
+              <button type="button" class="chip-more" data-cat-toggle="<?= $cid ?>"
+                      aria-controls="catsub-<?= $cid ?>" aria-expanded="<?= $open ? 'true' : 'false' ?>"
+                      aria-label="Підрозділи: <?= e($c['name']) ?>" title="Підрозділи">
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 5l5 6 5-6"/></svg>
+              </button>
+            </span>
+          <?php endif; ?>
+        <?php endforeach; ?>
+      </div>
+      <?php foreach ($cat_tree as $c): $cid = (int)$c['id']; $kids = $c['children'] ?? []; if (!$kids) continue; ?>
+        <div class="cat-subs" id="catsub-<?= $cid ?>" data-cat-subs="<?= $cid ?>" <?= $openId === $cid ? '' : 'hidden' ?>>
+          <a class="chip chip-sub <?= $curId === $cid ? 'active' : '' ?>"
+             href="<?= e(url('/shop?cat=' . $c['slug'])) ?>">Усе в розділі</a>
+          <?php foreach ($kids as $k): ?>
+            <a class="chip chip-sub <?= $curId === (int)$k['id'] ? 'active' : '' ?>"
+               href="<?= e(url('/shop?cat=' . $k['slug'])) ?>"><?= e($k['name']) ?></a>
+          <?php endforeach; ?>
+        </div>
       <?php endforeach; ?>
-    </div>
+    </nav>
 
     <?php $hasActiveFilters = $filters['q'] !== '' || $filters['min'] !== '' || $filters['max'] !== '' || !empty($filters['store_id']) || $filters['sort'] !== '' || array_filter($filters['attr']) || $filters['brand']; ?>
     <form class="filters" id="filtersPanel" method="get" action="<?= e(url('/shop')) ?>" style="<?= $hasActiveFilters ? '' : 'display:none' ?>">
@@ -132,6 +175,33 @@
 </section>
 
 <script>
+/* Стрілка розділу: розгортає його підрозділи на місці, нічого не завантажуючи.
+   Одночасно відкритий лише один ряд — два ряди підрозділів під панеллю
+   відсувають товари вниз рівно тоді, коли покупець їх шукає. */
+(function(){
+  var chips = document.querySelectorAll('[data-cat-toggle]');
+  if (!chips.length) return;
+  Array.prototype.forEach.call(chips, function(btn){
+    btn.addEventListener('click', function(){
+      var id = btn.getAttribute('data-cat-toggle');
+      var row = document.querySelector('[data-cat-subs="' + id + '"]');
+      if (!row) return;
+      var open = row.hasAttribute('hidden');
+      Array.prototype.forEach.call(document.querySelectorAll('[data-cat-subs]'), function(r){
+        r.setAttribute('hidden', '');
+      });
+      Array.prototype.forEach.call(chips, function(b){
+        b.setAttribute('aria-expanded', 'false');
+        if (b.parentNode) b.parentNode.classList.remove('is-open');
+      });
+      if (open) {
+        row.removeAttribute('hidden');
+        btn.setAttribute('aria-expanded', 'true');
+        if (btn.parentNode) btn.parentNode.classList.add('is-open');
+      }
+    });
+  });
+})();
 (function(){
   var toggle = document.getElementById('filtersToggle');
   var panel = document.getElementById('filtersPanel');

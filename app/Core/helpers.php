@@ -162,6 +162,17 @@ function plural(int $n, string $one, string $few, string $many): string {
     };
 }
 
+/**
+ * Назва категорії у випадному списку: підрозділ із відступом — «— Липовий».
+ *
+ * Списки категорій в адмінці пласкі, а каталог тепер має два рівні. Без
+ * відступу «Липовий» і «Мед» стоять поруч як рівні розділи, і товар легко
+ * покласти на поверх вище, ніж збирались.
+ */
+function cat_label(array $c): string {
+    return str_repeat('— ', (int)($c['depth'] ?? 0)) . (string)$c['name'];
+}
+
 /** Те саме, але разом із самим числом: «3 товари» */
 function plural_n(int $n, string $one, string $few, string $many): string {
     return $n . ' ' . plural($n, $one, $few, $many);

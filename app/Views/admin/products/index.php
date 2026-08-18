@@ -37,7 +37,7 @@
     <select name="cat">
       <option value="">Всі</option>
       <?php foreach ($categories as $c): ?>
-        <option value="<?= (int)$c['id'] ?>" <?= $cat == $c['id'] ? 'selected' : '' ?>><?= e($c['name']) ?></option>
+        <option value="<?= (int)$c['id'] ?>" <?= $cat == $c['id'] ? 'selected' : '' ?>><?= e(cat_label($c)) ?></option>
       <?php endforeach; ?>
     </select>
   </div>
