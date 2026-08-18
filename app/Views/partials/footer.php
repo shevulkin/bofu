@@ -67,14 +67,15 @@ $entity = Content::title('legal_entity');
     </div>
   </div>
 
+  <?php /* Рік і правові посилання — один підпис, а не два різні повідомлення.
+           Кожне посилання йде разом зі своєю крапкою в нерозривному шматку:
+           тоді при перенесенні рядка крапка їде з посиланням, а не лишається
+           висіти на початку нового рядка. */ ?>
   <div class="container footer-legal">
     <p class="footer-copy">
-      © <?= date('Y') ?> <?= $entity !== '' ? e($entity) : 'Beekeeper of Ukraine' ?>.
-      Усі права захищено.
-    </p>
-    <p class="footer-copy">
-      <a href="<?= e(url('/offer')) ?>">Публічна оферта</a> ·
-      <a href="<?= e(url('/privacy')) ?>">Політика конфіденційності</a>
+      © <?= date('Y') ?> <?= $entity !== '' ? e($entity) : 'Beekeeper of Ukraine' ?>. Усі права захищено.
+      <span class="footer-legal-item">· <a href="<?= e(url('/offer')) ?>">Публічна оферта</a></span>
+      <span class="footer-legal-item">· <a href="<?= e(url('/privacy')) ?>">Політика конфіденційності</a></span>
     </p>
   </div>
 </footer>
