@@ -13,13 +13,15 @@
         </div>
       </div>
     </div>
+    <?php if ($faq): ?>
     <div style="margin-top:56px">
-      <h2 style="font-size:26px">Часті запитання</h2>
-      <div<?= edit_mark('faq') ?>>
-        <?php foreach (json_decode(Content::get('faq', 'body', '[]'), true) ?: [] as $qa): ?>
+      <h2 style="font-size:26px">Часті запитання про навчання</h2>
+      <div<?= edit_mark('faq_course') ?>>
+        <?php foreach ($faq as $qa): ?>
           <details class="faq-item"><summary><?= e($qa[0]) ?></summary><p><?= e($qa[1]) ?></p></details>
         <?php endforeach; ?>
       </div>
     </div>
+    <?php endif; ?>
   </div>
 </section>

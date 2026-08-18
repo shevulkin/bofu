@@ -240,7 +240,7 @@ class Checkout
         if ($promo) Promo::recordUse($promo, (int)$placed['id'], Auth::id(), $phone);
 
         // Адресу зберігаємо лише за явною галкою і лише залогіненим: гостю
-        // її нікуди прив'язати. Самовивіз не зберігаємо — це адреса магазину.
+        // її нікуди привʼязати. Самовивіз не зберігаємо — це адреса магазину.
         if (Auth::id() && $delivery !== 'pickup') {
             $addrId = (int)($_POST['address_id'] ?? 0);
             if (!empty($_POST['save_address'])) {

@@ -62,7 +62,7 @@ class OrderFlow
     {
         if (($o['delivery'] ?? '') === 'pickup') return '';
         // Курʼєр — це вулиця з будинком, а не відділення. Показати замість
-        // адреси саме місто означало б послати кур'єра в нікуди.
+        // адреси саме місто означало б послати курʼєра в нікуди.
         if (($o['delivery'] ?? '') === 'np' && ($o['np_type'] ?? 'warehouse') === 'courier') {
             $house = trim((string)($o['np_house'] ?? ''));
             $flat = trim((string)($o['np_flat'] ?? ''));

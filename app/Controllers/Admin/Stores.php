@@ -17,7 +17,8 @@ class Stores
                 DB::insert('stores', array_merge([
                     'name' => $name, 'slug' => slugify($name) . '-' . random_int(10, 99),
                     'city' => trim($_POST['city'] ?? '') ?: null, 'address' => trim($_POST['address'] ?? '') ?: null,
-                    'phone' => trim($_POST['phone'] ?? '') ?: null, 'active' => 1,
+                    'phone' => trim($_POST['phone'] ?? '') ?: null,
+                    'hours' => trim($_POST['hours'] ?? '') ?: null, 'active' => 1,
                     'sort' => (int)DB::val('SELECT COALESCE(MAX(sort),0)+1 FROM stores'),
                 ], self::coords($_POST['coords'] ?? '', $bad)));
                 flash('success', $bad ? 'Магазин додано, але координати не розібрались — впишіть їх у рядку нижче'
@@ -30,6 +31,7 @@ class Stores
                     DB::update('stores', array_merge([
                         'name' => $name, 'city' => trim($s['city'] ?? '') ?: null,
                         'address' => trim($s['address'] ?? '') ?: null, 'phone' => trim($s['phone'] ?? '') ?: null,
+                        'hours' => trim($s['hours'] ?? '') ?: null,
                         'active' => !empty($s['active']) ? 1 : 0,
                     ], self::coords($s['coords'] ?? '', $bad), self::npSender($s), self::kasa($s)), 'id = ?', [(int)$id]);
                     if ($bad) $badNames[] = $name;

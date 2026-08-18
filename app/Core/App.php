@@ -151,6 +151,10 @@ class App
         if ($path === '/social') { Controllers\Home::social(); }
         if ($path === '/stores') { Controllers\Home::stores(); }
         if ($path === '/partners') { Controllers\Home::partners(); }
+        // Правові сторінки. Умови продажу — частина товару, а не додаток до
+        // нього: без них покупець не знає, з ким має справу, а закон вимагає
+        // цієї інформації на сайті.
+        if (preg_match('~^/(delivery|payment|returns|privacy|offer)$~', $path, $m)) { Controllers\Home::legal($m[1]); }
         if ($path === '/diploma') { Controllers\Home::diploma(); }
         if ($path === '/diploma/check' && $method === 'POST') { RateLimit::guard('diploma', 40, 3600); Controllers\Home::diplomaCheck(); }
 

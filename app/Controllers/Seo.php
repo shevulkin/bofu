@@ -32,7 +32,17 @@ class Seo
         $host = ($_SERVER['HTTP_HOST'] ?? 'localhost');
         $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
         $abs = fn(string $p) => $scheme . '://' . $host . base_url($p);
-        $urls = [['/', '1.0'], ['/shop', '0.9'], ['/about', '0.6'], ['/courses', '0.8'], ['/diploma', '0.5'], ['/social', '0.4'], ['/gallery', '0.4']];
+        // Правові сторінки й «Де нас знайти» теж у карті: за запитами «доставка
+        // мед», «повернення» і назвою міста люди приходять саме на них, а
+        // Google Merchant Center вимагає, щоб умови доставки й повернення були
+        // доступні окремими адресами.
+        $urls = [
+            ['/', '1.0'], ['/shop', '0.9'], ['/courses', '0.8'], ['/about', '0.6'],
+            ['/stores', '0.6'], ['/partners', '0.4'], ['/diploma', '0.5'],
+            ['/social', '0.4'], ['/gallery', '0.4'],
+            ['/delivery', '0.5'], ['/payment', '0.5'], ['/returns', '0.5'],
+            ['/privacy', '0.3'], ['/offer', '0.3'],
+        ];
         foreach (DB::all('SELECT slug, updated_at FROM products WHERE active = 1') as $p) {
             $urls[] = ['/product/' . $p['slug'], '0.8', $p['updated_at']];
         }

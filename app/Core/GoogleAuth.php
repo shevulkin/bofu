@@ -57,7 +57,7 @@ class GoogleAuth
         $profile = json_decode((string)$resp, true);
         if (!is_array($profile) || empty($profile['sub']) || empty($profile['email'])) return null;
         // непідтверджений email не можна довіряти: інакше через нього можна
-        // «під'єднатись» до чужого акаунта, який має ту саму адресу
+        // «підʼєднатись» до чужого акаунта, який має ту саму адресу
         if (array_key_exists('email_verified', $profile)
             && !filter_var($profile['email_verified'], FILTER_VALIDATE_BOOLEAN)) return null;
         return $profile;

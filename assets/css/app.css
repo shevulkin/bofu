@@ -15,6 +15,11 @@
 }
 *{margin:0;padding:0;box-sizing:border-box}
 html{scroll-behavior:smooth}
+/* Клавіатурний фокус на весь сайт. Раніше він був описаний лише для полів
+   вводу, а кнопки й посилання лишалися з системним кільцем — синім на
+   темно-коричневому. Через :focus-visible, а не :focus: миша не має лишати
+   обведення після кліку, клавіатура — має. */
+:focus-visible{outline:2px solid var(--gold2);outline-offset:2px;border-radius:2px}
 body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;line-height:1.55}
 ::selection{background:var(--gold);color:var(--bg)}
 a{color:var(--gold);text-decoration:none}
@@ -68,11 +73,34 @@ button.chip{font-family:inherit;display:inline-flex;align-items:center;gap:8px}
 .nav-links{display:flex;gap:14px;font-weight:600;font-size:13px;letter-spacing:.02em;white-space:nowrap;flex-wrap:wrap}
 .nav-links a{color:var(--text)}
 .nav-links a:hover,.nav-links a.active{color:var(--gold)}
-.nav-side{display:flex;align-items:center;gap:14px;flex-shrink:0}
-.nav-side a{color:var(--muted);font-weight:600;font-size:13px;white-space:nowrap}
+.nav-side{display:flex;align-items:center;gap:6px;flex-shrink:0}
+/* Площа натискання, а не розмір напису. «Кошик» і «Увійти» — дві найчастіші
+   кнопки магазину, і на телефоні вони мали зону 40×20 px при рекомендованих
+   44×44. Добираємо відступами: візуально рядок лишається тим самим, пальцю
+   стає в що влучати. Відʼємний margin компенсує новий padding, щоб шапка не
+   поповнішала. */
+.nav-side a{color:var(--muted);font-weight:600;font-size:13px;white-space:nowrap;
+  display:inline-flex;align-items:center;min-height:44px;padding:0 8px}
 .nav-side a:hover{color:var(--gold)}
 .cart-link{position:relative;display:flex;align-items:center;gap:8px;color:var(--text)!important}
 .cart-badge{background:var(--gold);color:var(--bg);border-radius:20px;font-size:11px;font-weight:800;padding:1px 7px}
+/* ---------- пошук у шапці ---------- */
+.nav-search{display:flex;align-items:center;border:1px solid var(--line2);border-radius:2px;
+  background:var(--bg2);flex:0 1 220px;min-width:0;transition:border-color .18s}
+.nav-search:focus-within{border-color:var(--gold)}
+.nav-search input{flex:1;min-width:0;background:none;border:none;color:var(--text);
+  font-family:inherit;font-size:13px;padding:10px 12px;outline:none}
+.nav-search input::placeholder{color:var(--dim)}
+/* хрестик, який Chrome малює в type=search, на темному тлі майже не видно
+   й до того ж зсуває поле — прибираємо, очистити можна виділенням */
+.nav-search input::-webkit-search-cancel-button{display:none}
+.nav-search button{background:none;border:none;color:var(--muted);cursor:pointer;
+  display:flex;align-items:center;justify-content:center;width:38px;height:38px;flex-shrink:0}
+.nav-search button:hover{color:var(--gold)}
+/* Підпис для зчитувача екрана: поле з самим placeholder лишається без назви,
+   і «пошук» доводиться вгадувати за іконкою */
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;
+  clip:rect(0,0,0,0);white-space:nowrap;border:0}
 .mobile-menu-btn{display:none;background:none;border:1px solid var(--line2);color:var(--text);padding:8px 12px;border-radius:2px;cursor:pointer;font-size:16px}
 .mobile-menu{display:none;background:var(--bg2);border-bottom:1px solid var(--line);flex-direction:column;padding:8px 20px 16px}
 .mobile-menu a{color:var(--text);font-weight:600;font-size:15px;padding:12px 0;border-bottom:1px solid var(--bg3)}
@@ -149,6 +177,13 @@ button.chip{font-family:inherit;display:inline-flex;align-items:center;gap:8px}
 .specs td:first-child{color:var(--dim);width:45%}
 .availability{display:flex;flex-direction:column;gap:6px;margin-top:6px;font-size:13.5px}
 .availability .yes{color:var(--ok)} .availability .no{color:var(--dim)}
+/* «Виготовимо під замовлення» — відповідь, а не примітка: стоїть над переліком
+   точок і набрана так, щоб її прочитали раніше за рядки «немає». */
+.mto-lead{color:var(--gold);font-size:15px;font-weight:600;margin:0 0 10px}
+/* Ціна за 100 г — під сумою, дрібним: орієнтир для порівняння, а не друга ціна.
+   Окремим рядком, бо поруч із «600 грн» вона читалася б як частина суми. */
+.price-unit{display:block;font-family:var(--sans);font-size:13px;font-weight:600;
+  color:var(--dim);letter-spacing:.02em;margin-top:4px}
 .variants{display:flex;gap:10px;flex-wrap:wrap;margin:6px 0 2px}
 .qty-box{display:inline-flex;border:1px solid var(--line2);border-radius:2px}
 .qty-box button{background:none;border:none;color:var(--text);width:38px;height:42px;font-size:17px;cursor:pointer}
@@ -283,6 +318,9 @@ input:disabled,select:disabled,textarea:disabled{opacity:.45;cursor:not-allowed}
 .co-trust{list-style:none;margin:16px 0 18px;display:flex;flex-direction:column;gap:7px}
 .co-trust li{font-size:13px;color:var(--muted);padding-left:20px;position:relative;line-height:1.35}
 .co-trust li::before{content:'✓';position:absolute;left:0;color:var(--gold);font-weight:700}
+/* Рядок про оферту — тихий і дрібний: він обовʼязковий, але не має
+   сперечатися за увагу з кнопкою підтвердження прямо над ним */
+.co-terms{margin:12px 0 0;font-size:12px;line-height:1.5;text-align:center}
 .co-bar{display:none}
 @media (max-width:1000px){
   .co-grid{grid-template-columns:1fr}
@@ -412,7 +450,10 @@ input:disabled,select:disabled,textarea:disabled{opacity:.45;cursor:not-allowed}
 .cart-toast-body{flex:1}
 .cart-toast-text{font-size:14px;font-weight:600;color:var(--text);margin-bottom:12px}
 .cart-toast-actions{display:flex;gap:8px;flex-wrap:wrap}
-.cart-toast-close{background:none;border:none;color:var(--dim);font-size:18px;line-height:1;cursor:pointer;padding:0}
+/* Хрестик мав зону 9×18 px — влучити в нього пальцем неможливо. Сам знак
+   лишається того ж розміру, зона доростає до 44×44. */
+.cart-toast-close{background:none;border:none;color:var(--dim);font-size:18px;line-height:1;cursor:pointer;
+  padding:0;width:44px;height:44px;margin:-13px -13px auto auto;display:flex;align-items:center;justify-content:center;flex-shrink:0}
 .cart-toast-close:hover{color:var(--text)}
 @media (max-width:480px){.cart-toast{left:12px;right:12px;bottom:12px;max-width:none}}
 
@@ -449,16 +490,44 @@ input:disabled,select:disabled,textarea:disabled{opacity:.45;cursor:not-allowed}
    якими порожньо; зібрані докупи вони стають одним підписом під сайтом.
    Побічно це прибирає й окремий випадок для телефона: там колонка вже була, і
    тепер вигляд однаковий на будь-якій ширині. */
-footer{border-top:1px solid var(--line);padding:44px 0 60px;margin-top:40px}
-.footer-inner{display:flex;flex-direction:column;align-items:center;text-align:center;
-  gap:16px;color:var(--dim);font-size:13.5px}
-.footer-inner a{color:var(--muted)}
-/* Логотип із назвою — теж по центру: .brand за замовчуванням тягнеться вліво */
-.footer-inner .brand{justify-content:center}
-.footer-social{display:flex;gap:18px;align-items:center;flex-wrap:wrap;justify-content:center}
+footer{border-top:1px solid var(--line);padding:52px 0 40px;margin-top:40px}
+/* Чотири колонки: хто ми → контакти → умови покупки → про нас. Перша ширша,
+   бо тримає лого, опис і соцмережі; решта рівні. */
+.footer-grid{display:grid;grid-template-columns:1.6fr 1fr 1fr 1fr;gap:36px;
+  color:var(--dim);font-size:13.5px}
+.footer-col h4{font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--text);font-weight:700;margin-bottom:14px;font-family:var(--sans)}
+/* Крок між пунктами — щоб на телефоні палець не влучав у сусідній рядок.
+   Самі посилання лишаються текстом: розтягувати їх до 44 px висотою означало б
+   зробити з переліку стовпчик кнопок. */
+.footer-col ul{list-style:none;display:flex;flex-direction:column;gap:14px}
+.footer-col a{color:var(--muted)}
+.footer-col a:hover{color:var(--gold)}
+.footer-social{display:flex;gap:18px;align-items:center;flex-wrap:wrap;margin-top:16px}
+.footer-social a{color:var(--muted);display:flex;align-items:center;gap:7px}
+.footer-social a:hover{color:var(--gold)}
 /* Правовий рядок — останній і найтихіший: його читають раз, і він не має
    перебивати назву чи посилання, між якими стоїть решта футера */
-.footer-copy{margin:0;padding-top:4px;font-size:13px;color:var(--dim)}
+.footer-legal{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;
+  margin-top:40px;padding-top:20px;border-top:1px solid var(--line)}
+.footer-copy{margin:0;font-size:12.5px;color:var(--dim)}
+.footer-copy a{color:var(--dim)}
+.footer-copy a:hover{color:var(--muted)}
+@media (max-width:900px){
+  .footer-grid{grid-template-columns:1fr 1fr;gap:32px 24px}
+  .footer-brand-col{grid-column:1/-1}
+}
+@media (max-width:480px){
+  .footer-grid{grid-template-columns:1fr}
+  .footer-legal{flex-direction:column;gap:8px}
+}
+
+/* ---------- правові сторінки ---------- */
+/* Документ, а не вітрина: вузька колонка, збережені переноси рядків і
+   помітний інтервал — такий текст читають підряд, а не проглядають. */
+.legal-text{margin-top:22px;white-space:pre-line;color:var(--muted);font-size:15.5px;line-height:1.75}
+.legal-entity{margin-top:40px;padding-top:22px;border-top:1px solid var(--line);font-size:13.5px}
+.legal-entity-name{color:var(--text);font-weight:700;margin:0}
 
 /* ---------- модалка авторизації ---------- */
 .modal-back{position:fixed;inset:0;background:rgba(10,8,7,.8);z-index:100;display:none;align-items:center;justify-content:center;padding:20px}
@@ -490,6 +559,10 @@ footer{border-top:1px solid var(--line);padding:44px 0 60px;margin-top:40px}
   .nav-links{display:none}
   .brand-text{display:none}
   .mobile-menu-btn{display:flex}
+  /* Пошук у вузькій шапці не вміщається поруч із кошиком і бургером —
+     переїжджає всередину мобільного меню, першим рядком */
+  .nav-search{display:none}
+  .mobile-menu .nav-search{display:flex;flex:1 1 auto;margin-bottom:6px}
   .form-grid{grid-template-columns:1fr}
   .cart-table th:nth-child(2),.cart-table td:nth-child(2){display:none}
 }
@@ -1080,6 +1153,9 @@ body.help-on [data-help] *{pointer-events:none}
 .store-card h3{font-size:17px;margin-bottom:6px}
 .store-card p{margin:0 0 4px;color:var(--muted);font-size:14px}
 .store-card .dim{font-size:13px}
+/* Графік роботи — золотим: на цій сторінці це найчастіше питання, і воно має
+   вирізнятись із адреси й телефону, набраних однаково */
+.store-card .store-hours{color:var(--gold);font-size:13.5px;font-weight:600;margin-top:6px}
 .store-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;margin-top:20px}
 @media (max-width:600px){
   .store-map{height:260px}

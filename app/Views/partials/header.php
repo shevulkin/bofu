@@ -13,6 +13,21 @@
       <a href="<?= e(url('/partners')) ?>">Партнери</a>
       <a href="<?= e(url('/stores')) ?>">Де нас знайти</a>
     </div>
+    <?php /* Пошук у шапці, а не всередині згорнутої панелі «Фільтри».
+             Покупець, який знає, що йому треба, шукає словом — і до цього
+             моменту йому доводилось спершу зайти в каталог, потім розгорнути
+             фільтри й аж там знайти поле. Форма звичайна, GET: працює без JS
+             і веде в той самий каталог, який уже вміє шукати. */ ?>
+    <form class="nav-search" method="get" action="<?= e(url('/shop')) ?>" role="search">
+      <label class="sr-only" for="navSearch">Пошук товарів</label>
+      <input type="search" id="navSearch" name="q" placeholder="Що шукаєте?"
+             value="<?= e($_GET['q'] ?? '') ?>" autocomplete="off">
+      <button type="submit" aria-label="Знайти">
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <circle cx="7" cy="7" r="5"/><path d="M11 11l4 4"/>
+        </svg>
+      </button>
+    </form>
     <div class="nav-side">
       <?php if ($auth_user): ?>
         <?= View::partial('partials/role_switch') ?>
@@ -40,6 +55,18 @@
     </div>
   </nav>
   <div class="mobile-menu" id="mobileMenu">
+    <?php /* Пошук першим рядком меню: у вузькій шапці для нього немає місця,
+             а потреба в ньому на телефоні не менша, ніж на компʼютері. */ ?>
+    <form class="nav-search" method="get" action="<?= e(url('/shop')) ?>" role="search">
+      <label class="sr-only" for="navSearchMobile">Пошук товарів</label>
+      <input type="search" id="navSearchMobile" name="q" placeholder="Що шукаєте?"
+             value="<?= e($_GET['q'] ?? '') ?>" autocomplete="off">
+      <button type="submit" aria-label="Знайти">
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <circle cx="7" cy="7" r="5"/><path d="M11 11l4 4"/>
+        </svg>
+      </button>
+    </form>
     <a href="<?= e(url('/about')) ?>">Про мене</a>
     <a href="<?= e(url('/courses')) ?>">Курси</a>
     <a href="<?= e(url('/shop')) ?>">Магазин</a>

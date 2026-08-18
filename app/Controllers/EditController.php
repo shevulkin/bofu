@@ -136,7 +136,7 @@ class EditController
         ];
     }
 
-    /** Адреси прев'ю для галереї — щоб панель не збирала шляхи руками */
+    /** Адреси превʼю для галереї — щоб панель не збирала шляхи руками */
     private static function galleryThumbs(string $key): array
     {
         if (ContentSchema::type($key, 'body') !== 'gallery') return [];

@@ -99,7 +99,7 @@ class Telegram
         }
     }
 
-    /** Ім'я бота (кешується) — для посилань t.me/<bot>?start=... */
+    /** Імʼя бота (кешується) — для посилань t.me/<bot>?start=... */
     public static function username(): string
     {
         $u = Settings::get('tg_bot_username', '');

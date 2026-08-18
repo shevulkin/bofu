@@ -5,7 +5,7 @@ namespace Controllers\Admin;
 
 use DB, View, Auth, Attrs, Catalog;
 
-/** Словник характеристик: назви, значення, прив'язка до категорій */
+/** Словник характеристик: назви, значення, привʼязка до категорій */
 class Attributes
 {
     public static function index(): never

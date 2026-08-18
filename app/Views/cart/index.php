@@ -3,7 +3,16 @@
     <div class="kicker">Кошик</div>
     <h2>Ваше замовлення</h2>
     <?php if (!$rows): ?>
-      <p class="muted" style="padding:36px 0">Кошик порожній. <a href="<?= e(url('/shop')) ?>">Перейти до магазину →</a></p>
+      <p class="muted" style="padding:28px 0 4px">Тут поки порожньо.
+        <a href="<?= e(url('/shop')) ?>">Перейти до магазину →</a></p>
+      <?php if ($suggest): ?>
+        <div class="kicker" style="margin-top:40px">З чого почати</div>
+        <div class="grid grid-4" style="margin-top:16px">
+          <?php foreach ($suggest as $prod): ?>
+            <?= View::partial('partials/product_card', ['prod' => $prod]) ?>
+          <?php endforeach; ?>
+        </div>
+      <?php endif; ?>
     <?php else: ?>
       <table class="cart-table" style="margin-top:30px">
         <tr><th>Товар</th><th></th><th>Ціна</th><th>К-сть</th><th>Сума</th><th></th></tr>

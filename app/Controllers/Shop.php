@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 namespace Controllers;
 
-use DB, View, Catalog, Content, Attrs, Auth, Csrf, StockWatch;
+use DB, View, Catalog, Content, Attrs, Auth, Csrf, StockWatch, JsonLd;
 
 class Shop
 {
@@ -37,9 +37,17 @@ class Shop
                 [$filters['brand'][0], (int)$filters['brand'][0]])
             : null;
 
-        // Обрані товари інших категорій (як у дизайні)
+        // Обрані товари інших категорій (як у дизайні).
+        //
+        // Виключаємо не лише поточну категорію, а й усе, що вже стоїть вище на
+        // цій самій сторінці. Без цього на «Всіх товарах» (де категорія не
+        // обрана й фільтрувати не було чим) блок «Вас може зацікавити»
+        // показував ті самі чотири позиції з мітками «ХІТ», які покупець
+        // щойно проминув, — цілий екран без жодної нової позиції.
+        $shownIds = array_map(fn($r) => (int)$r['id'], $products);
+        $skip = $shownIds ? ' AND id NOT IN (' . implode(',', $shownIds) . ')' : '';
         $other = DB::all('SELECT * FROM products WHERE active = 1 AND featured = 1' .
-            ($current ? ' AND category_id != ' . (int)$current['id'] : '') . ' ORDER BY id LIMIT 4');
+            ($current ? ' AND category_id != ' . (int)$current['id'] : '') . $skip . ' ORDER BY id LIMIT 4');
         Catalog::preloadBrands($other);
 
         View::show('shop/index', [
@@ -53,7 +61,40 @@ class Shop
             'attr_options' => Catalog::filterableAttrs($current['id'] ?? null),
             'brand_options' => Catalog::filterableBrands($current['id'] ?? null),
             'page_title' => ($current ? $current['name'] . ' — ' : '') . 'Магазин — ' . cfg('app_name'),
+            // Свій опис на категорію. Порожній падав у загальний seo_description,
+            // і Google бачив десяток сторінок з однаковим описом — для нього це
+            // дублікати, які він показує в видачі неохоче.
+            'meta_description' => $current
+                ? mb_substr($current['name'], 0, 1) . mb_strtolower(mb_substr($current['name'], 1))
+                    . ' з власної пасіки: ' . count($products) . ' '
+                    . plural(count($products), 'позиція', 'позиції', 'позицій')
+                    . ' у наявності, доставка Новою Поштою та самовивіз із магазинів.'
+                : 'Мед, продукти бджільництва, свічки, інструмент і костюми пасічника з власної пасіки. Доставка Новою Поштою по всій Україні.',
+            'jsonld' => [JsonLd::breadcrumbs(array_values(array_filter([
+                ['Головна', '/'],
+                ['Магазин', $current ? '/shop' : null],
+                $current ? [$current['name'], null] : null,
+            ])))],
         ]);
+    }
+
+    /**
+     * Чи вага вже описана характеристикою товару.
+     *
+     * Колонка weight зʼявилась пізніше за характеристики, і в багатьох картках
+     * вага живе в обох місцях одразу. Показувати треба щось одне — лишаємо те,
+     * що вписав власник руками: у характеристиці він міг уточнити («350 г ± 5»),
+     * а колонка зберігає лише число.
+     */
+    private static function weightIsAttr(array $attrs): bool
+    {
+        foreach ($attrs as $a) {
+            $name = mb_strtolower(trim((string)($a['name'] ?? '')));
+            // Обидва написання апострофа навмисно: у старих картках вага
+            // заведена звичайною лапкою, у нових — правильним U+02BC.
+            if (in_array($name, ['вага', 'маса', 'обʼєм', "об'єм", 'объем'], true)) return true;
+        }
+        return false;
     }
 
     public static function product(string $slug): never
@@ -102,11 +143,16 @@ class Shop
                 $sp = Catalog::price($p, $v, $sid)[0];
                 $storePrices[$sid] = ($sp !== null && $sp != $vp) ? price_fmt($sp) : '';
             }
+            // Вага належить фасовці: банка 0,5 і банка 1,5 — це різна вага й
+            // різна ціна за 100 г. Порожня у варіанта — беремо товарну.
+            $vw = ($v['weight'] ?? null) !== null && $v['weight'] > 0 ? (float)$v['weight'] : (float)($p['weight'] ?? 0);
             $variantData[] = [
                 'id' => $vid, 'name' => $v['name'], 'sku' => $v['sku'] ?? '',
                 'price' => $vp, 'price_fmt' => $vp !== null ? price_fmt($vp) : 'Ціна за запитом',
                 'old_fmt' => $vo !== null ? price_fmt($vo) : '',
                 'qty' => $qty, 'opts' => $opts, 'store_price' => $storePrices,
+                'weight_fmt' => weight_fmt($vw),
+                'per_100g' => price_per_100g($vp, $vw),
             ];
         }
 
@@ -118,9 +164,32 @@ class Shop
             'variant_axes' => $axes, 'variant_data' => $variantData,
             'images' => $images, 'availability' => $availability,
             'price' => $price, 'old_price' => $old, 'related' => $related,
+            // Вага й ціна за 100 г для стану «до вибору варіанта»; далі їх
+            // переставляє JS разом із ціною — так само, як наявність.
+            //
+            // Рядок ваги не показуємо, якщо вагу вже описали характеристикою:
+            // її заводили руками задовго до появи колонки, і два однакові рядки
+            // «Вага 350 г» підряд читаються як помилка, а не як подробиця.
+            'weight_fmt' => self::weightIsAttr($attrs) ? '' : weight_fmt($first['weight'] ?? $p['weight'] ?? null),
+            'per_100g' => price_per_100g($price, ($first['weight'] ?? null) ?: ($p['weight'] ?? null)),
             'page_title' => $p['name'] . ' — ' . cfg('app_name'),
             'meta_description' => $p['short_desc'] ?? '',
             'jsonld_product' => true,
+            'jsonld' => [
+                JsonLd::product(
+                    $p, $images, $price,
+                    array_map(fn($n) => ['@type' => 'Brand', 'name' => $n], Catalog::brandNames($p)),
+                    Catalog::stock((int)$p['id']) > 0 || !empty($p['made_to_order'])
+                ),
+                // Крихти повторюють шлях, яким людина сюди дійшла: головна →
+                // категорія → товар. Google показує їх замість голої адреси.
+                JsonLd::breadcrumbs(array_values(array_filter([
+                    ['Головна', '/'],
+                    ['Магазин', '/shop'],
+                    $cat ? [$cat['name'], '/shop?cat=' . $cat['slug']] : null,
+                    [$p['name'], null],
+                ]))),
+            ],
             // чи ця людина вже чекає обраний варіант — щоб не пропонувати вдруге
             'watching' => StockWatch::isWaiting((int)$p['id'], $first['id'] ?? null, Auth::id()),
         ]);
