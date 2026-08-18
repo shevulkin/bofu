@@ -19,9 +19,6 @@ class QtyDiscounts
      */
     public const MIN_QTY = 2;
 
-    /** Скільки порожніх рядків тримати у формі про запас */
-    public const SPARE_ROWS = 3;
-
     /** Стеля відсотка в самій шкалі: 100% — це «безкоштовно», і це не знижка */
     public const MAX_PERCENT = 99.0;
 

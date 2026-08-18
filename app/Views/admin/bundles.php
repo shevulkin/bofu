@@ -6,9 +6,12 @@
  * @var array      $products товари для вибору
  * @var array      $variants фасовки: [product_id => [{id,name}]]
  */
-$SPARE = 3;   // порожніх рядків складу про запас
+/* Рядки складу додаються кнопкою. Скільки товарів у наборі, знає лише той,
+   хто його складає: зашите число одному лишає порожні рядки, а іншому не дає
+   дописати наступний, не зберігши спершу. Новому набору даємо два — менше
+   за два позицій у наборі не буває за визначенням. */
 $rows = $b ? $b['items'] : [];
-for ($i = 0; $i < $SPARE; $i++) $rows[] = ['product_id' => 0, 'variant_id' => null, 'qty' => 1];
+while (count($rows) < 2) $rows[] = ['product_id' => 0, 'variant_id' => null, 'qty' => 1];
 ?>
 <div class="admin-head">
   <h1 class="h-serif">Набори</h1>
@@ -142,9 +145,11 @@ for ($i = 0; $i < $SPARE; $i++) $rows[] = ['product_id' => 0, 'variant_id' => nu
           </select>
           <input type="number" min="1" step="1" name="item[<?= $i ?>][qty]"
                  value="<?= max(1, (int)($it['qty'] ?? 1)) ?>" title="Скільки штук цього товару входить у набір">
+          <button class="btn btn-danger btn-xs bundle-row-del" type="button" title="Прибрати позицію">✕</button>
         </div>
       <?php endforeach; ?>
     </div>
+    <button class="btn btn-line btn-sm" type="button" id="bundleItemAdd" style="margin-top:12px">+ Додати товар</button>
 
     <?php if ($preview): ?>
       <div style="margin-top:20px;border-top:1px solid var(--line);padding-top:16px">
@@ -200,19 +205,68 @@ for ($i = 0; $i < $SPARE; $i++) $rows[] = ['product_id' => 0, 'variant_id' => nu
    одиниці, і запит на кожен вибір коштував би дорожче за сам список. */
 (function () {
   var VARIANTS = <?= json_js($variants) ?>;
-  document.querySelectorAll('.js-bundle-product').forEach(function (sel) {
-    sel.addEventListener('change', function () {
-      var row = sel.getAttribute('data-row');
-      var box = document.querySelector('.js-bundle-variant[data-row="' + row + '"]');
-      if (!box) return;
-      var list = VARIANTS[sel.value] || [];
-      box.innerHTML = '<option value="0">будь-яка фасовка</option>';
-      list.forEach(function (v) {
-        var o = document.createElement('option');
-        o.value = v.id; o.textContent = v.name;
-        box.appendChild(o);
-      });
+  var PRODUCTS = <?= json_js(array_map(fn($p) => ['id' => (int)$p['id'], 'name' => (string)$p['name']], $products)) ?>;
+  var list = document.querySelector('.row-list');
+  var add = document.getElementById('bundleItemAdd');
+  if (!list) return;
+
+  function fillVariants(sel) {
+    var row = sel.getAttribute('data-row');
+    var box = document.querySelector('.js-bundle-variant[data-row="' + row + '"]');
+    if (!box) return;
+    var items = VARIANTS[sel.value] || [];
+    box.innerHTML = '<option value="0">будь-яка фасовка</option>';
+    items.forEach(function (v) {
+      var o = document.createElement('option');
+      o.value = v.id; o.textContent = v.name;
+      box.appendChild(o);
     });
+  }
+
+  function bind(row) {
+    var sel = row.querySelector('.js-bundle-product');
+    if (sel) sel.addEventListener('change', function () { fillVariants(sel); });
+    var del = row.querySelector('.bundle-row-del');
+    if (del) del.addEventListener('click', function () {
+      /* Нижче двох рядків не опускаємось: набір із одного товару однаково
+         не збережеться, і краще не давати зайти в стан, який відхилять. */
+      if (list.children.length > 2) row.remove();
+      else {
+        row.querySelector('.js-bundle-product').value = '0';
+        fillVariants(row.querySelector('.js-bundle-product'));
+      }
+    });
+  }
+
+  Array.prototype.forEach.call(list.children, bind);
+
+  /* Номер нового рядка — більший за всі наявні, а не кількість рядків: після
+     видалення посередині лічильник збігся б із живим рядком, і два товари
+     приїхали б під одним імʼям. */
+  function nextIndex() {
+    var max = -1;
+    list.querySelectorAll('[name^="item["]').forEach(function (i) {
+      var m = i.name.match(/\[(\d+)\]/);
+      if (m) max = Math.max(max, parseInt(m[1], 10));
+    });
+    return max + 1;
+  }
+
+  if (add) add.addEventListener('click', function () {
+    var k = nextIndex();
+    var opts = '<option value="0">— товар —</option>';
+    PRODUCTS.forEach(function (p) { opts += '<option value="' + p.id + '">' + p.name + '</option>'; });
+    var row = document.createElement('div');
+    row.className = 'grid-row bundle-row';
+    row.innerHTML =
+      '<select name="item[' + k + '][product_id]" class="js-bundle-product" data-row="' + k + '">' + opts + '</select>' +
+      '<select name="item[' + k + '][variant_id]" class="js-bundle-variant" data-row="' + k + '">' +
+        '<option value="0">будь-яка фасовка</option></select>' +
+      '<input type="number" min="1" step="1" name="item[' + k + '][qty]" value="1">' +
+      '<button class="btn btn-danger btn-xs bundle-row-del" type="button" title="Прибрати позицію">✕</button>';
+    list.appendChild(row);
+    bind(row);
+    row.querySelector('select').focus();
   });
 })();
 </script>
