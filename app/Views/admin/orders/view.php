@@ -446,6 +446,80 @@
         <?= $parent['address'] ? '<br>Адреса: ' . e($parent['address']) : '' ?>
       </p>
 
+      <?php /* Оплата. У роздрібі гроші й товар зустрічаються в одну мить, і
+               блок згорнутий. Розгортається сам, коли платять за рахунком: там
+               між «виставили» і «прийшло» минають дні, і всі ці дні хтось має
+               бачити, чи чекати ще. */ ?>
+      <?php $paid = trim((string)($parent['paid_at'] ?? '')) !== ''; ?>
+      <details style="margin-top:12px"<?= ($parent['payment_kind'] ?? '') === 'invoice' || $paid ? ' open' : '' ?>>
+        <summary class="dim" style="cursor:pointer;font-size:13px">
+          💳 Оплата —
+          <?php if ($paid): ?>
+            <b>отримано <?= e(date('d.m.Y', strtotime((string)$parent['paid_at']))) ?></b>
+          <?php elseif (($parent['payment_kind'] ?? '') !== ''): ?>
+            <?= e(mb_strtolower(Invoice::kindLabel($parent['payment_kind']))) ?>, чекаємо
+          <?php else: ?>
+            не вказано
+          <?php endif; ?>
+        </summary>
+        <form method="post" action="<?= e(url('/admin/orders/' . $order['id'])) ?>" style="margin-top:10px">
+          <?= Csrf::field() ?>
+          <input type="hidden" name="action" value="payment">
+          <div class="field">
+            <label>Чим розраховуються</label>
+            <select name="payment_kind">
+              <option value="">не вказано</option>
+              <?php foreach (Invoice::KINDS as $k => $label): ?>
+                <option value="<?= e($k) ?>"<?= (string)($parent['payment_kind'] ?? '') === $k ? ' selected' : '' ?>>
+                  <?= e($label) ?></option>
+              <?php endforeach; ?>
+            </select>
+          </div>
+          <div class="field" style="margin-top:8px">
+            <label>Хто покупець</label>
+            <select name="buyer_type">
+              <option value="">не вказано</option>
+              <?php foreach (Invoice::BUYER_TYPES as $k => $label): ?>
+                <option value="<?= e($k) ?>"<?= (string)($parent['buyer_type'] ?? '') === $k ? ' selected' : '' ?>>
+                  <?= e($label) ?></option>
+              <?php endforeach; ?>
+            </select>
+            <p class="field-hint">Потрібне для рахунку — і щоб система не дала продати тому, кому цьому ФОПу не можна.</p>
+          </div>
+          <div class="field" style="margin-top:8px">
+            <label>Назва покупця для документів</label>
+            <input type="text" name="buyer_name" value="<?= e($parent['buyer_name'] ?? '') ?>"
+                   maxlength="200" placeholder="ФОП Петренко П. П.">
+          </div>
+          <div class="field" style="margin-top:8px">
+            <label>ІПН / ЄДРПОУ покупця</label>
+            <input type="text" name="buyer_tax_id" value="<?= e($parent['buyer_tax_id'] ?? '') ?>" maxlength="20">
+          </div>
+          <label class="toggle" style="margin-top:10px">
+            <input type="checkbox" name="paid" <?= $paid ? 'checked' : '' ?>><span class="tr"></span>
+            Гроші отримано
+          </label>
+          <button class="btn btn-line btn-sm" type="submit" style="margin-top:10px">Зберегти оплату</button>
+        </form>
+
+        <?php /* Документи — на кожну частину окремо: продавець у них конкретний
+                 ФОП, власник точки, і саме його IBAN стоїть у бланку. */ ?>
+        <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--bg3)">
+          <div class="dim" style="font-size:12.5px;margin-bottom:6px">Документи</div>
+          <?php foreach ($children as $c2): $c2id = (int)$c2['id']; ?>
+            <div style="margin-bottom:6px">
+              <?php if (count($children) > 1): ?>
+                <div class="dim" style="font-size:12px"><?= e($c2['store_name'] ?: 'Магазин') ?></div>
+              <?php endif; ?>
+              <a class="btn btn-line btn-xs" target="_blank" rel="noopener"
+                 href="<?= e(url('/admin/orders/' . $parent['id'] . '/invoice?part=' . $c2id)) ?>">🧾 Рахунок</a>
+              <a class="btn btn-line btn-xs" target="_blank" rel="noopener"
+                 href="<?= e(url('/admin/orders/' . $parent['id'] . '/invoice?part=' . $c2id . '&kind=act')) ?>">📄 Накладна</a>
+            </div>
+          <?php endforeach; ?>
+        </div>
+      </details>
+
       <?php
         /*
          * Правка доставки — включно зі способом.

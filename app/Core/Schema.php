@@ -7,7 +7,7 @@ declare(strict_types=1);
  */
 class Schema
 {
-    public const VERSION = 36;
+    public const VERSION = 37;
 
     /** Оновлення існуючої бази до поточної версії без втрати даних */
     public static function upgrade(): void
@@ -424,6 +424,26 @@ class Schema
             self::createAll();                       // owners
             self::addColumn('stores', 'owner_id', 'int null');
         }
+        if ($ver < 37) {
+            /*
+             * Розрахунок за рахунком (IBAN).
+             *
+             * У роздрібі гроші й товар зустрічаються в одну мить, тому станів
+             * оплати не було взагалі. Клієнт-ФОП, який просить рахунок, ламає
+             * це припущення: рахунок виставили сьогодні, гроші прийшли за три
+             * дні, товар поїхав на четвертий — і всі три дні хтось має бачити,
+             * що замовлення чекає грошей.
+             */
+            self::addColumn('orders', 'payment_kind', 'str null');
+            self::addColumn('orders', 'paid_at', 'ts null');
+            self::addColumn('orders', 'buyer_type', 'str null');
+            self::addColumn('orders', 'buyer_name', 'str null');
+            self::addColumn('orders', 'buyer_tax_id', 'str null');
+            // Реквізити продавця — у власника: рахунок виставляє ФОП, а не сайт
+            foreach (['full_name', 'iban', 'bank', 'address', 'signer'] as $col) {
+                self::addColumn('owners', $col, 'str null');
+            }
+        }
         Settings::set('schema_version', (string)self::VERSION);
     }
 
@@ -608,6 +628,14 @@ class Schema
                 // З групою ЄП не має нічого спільного, і плутають їх постійно.
                 'taxgrp' => 'int null',
                 'cashier' => 'str null',            // підпис під автоматичними операціями
+                // Реквізити для рахунків і накладних. Повна назва окремо від
+                // name: у списку зручне «ФОП Іваненко», а в документі має стояти
+                // «Фізична особа-підприємець Іваненко Іван Іванович».
+                'full_name' => 'str null',
+                'iban' => 'str null',
+                'bank' => 'str null',
+                'address' => 'str null',
+                'signer' => 'str null',             // хто підписує документи
                 'note' => 'text null',
                 'active' => 'bool default 1', 'sort' => 'int default 0',
                 'created_at' => 'ts',
@@ -792,6 +820,27 @@ class Schema
                 'assigned_user_id' => 'int null', 'assigned_at' => 'str null',
                 'promo_code' => 'str null',
                 'subtotal' => 'num default 0', 'discount' => 'num default 0', 'total' => 'num default 0',
+                /*
+                 * Оплата.
+                 *
+                 * Досі станів оплати не було взагалі: у роздрібі гроші й товар
+                 * зустрічаються в одну мить, і питання «чи заплачено» не
+                 * виникало. З розрахунком за рахунком воно виникає одразу:
+                 * рахунок виставили сьогодні, гроші прийшли за три дні, товар
+                 * поїхав на четвертий.
+                 *
+                 * paid_at — коли гроші фактично отримані. Саме цей момент, а не
+                 * виставлення рахунку, вирішує, коли пробивати чек (якщо він
+                 * узагалі потрібен) і коли можна відвантажувати.
+                 */
+                'payment_kind' => 'str null',   // cash|card|invoice|cod — чим розраховуються
+                'paid_at' => 'ts null',
+                // Реквізити покупця для рахунку. Живуть у замовленні, а не в
+                // акаунті: сьогодні людина купує собі, завтра — на свій ФОП, і
+                // документи в цих двох випадках різні.
+                'buyer_type' => 'str null',     // person|ep|general — див. Invoice::BUYER_TYPES
+                'buyer_name' => 'str null',     // назва як у документах
+                'buyer_tax_id' => 'str null',   // ІПН або ЄДРПОУ
                 'created_at' => 'ts',
             ],
             // Адреси доставки, збережені покупцем. Отримувача не зберігаємо навмисно —
