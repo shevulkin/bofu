@@ -551,58 +551,62 @@ input:disabled,select:disabled,textarea:disabled{opacity:.45;cursor:not-allowed}
    якими порожньо; зібрані докупи вони стають одним підписом під сайтом.
    Побічно це прибирає й окремий випадок для телефона: там колонка вже була, і
    тепер вигляд однаковий на будь-якій ширині. */
-footer{border-top:1px solid var(--line);padding:52px 0 40px;margin-top:40px}
 /*
- * Підвал вирівняний по центру — так він і був задуманий, і так читається як
- * підпис під сайтом, а не як ще одна сторінка.
+ * Підвал.
  *
- * Колонки при цьому лишились: контакти, умови покупки й розділи — це три різні
- * питання, і зливати їх в один стовпчик означало б повернути простирадло з
- * дванадцяти посилань. Але кожна колонка центрована всередині себе, і всі
- * разом вони центровані на сторінці; ліворуч нічого не «висить».
+ * Колонки тут пробувались і не вижили: під центрування вони не лягають —
+ * заголовки різної довжини, списки різної висоти, а майже порожні «Контакти»
+ * поруч із повними «Покупцеві» дають рвані краї й дірку посеред екрана.
  *
- * Flex, а не grid: у сітці колонки сідають у доріжки з лівого краю, і група
- * з трьох стовпчиків на широкому екрані лишається ліворуч, скільки її не
- * центруй. Гнучкий ряд центрується сам і сам же переносить колонки на
- * вузькому — без жодного окремого правила під ширину.
+ * Замість них — вертикальна церемонія: знак, підпис, спосіб зв'язку, розділи,
+ * і аж потім правовий шепіт. Ієрархія тримається не рамками, а трьома речами:
+ * повітрям між блоками, розміром і трекінгом. Телефон набраний антиквою в
+ * розмір заголовка — у підвал ідуть саме по нього, і він має читатись як
+ * запрошення подзвонити, а не як рядок довідки.
  */
-.footer-grid{display:flex;flex-wrap:wrap;justify-content:center;
-  gap:36px 56px;color:var(--dim);font-size:13.5px;text-align:center}
-.footer-col{flex:0 1 auto;min-width:140px}
-.footer-col h4{font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;
-  color:var(--text);font-weight:700;margin-bottom:14px;font-family:var(--sans)}
-/* Крок між пунктами — щоб на телефоні палець не влучав у сусідній рядок.
-   Самі посилання лишаються текстом: розтягувати їх до 44 px висотою означало б
-   зробити з переліку стовпчик кнопок. */
-.footer-col ul{list-style:none;display:flex;flex-direction:column;gap:14px}
-.footer-col a{color:var(--muted)}
-.footer-col a:hover{color:var(--gold)}
-/* Блок бренду — на всю ширину над колонками: лого, рядок про нас і соцмережі
-   стосуються всього підвалу, а не однієї його чверті */
-/* Рівно на всю ширину — інакше max-width скасовує перенесення рядка, і блок
-   бренду стає в один ряд із колонками замість того, щоб стояти над ними.
-   Ширину обмежує сам текст, а не коробка. */
-.footer-brand-col{flex:0 0 100%}
-.footer-brand-col p{max-width:520px;margin-left:auto;margin-right:auto}
-.footer-brand-col .brand{justify-content:center}
-.footer-social{display:flex;gap:18px;align-items:center;flex-wrap:wrap;justify-content:center;margin-top:16px}
-.footer-social a{color:var(--muted);display:flex;align-items:center;gap:7px}
+footer{border-top:1px solid var(--line);padding:88px 0 40px;margin-top:64px}
+.footer-inner{display:flex;flex-direction:column;align-items:center;text-align:center;gap:0;
+  color:var(--dim);font-size:13.5px}
+/* Коротка золота риска над знаком — єдина прикраса на весь підвал.
+   Одна, тому й працює: друга перетворила б стриманість на оздоблення. */
+.footer-inner::before{content:'';width:34px;height:1px;background:var(--gold);opacity:.7;margin-bottom:34px}
+.footer-brand{justify-content:center}
+.footer-brand .brand-text{font-size:19px;letter-spacing:.16em}
+.footer-tagline{margin:16px 0 0;max-width:44ch;font-family:var(--serif);font-size:17px;
+  line-height:1.6;color:var(--muted)}
+/* Спосіб зв'язку — найбільший елемент підвалу після знака */
+.footer-contacts{display:flex;flex-direction:column;align-items:center;gap:6px;margin:40px 0 0}
+.footer-contacts .footer-phone{font-family:var(--serif);font-size:27px;letter-spacing:.02em;color:var(--text)}
+.footer-contacts .footer-phone:hover{color:var(--gold)}
+.footer-contacts a{color:var(--muted)}
+.footer-contacts a:hover{color:var(--gold)}
+.footer-contacts .footer-hours{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+/* Розділи: мікротипографіка з широким трекінгом — перелік має читатись як
+   покажчик, а не як абзац посилань */
+.footer-nav{display:flex;flex-wrap:wrap;justify-content:center;gap:14px 30px;max-width:860px;margin:44px 0 0}
+.footer-nav a{color:var(--muted);font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;
+  font-weight:600;white-space:nowrap;padding:3px 0}
+.footer-nav a:hover{color:var(--gold)}
+.footer-social{display:flex;gap:26px;align-items:center;flex-wrap:wrap;justify-content:center;margin:38px 0 0}
+.footer-social a{color:var(--muted);display:flex;align-items:center;gap:8px;
+  font-size:11.5px;letter-spacing:.12em;text-transform:uppercase;font-weight:600}
 .footer-social a:hover{color:var(--gold)}
-/* Правовий рядок — останній і найтихіший: його читають раз, і він не має
-   перебивати назву чи посилання, між якими стоїть решта підвалу.
-   Рік і правові посилання разом, одним рядком: це один підпис, а не два
-   різні повідомлення, і розводити їх по краях не було за чим. */
-.footer-legal{margin-top:40px;padding-top:20px;border-top:1px solid var(--line);text-align:center}
-.footer-copy{margin:0;font-size:12.5px;color:var(--dim);line-height:1.9}
-.footer-copy a{color:var(--dim);white-space:nowrap}
+/* Правовий рядок — шепіт: його читають раз, і він не має перебивати нічого */
+.footer-copy{margin:56px 0 0;padding-top:22px;border-top:1px solid var(--line);
+  width:100%;max-width:860px;font-size:11.5px;letter-spacing:.04em;color:var(--dim);line-height:2}
+.footer-copy a{color:var(--dim)}
 .footer-copy a:hover{color:var(--muted)}
 /* Посилання разом зі своєю крапкою — нерозривним шматком: інакше при
    перенесенні рядка крапка лишається висіти на початку нового */
-.footer-legal-item{white-space:nowrap;margin-left:4px}
-@media (max-width:520px){
-  .footer-grid{gap:30px 32px}
+.footer-legal-item{white-space:nowrap;margin-left:10px}
+@media (max-width:640px){
+  footer{padding:64px 0 36px}
+  .footer-tagline{font-size:15.5px}
+  .footer-contacts .footer-phone{font-size:23px}
+  .footer-nav{gap:12px 22px;margin-top:36px}
+  .footer-social{gap:20px;margin-top:30px}
+  .footer-copy{margin-top:42px}
 }
-
 /* ---------- правові сторінки ---------- */
 /* Документ, а не вітрина: вузька колонка, збережені переноси рядків і
    помітний інтервал — такий текст читають підряд, а не проглядають. */
