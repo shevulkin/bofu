@@ -11,6 +11,51 @@
   var mb = document.getElementById('mobileBtn'), mm = document.getElementById('mobileMenu');
   if (mb && mm) mb.addEventListener('click', function () { mm.classList.toggle('open'); });
 
+  /* Категорії в шапці: стрілка біля «Магазину» відкриває список розділів.
+     Кліком, а не наведенням: на телефоні наведення немає, і меню, яке
+     розкривається по-різному на різних пристроях, доводиться тримати
+     узгодженим двома способами замість одного.
+
+     Сам пункт «Магазин» лишається посиланням у каталог — стрілка окремо. */
+  var drops = document.querySelectorAll('[data-nav-drop-btn]');
+  Array.prototype.forEach.call(drops, function (btn) {
+    var menu = document.getElementById(btn.getAttribute('aria-controls'));
+    if (!menu) return;
+    function close() {
+      menu.setAttribute('hidden', '');
+      btn.setAttribute('aria-expanded', 'false');
+      if (btn.parentNode) btn.parentNode.classList.remove('is-open');
+    }
+    btn.addEventListener('click', function (e) {
+      e.preventDefault();
+      var open = menu.hasAttribute('hidden');
+      // спершу закриваємо всі: два відкритих списки поруч перекривають один одного
+      Array.prototype.forEach.call(document.querySelectorAll('[data-nav-drop-menu]'), function (m) {
+        m.setAttribute('hidden', '');
+      });
+      Array.prototype.forEach.call(drops, function (b) {
+        b.setAttribute('aria-expanded', 'false');
+        if (b.parentNode) b.parentNode.classList.remove('is-open');
+      });
+      if (open) {
+        menu.removeAttribute('hidden');
+        btn.setAttribute('aria-expanded', 'true');
+        if (btn.parentNode) btn.parentNode.classList.add('is-open');
+      }
+    });
+    // Клік повз меню й Esc закривають його: розкритий список, який лишається
+    // висіти над сторінкою, доводиться закривати тим самим кліком по стрілці —
+    // а людина вже дивиться в інший бік
+    document.addEventListener('click', function (e) {
+      if (menu.hasAttribute('hidden')) return;
+      if (menu.contains(e.target) || btn.contains(e.target)) return;
+      close();
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && !menu.hasAttribute('hidden')) { close(); btn.focus(); }
+    });
+  });
+
   var toTop = document.getElementById('toTop');
   if (toTop) {
     window.addEventListener('scroll', function () {

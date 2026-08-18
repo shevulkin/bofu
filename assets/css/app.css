@@ -73,6 +73,30 @@ button.chip{font-family:inherit;display:inline-flex;align-items:center;gap:8px}
 .nav-links{display:flex;gap:14px;font-weight:600;font-size:13px;letter-spacing:.02em;white-space:nowrap;flex-wrap:wrap}
 .nav-links a{color:var(--text)}
 .nav-links a:hover,.nav-links a.active{color:var(--gold)}
+/* ---------- «Магазин» зі списком розділів ---------- */
+/* Назва лишається посиланням у каталог, стрілка поруч відкриває розділи —
+   тому це два окремі елементи в одній обгортці, а не один клікабельний пункт */
+.nav-drop{position:relative;display:inline-flex;align-items:center;gap:4px}
+.nav-drop-btn{background:none;border:0;padding:4px;margin:0;line-height:0;color:inherit;cursor:pointer;
+  display:inline-flex;align-items:center;transition:color .15s}
+.nav-drop-btn:hover{color:var(--gold)}
+.nav-drop-btn svg{transition:transform .18s}
+.nav-drop.is-open>.nav-drop-btn,.m-drop.is-open>.nav-drop-btn{color:var(--gold)}
+.nav-drop.is-open>.nav-drop-btn svg,.m-drop.is-open>.nav-drop-btn svg{transform:rotate(180deg)}
+/* Список висить під шапкою, тому і фон у нього щільний: напівпрозорий давав би
+   крізь себе картки товарів, і читати пункти довелось би крізь мед */
+.nav-drop-menu{position:absolute;top:calc(100% + 12px);left:-14px;z-index:60;min-width:230px;
+  max-height:min(70vh,520px);overflow-y:auto;background:var(--bg2);border:1px solid var(--line);
+  border-radius:4px;padding:8px 0;box-shadow:0 14px 34px rgba(0,0,0,.45);
+  display:flex;flex-direction:column;text-transform:none;letter-spacing:0}
+.nav-drop-menu[hidden]{display:none}
+.nav-drop-menu a{display:block;padding:9px 18px;font-size:13.5px;font-weight:600;color:var(--text)}
+.nav-drop-menu a:hover{background:var(--bg3);color:var(--gold)}
+/* Підрозділ — крок усередину розділу, а не сусід йому */
+.nav-drop-menu .nav-drop-sub{padding-left:34px;font-weight:500;font-size:13px;color:var(--muted)}
+.nav-drop-menu .nav-drop-sub::before{content:'└';margin-right:8px;opacity:.5}
+.nav-drop-all{border-bottom:1px solid var(--line);margin-bottom:6px;padding-bottom:12px!important;color:var(--gold)!important}
+
 .nav-side{display:flex;align-items:center;gap:6px;flex-shrink:0}
 /* Площа натискання, а не розмір напису. «Кошик» і «Увійти» — дві найчастіші
    кнопки магазину, і на телефоні вони мали зону 40×20 px при рекомендованих
@@ -105,6 +129,17 @@ button.chip{font-family:inherit;display:inline-flex;align-items:center;gap:8px}
 .mobile-menu{display:none;background:var(--bg2);border-bottom:1px solid var(--line);flex-direction:column;padding:8px 20px 16px}
 .mobile-menu a{color:var(--text);font-weight:600;font-size:15px;padding:12px 0;border-bottom:1px solid var(--bg3)}
 .mobile-menu.open{display:flex}
+/* «Магазин» у мобільному меню: посилання лишається на всю ширину рядка, стрілка
+   стоїть праворуч у ньому ж — щоб пальцем можна було влучити в обидва окремо */
+.m-drop{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--bg3)}
+.m-drop>a{flex:1;border-bottom:0}
+.m-drop>.nav-drop-btn{padding:12px 8px;min-width:44px;justify-content:center}
+.m-drop-menu{display:flex;flex-direction:column;padding:4px 0 8px 14px;border-bottom:1px solid var(--bg3)}
+.m-drop-menu[hidden]{display:none}
+.m-drop-menu a{font-size:14px;padding:10px 0;border-bottom:0}
+.m-drop-menu .nav-drop-sub{padding-left:16px;font-weight:500;color:var(--muted)}
+.m-drop-menu .nav-drop-sub::before{content:'└';margin-right:8px;opacity:.5}
+.m-drop-menu .nav-drop-all{color:var(--gold)}
 
 /* ---------- банер акції ---------- */
 .sale-banner{background:var(--gold);color:var(--bg);text-align:center;font-weight:700;font-size:13px;padding:9px 16px;letter-spacing:.03em}
