@@ -13,10 +13,11 @@
   $selFlat = $sel['np_flat'] ?? '';
   $selAddress = $sel['address'] ?? '';
   $canSave = !empty($auth_user);
-  // «2 товари» читається як конкретна річ, «Ваше замовлення» — як абстракція
+  // «2 товари» читається як конкретна річ, «Ваше замовлення» — як абстракція.
+  // Форму слова рахує спільний plural_n() — той самий, що підписує лічильники
+  // на головній; двох правил узгодження на сайт бути не повинно.
   $units = array_sum(array_map(fn($r) => (int)$r['qty'], $rows));
-  $goods = $units . ' ' . ($units % 10 === 1 && $units % 100 !== 11 ? 'товар'
-        : (in_array($units % 10, [2, 3, 4], true) && !in_array($units % 100, [12, 13, 14], true) ? 'товари' : 'товарів'));
+  $goods = plural_n($units, 'товар', 'товари', 'товарів');
   $saved = fn(array $t) => 'ви заощадили ' . price_fmt($t['discount']);
 ?>
 <section class="section" style="padding-top:44px">
@@ -81,7 +82,7 @@
           <div class="form-grid">
             <?php /* autocomplete="new-password" — єдине, що глушить автопідстановку адрес
                       у Chrome: "off" він для адресних полів свідомо ігнорує і накриває наш
-                      список своїм. Ім'я поля теж не "city" — інакше евристика впізнає його
+                      список своїм. Імʼя поля теж не "city" — інакше евристика впізнає його
                       за назвою. data-* — те саме для менеджерів паролів. */ ?>
             <div class="field"><label>Місто</label><input type="text" name="np_city" id="npCity" value="<?= e($selCity) ?>" placeholder="Почніть вводити місто…" autocomplete="new-password" data-lpignore="true" data-1p-ignore data-form-type="other" spellcheck="false"></div>
             <div class="field" id="npOfficeField"><label>Відділення / поштомат</label><input type="text" name="np_office" id="npOffice" value="<?= e($selOffice) ?>" placeholder="Номер, вулиця або «поштомат»" autocomplete="new-password" data-lpignore="true" data-1p-ignore data-form-type="other" spellcheck="false"></div>
@@ -149,7 +150,7 @@
         <?php endif; ?>
 
         <div class="form-grid">
-          <div class="field"><label>Отримувач *</label><input type="text" name="name" id="ordName" value="" required placeholder="Ім'я та прізвище"></div>
+          <div class="field"><label>Отримувач *</label><input type="text" name="name" id="ordName" value="" required placeholder="Імʼя та прізвище"></div>
           <div class="field"><label>Телефон отримувача *</label><input type="tel" name="phone" id="ordPhone" value="" required placeholder="+380 __ ___ ____"></div>
         </div>
         <div class="field"><label>Email <span class="dim">(необовʼязково)</span></label><input type="email" name="email" id="orderEmail" value="<?= e($pre['email']) ?>" placeholder="надішлемо підтвердження замовлення"></div>
@@ -211,7 +212,15 @@
             <span class="muted" id="sumDiscountLabel"><?= $promo ? e(Promo::label($promo)) : 'Знижка' ?>:</span>
             <span id="sumDiscount">−<?= e($totals['discount'] > 0 ? price_fmt($totals['discount']) : '0 грн') ?></span>
           </div>
-          <div class="row grand"><span>До сплати:</span><span id="sumTotal"><?= e(price_fmt($totals['total'])) ?></span></div>
+          <?php /* Доставка окремим рядком, хай навіть без суми.
+                   «До сплати: 600 грн» без згадки про доставку читається як
+                   повна сума, а на відділенні покупець платить перевізнику ще
+                   раз — і це та несподіванка, після якої не повертаються.
+                   Ціну не вигадуємо: тариф рахує перевізник за вагою й
+                   напрямком, і назвати її наперед ми чесно не можемо. */ ?>
+          <div class="row" id="sumShipRow"><span class="muted">Доставка:</span>
+            <span class="dim" id="sumShip">за тарифами перевізника</span></div>
+          <div class="row grand"><span>До сплати за товар:</span><span id="sumTotal"><?= e(price_fmt($totals['total'])) ?></span></div>
         </div>
 
         <ul class="co-trust">
@@ -220,6 +229,14 @@
           <li>Нічого не спишеться зараз — це не оплата</li>
         </ul>
         <button class="btn btn-gold co-submit" type="submit" style="width:100%">Підтвердити замовлення</button>
+        <?php /* Згода з умовами — під кнопкою, звичайним текстом, а не галкою.
+                 Оформлення замовлення і є прийняттям оферти (ст. 11 Закону
+                 «Про електронну комерцію»), тож окрема галка нічого не додає
+                 юридично, зате додає ще один клік. Але сказати про це й дати
+                 посилання ми зобовʼязані. */ ?>
+        <p class="dim co-terms">Підтверджуючи замовлення, ви погоджуєтесь із
+          <a href="<?= e(url('/offer')) ?>" target="_blank" rel="noopener">умовами оферти</a> та
+          <a href="<?= e(url('/privacy')) ?>" target="_blank" rel="noopener">політикою конфіденційності</a>.</p>
         <p class="dim" style="margin:14px 0 0;font-size:12.5px">
           <a href="<?= e(url('/cart')) ?>">← Повернутись до кошика</a></p>
        </details>

@@ -43,6 +43,12 @@
             <?php if ($s['phone']): ?>
               <p><a href="tel:<?= e(preg_replace('~[^\d+]~', '', (string)$s['phone'])) ?>"><?= e($s['phone']) ?></a></p>
             <?php endif; ?>
+            <?php /* Графік — те, заради чого сторінку відкривають найчастіше:
+                     «чи відчинено зараз». Порожній не показуємо: рядок
+                     «Графік: —» гірший за його відсутність. */ ?>
+            <?php if (!empty($s['hours'])): ?>
+              <p class="store-hours"><?= e($s['hours']) ?></p>
+            <?php endif; ?>
             <?php if ($route !== ''): ?>
               <a class="btn btn-line btn-sm" style="margin-top:10px" href="<?= e($route) ?>"
                  target="_blank" rel="noopener">Прокласти маршрут →</a>

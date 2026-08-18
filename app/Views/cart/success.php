@@ -4,7 +4,7 @@
     <h2>Замовлення прийнято!</h2>
     <p class="lead" style="margin:18px auto 8px">Номер вашого замовлення:</p>
     <p style="font-family:var(--serif);font-size:34px;color:var(--gold);font-weight:700"><?= e($order['number']) ?></p>
-    <p class="muted" style="margin:16px auto 24px">Ми зв'яжемося з вами найближчим часом для підтвердження.<br>Сума до сплати: <b><?= e(price_fmt($order['total'])) ?></b></p>
+    <p class="muted" style="margin:16px auto 24px">Ми звʼяжемося з вами найближчим часом для підтвердження.<br>Сума до сплати: <b><?= e(price_fmt($order['total'])) ?></b></p>
     <?php if (count($children) > 1): ?>
       <div class="card" style="max-width:520px;margin:0 auto 30px;padding:18px 22px;text-align:left">
         <p class="dim" style="margin:0 0 12px">Товари є в різних магазинах, тож замовлення виконають <?= count($children) ?> продавці — кожен відправить свою частину. Стежити за ними можна в кабінеті одним замовленням.</p>

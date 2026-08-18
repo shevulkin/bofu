@@ -243,7 +243,7 @@ $roEdit = $canEdit ? '' : 'disabled';
 
   <div class="admin-card">
     <h2 class="h-serif">Варіанти</h2>
-    <p class="dim" style="margin:-8px 0 14px">Різні виконання того самого товару: розмір, колір, об'єм. Покупець обирає їх на сторінці товару.</p>
+    <p class="dim" style="margin:-8px 0 14px">Різні виконання того самого товару: розмір, колір, обʼєм. Покупець обирає їх на сторінці товару.</p>
 
     <div class="row-list" id="variantRows">
       <?php foreach ($variants as $v): $vid = (int)$v['id']; $opts = $variant_options[$vid] ?? []; ?>

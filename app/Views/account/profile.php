@@ -14,7 +14,7 @@
 
     <form class="admin-card" method="post" action="<?= e(url('/profile')) ?>" style="margin-top:22px">
       <?= Csrf::field() ?>
-      <div class="field"><label>Ім'я та прізвище</label><input type="text" name="name" value="<?= e($u['name']) ?>" required></div>
+      <div class="field"><label>Імʼя та прізвище</label><input type="text" name="name" value="<?= e($u['name']) ?>" required></div>
       <div class="field"><label>Телефон *</label><input type="tel" name="phone" value="<?= e($u['phone']) ?>" placeholder="067 123 45 67" required></div>
       <div class="field"><label>Email</label><input type="text" value="<?= e($mail_email ?: '—') ?>" disabled>
         <?php if (!$mail_email): ?><p class="dim" style="margin:6px 0 0">Email підтягнеться автоматично, якщо увійти через Google.</p><?php endif; ?>

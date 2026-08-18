@@ -9,8 +9,19 @@ class CartController
 {
     public static function index(): never
     {
+        $rows = Cart::detailed();
+        // Порожній кошик — це не помилка, а розвилка: людина або ще нічого не
+        // обрала, або передумала. Порожній екран із одним посиланням лишає її
+        // наодинці з цим рішенням; кілька позицій дають привід лишитись.
+        // Запитуємо їх лише коли кошик справді порожній.
+        $suggest = [];
+        if (!$rows) {
+            $suggest = DB::all('SELECT * FROM products WHERE active = 1 AND featured = 1 ORDER BY id LIMIT 4');
+            Catalog::preloadBrands($suggest);
+        }
         View::show('cart/index', [
-            'rows' => Cart::detailed(),
+            'rows' => $rows,
+            'suggest' => $suggest,
             'totals' => Cart::total(),
             'stores' => Catalog::stores(),
             'page_title' => 'Кошик — ' . cfg('app_name'),

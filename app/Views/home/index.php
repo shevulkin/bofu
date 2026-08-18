@@ -15,7 +15,14 @@
     </div>
   </div>
   <div class="hero-img">
-    <img src="<?= e(asset(Content::image('hero', 'img/about-photo.webp'))) ?>" alt="<?= e(Content::title('hero_title')) ?>"<?= edit_mark('hero', 'image') ?>>
+    <?php /* Це найбільший елемент першого екрана, тобто саме він і вирішує
+             оцінку швидкості. fetchpriority підіймає його в черзі перед
+             рештою картинок, width/height резервують місце — без них текст
+             поруч стрибає, коли фото нарешті приходить. Розміри збігаються з
+             тими, що задає CSS (.hero-img img), тож пропорції не пливуть. */ ?>
+    <img src="<?= e(asset(Content::image('hero', 'img/about-photo.webp'))) ?>"
+         alt="<?= e(Content::title('hero_title')) ?>"
+         width="620" height="560" fetchpriority="high" decoding="async"<?= edit_mark('hero', 'image') ?>>
   </div>
 </section>
 
@@ -24,8 +31,15 @@
   <div class="counters">
     <?php /* зона на всьому лічильнику, без data-cef: число «підкручується» анімацією,
              і підміна тексту на місці билася б із нею — такі блоки перемальовує сервер */ ?>
-    <div class="counter"<?= edit_mark('counter_graduates') ?>><b data-count-to="<?= e(Content::title('counter_graduates', '153')) ?>">0</b><span>випускників курсів</span></div>
-    <div class="counter"<?= edit_mark('counter_courses') ?>><b><?= e(Content::title('counter_courses', '1')) ?></b><span>авторських курсів</span></div>
+    <?php /* Підпис узгоджується з числом: адмін вписує саме число, а «курс/курси/
+             курсів» рахує plural(). Раніше підписи були вбиті в шаблон рядком, і
+             один-єдиний курс підписувався як «авторських курсів». */ ?>
+    <?php
+      $cGrad = (int)Content::title('counter_graduates', '153');
+      $cCourses = (int)Content::title('counter_courses', '1');
+    ?>
+    <div class="counter"<?= edit_mark('counter_graduates') ?>><b data-count-to="<?= $cGrad ?>">0</b><span><?= e(plural($cGrad, 'випускник курсів', 'випускники курсів', 'випускників курсів')) ?></span></div>
+    <div class="counter"<?= edit_mark('counter_courses') ?>><b><?= $cCourses ?></b><span><?= e(plural($cCourses, 'авторський курс', 'авторські курси', 'авторських курсів')) ?></span></div>
     <div class="counter"<?= edit_mark('counter_founded') ?>><b><?= e(Content::title('counter_founded', '2022')) ?></b><span>рік заснування</span></div>
   </div>
 </div>

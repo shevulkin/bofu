@@ -65,6 +65,12 @@
             <span class="price" style="font-size:30px">
               <s id="priceOld" <?= $old_price === null ? 'hidden' : '' ?>><?= $old_price !== null ? e(price_fmt($old_price)) : '' ?></s>
               <span id="priceNow"><?= e(price_label($price, (bool)$p['made_to_order'])) ?></span>
+              <?php /* Ціна за 100 г під сумою. «600 грн» за мед ні про що не каже,
+                       поки невідомо, скільки його в банці; порівняння з полицею
+                       покупець проводить усе одно — чесніше дати цифру самим.
+                       Порожня вага ховає рядок повністю: краще без нього, ніж
+                       із діленням на вигадане значення. */ ?>
+              <span class="price-unit" id="priceUnit"<?= $per_100g === '' ? ' hidden' : '' ?>><?= e($per_100g) ?></span>
             </span>
             <div class="qty-box">
               <button type="button" onclick="var i=this.parentNode.querySelector('input');i.value=Math.max(1,+i.value-1)">−</button>
@@ -78,9 +84,20 @@
         </form>
 
         <?php $lowStock = ($p['low_stock_threshold'] ?? null) !== null && $p['low_stock_threshold'] !== '' ? (int)$p['low_stock_threshold'] : null; ?>
+        <?php $anyStock = false; foreach ($availability as $av) $anyStock = $anyStock || $av['qty'] > 0; ?>
+
+        <?php /* Товар «під замовлення», якого зараз ніде немає, — це не відмова,
+                 а строк виготовлення. Раніше блок починався з переліку точок, і
+                 покупець читав спершу два рядки «немає», а вже потім дізнавався,
+                 що товар буде. Тепер спершу відповідь, а вже під нею — деталі
+                 по точках. Коли товар є в наявності, порядок звичайний. */ ?>
+        <?php if ($p['made_to_order']): ?>
+          <p class="mto-lead" id="madeToOrderLead"<?= $anyStock ? ' style="display:none"' : '' ?>><?= e(Catalog::madeToOrderNote($p)) ?></p>
+        <?php endif; ?>
+
         <div class="availability" id="availability">
           <?php if ($variants): ?><p class="dim" style="margin:0 0 8px">Наявність показана для обраного варіанта</p><?php endif; ?>
-          <?php $anyStock = false; foreach ($availability as $av): $sid = (int)$av['store']['id']; $anyStock = $anyStock || $av['qty'] > 0; ?>
+          <?php foreach ($availability as $av): $sid = (int)$av['store']['id']; ?>
             <span class="<?= $av['qty'] > 0 ? 'yes' : 'no' ?>" data-store="<?= $sid ?>"
                   data-stock="<?= e(json_encode($av['by_variant'], JSON_UNESCAPED_UNICODE)) ?>"
                   data-label="<?= e($av['store']['name'] . ($av['store']['city'] ? ' (' . $av['store']['city'] . ')' : '')) ?>">
@@ -89,9 +106,6 @@
               <?php if ($av['price'] !== null && $av['price'] != $price): ?> · ціна тут: <?= e(price_fmt($av['price'])) ?><?php endif; ?></span>
             </span>
           <?php endforeach; ?>
-          <?php if ($p['made_to_order']): ?>
-            <span class="yes" id="madeToOrder" style="color:var(--gold)<?= $anyStock ? ';display:none' : '' ?>"><?= e(Catalog::madeToOrderNote($p)) ?></span>
-          <?php endif; ?>
         </div>
 
         <?php /* Немає ніде — єдине місце, де людині нема що робити з цією
@@ -112,7 +126,7 @@
         </div>
 
         <?php $prodBrands = Catalog::brandsOf($p); ?>
-        <?php if ($attrs || $prodBrands): ?>
+        <?php if ($attrs || $prodBrands || $weight_fmt !== ''): ?>
           <h2 style="font-size:22px;margin-top:34px">Характеристики</h2>
           <table class="specs">
             <?php /* Бренд першим рядком: «чий це товар» — питання, яке виникає
@@ -128,6 +142,13 @@
                         if (!empty($b['logo'])): ?><img src="<?= e(asset(Images::displayThumb($b['logo']))) ?>"
                              alt="" loading="lazy"><?php endif; ?><?= e($b['name']) ?></a><?php endforeach; ?></td>
               </tr>
+            <?php endif; ?>
+            <?php /* Вага одразу після бренду: «скільки тут меду» — друге питання
+                     після «чий він», і воно вирішує, дорого це чи ні. Вагу вже
+                     збирали для накладної Нової Пошти, покупцю її просто не
+                     показували. Порожня — рядка немає. */ ?>
+            <?php if ($weight_fmt !== ''): ?>
+              <tr id="specWeightRow"><td>Вага</td><td id="specWeight"><?= e($weight_fmt) ?></td></tr>
             <?php endif; ?>
             <?php foreach ($attrs as $a): ?>
               <tr>

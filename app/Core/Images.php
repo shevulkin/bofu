@@ -5,7 +5,7 @@ declare(strict_types=1);
 class Images
 {
     public const MAX_SIDE = 1600;      // повний розмір
-    public const THUMB_SIDE = 480;     // прев'ю
+    public const THUMB_SIDE = 480;     // превʼю
 
     /** Зберігає завантажене фото; повертає [шлях, ширина, висота, байти] або null */
     public static function saveUpload(array $file, string $prefix = 'img'): ?array
@@ -40,7 +40,7 @@ class Images
         $full = "$dir/$name.$ext";
         $useWebp ? imagewebp($dst, $full, 85) : imagejpeg($dst, $full, 85);
 
-        // прев'ю
+        // превʼю
         $tScale = min(1, self::THUMB_SIDE / max($nw, $nh));
         $tw = (int)round($nw * $tScale); $th = (int)round($nh * $tScale);
         $thumb = imagecreatetruecolor($tw, $th);

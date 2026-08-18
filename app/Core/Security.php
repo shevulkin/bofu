@@ -25,7 +25,7 @@ class Security
     private const MAPS = 'https://maps.googleapis.com https://maps.gstatic.com';
     private const MAPS_IMG = 'https://maps.googleapis.com https://maps.gstatic.com '
         . 'https://khms0.googleapis.com https://khms1.googleapis.com https://*.ggpht.com';
-    /** Прев'ю відео на головній і в «Соцмережах» — саме цей домен будує YouTube::latest() */
+    /** Превʼю відео на головній і в «Соцмережах» — саме цей домен будує YouTube::latest() */
     private const YT_IMG = 'https://i.ytimg.com';
 
     public static function headers(): void

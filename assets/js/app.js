@@ -90,6 +90,18 @@
         priceOld.textContent = v.old_fmt || '';
         priceOld.hidden = !v.old_fmt;
       }
+      // Ціна за 100 г належить фасовці: банка 0,5 і банка 1,5 коштують різне
+      // й важать різне. Без ваги рядок ховається — ділити нема на що.
+      var priceUnit = document.getElementById('priceUnit');
+      if (priceUnit) {
+        priceUnit.textContent = v.per_100g || '';
+        priceUnit.hidden = !v.per_100g;
+      }
+      // Вага в характеристиках — теж від фасовки
+      var specWeight = document.getElementById('specWeight');
+      var specWeightRow = document.getElementById('specWeightRow');
+      if (specWeight) specWeight.textContent = v.weight_fmt || '';
+      if (specWeightRow) specWeightRow.style.display = v.weight_fmt ? '' : 'none';
       if (note) {
         var bits = [];
         if (v.sku) bits.push('Артикул: ' + v.sku);
@@ -156,7 +168,10 @@
         el.classList.toggle('yes', qty > 0);
         el.classList.toggle('no', qty <= 0);
       });
-      var mto = document.getElementById('madeToOrder');
+      // «Виготовимо під замовлення» стоїть над переліком точок, а не в ньому:
+      // це відповідь на питання «то він буде?», і читатись вона має першою,
+      // а не після двох рядків «немає».
+      var mto = document.getElementById('madeToOrderLead');
       if (mto) mto.style.display = any ? 'none' : '';
       // «Повідомити, коли зʼявиться» має сенс лише для варіанта, якого немає;
       // тримаємо в прихованому полі саме обраний, інакше в чергу очікувань

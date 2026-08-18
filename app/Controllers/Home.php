@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 namespace Controllers;
 
-use DB, View, Catalog, Content, Settings, Csrf;
+use DB, View, Catalog, Content, Settings, Csrf, JsonLd;
 
 class Home
 {
@@ -12,13 +12,18 @@ class Home
         $featured = DB::all('SELECT * FROM products WHERE active = 1 AND featured = 1 ORDER BY id LIMIT 6');
         Catalog::preloadBrands($featured);   // бренди карток — одним запитом, а не по одному
         $gallery = json_decode(Content::get('gallery', 'body', '[]'), true) ?: [];
+        $faq = json_decode(Content::get('faq', 'body', '[]'), true) ?: [];
         View::show('home/index', [
             'categories' => Catalog::categories(),
             'featured' => $featured,
             'gallery_preview' => array_slice($gallery, 0, 3),
-            'faq' => json_decode(Content::get('faq', 'body', '[]'), true) ?: [],
+            'faq' => $faq,
             'page_title' => Settings::get('seo_title', cfg('app_name')),
             'meta_description' => Settings::get('seo_description', ''),
+            // Питання й відповіді розміткою — ті самі, що показані на сторінці.
+            // Google вимагає саме такої відповідності: розмітка, якої немає у
+            // видимому тексті, вважається порушенням.
+            'jsonld' => $faq ? [JsonLd::faq($faq)] : [],
         ]);
     }
 
@@ -33,7 +38,19 @@ class Home
 
     public static function courses(): never
     {
-        View::show('home/courses', ['page_title' => 'Курси бджільництва — ' . cfg('app_name')]);
+        // Свій набір питань, а не спільний із головною: сюди приходять по
+        // навчання, і питання про повернення меду тут лише збиває.
+        $faq = json_decode(Content::get('faq_course', 'body', '[]'), true) ?: [];
+        View::show('home/courses', [
+            'faq' => $faq,
+            'page_title' => 'Курси бджільництва — ' . cfg('app_name'),
+            'meta_description' => 'Авторський курс промислового бджільництва на технологіях США: практика на діючій пасіці, диплом із перевіркою справжності.',
+            'jsonld' => array_values(array_filter([
+                JsonLd::course(Content::title('course_1'), Content::get('course_1')),
+                $faq ? JsonLd::faq($faq) : null,
+                JsonLd::breadcrumbs([['Головна', '/'], ['Курси', null]]),
+            ])),
+        ]);
     }
 
     public static function gallery(): never
@@ -78,12 +95,60 @@ class Home
             'map_key' => \Geo::key(),
             'map_points' => \Geo::points($stores),
             'page_title' => 'Де нас знайти — ' . cfg('app_name'),
+            'meta_description' => 'Адреси, телефони й графік роботи наших магазинів продуктів бджільництва. Самовивіз замовлень із будь-якої точки.',
+            // Кожна точка окремою сутністю: адреса, телефон, графік і
+            // координати — рівно те, з чого Google будує картку компанії.
+            'jsonld' => array_merge(JsonLd::stores($stores), [
+                JsonLd::breadcrumbs([['Головна', '/'], ['Де нас знайти', null]]),
+            ]),
+        ]);
+    }
+
+    /**
+     * Правові сторінки: доставка, оплата, повернення, приватність, оферта.
+     *
+     * Один метод на всі пʼять, бо відрізняються вони лише текстом, який власник
+     * править в адмінці. Сторінки не декоративні: без них покупець не бачить,
+     * з ким укладає договір, а закони «Про електронну комерцію» та «Про захист
+     * персональних даних» прямо вимагають цієї інформації на сайті.
+     *
+     * Тексти беруться з блоків контенту; вбудовані значення з Seeder працюють
+     * як каркас, поки власник не написав свої, — але реквізити не підставляємо
+     * жодні, і сторінка про це чесно попереджає.
+     */
+    private const LEGAL_PAGES = [
+        'delivery' => ['page_delivery', 'Доставка', 'Умови доставки: перевізники, строки, вартість і самовивіз із магазинів.'],
+        'payment'  => ['page_payment',  'Оплата', 'Способи оплати: післяплата, картка в магазині, рахунок для ФОП і компаній.'],
+        'returns'  => ['page_returns',  'Обмін і повернення', 'Умови обміну та повернення товару згідно із Законом «Про захист прав споживачів».'],
+        'privacy'  => ['page_privacy',  'Політика конфіденційності', 'Які персональні дані ми збираємо, навіщо, кому передаємо і як їх видалити.'],
+        'offer'    => ['page_offer',    'Публічна оферта', 'Договір купівлі-продажу, який покупець приймає, оформлюючи замовлення.'],
+    ];
+
+    public static function legal(string $slug): never
+    {
+        $def = self::LEGAL_PAGES[$slug] ?? null;
+        if (!$def) { http_response_code(404); View::show('errors/404', ['page_title' => 'Сторінку не знайдено']); }
+        [$key, $title, $description] = $def;
+        View::show('home/legal', [
+            'block' => $key,
+            'heading' => $title,
+            'text' => Content::get($key),
+            // Реквізити продавця друкуються під кожною правовою сторінкою: саме
+            // там їх шукають, і саме там їх вимагає закон.
+            'entity' => Content::title('legal_entity'),
+            'entity_details' => Content::get('legal_entity'),
+            'page_title' => $title . ' — ' . cfg('app_name'),
+            'meta_description' => $description,
         ]);
     }
 
     public static function diploma(): never
     {
-        View::show('home/diploma', ['result' => null, 'page_title' => 'Перевірка диплому — ' . cfg('app_name')]);
+        View::show('home/diploma', [
+            'result' => null,
+            'page_title' => 'Перевірка диплому — ' . cfg('app_name'),
+            'meta_description' => 'Перевірте справжність диплома випускника курсів бджільництва за його номером.',
+        ]);
     }
 
     public static function diplomaCheck(): never

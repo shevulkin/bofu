@@ -166,7 +166,7 @@ class Api
     {
         if (!Auth::isStaff()) json_response(['ok' => false], 403);
         // Без CSRF стороння сторінка могла б простим POST (text/plain) підписати свій
-        // endpoint на сповіщення адміна — а в них номер, ім'я, телефон і сума замовлення.
+        // endpoint на сповіщення адміна — а в них номер, імʼя, телефон і сума замовлення.
         Csrf::verify();
         $data = json_decode(file_get_contents('php://input') ?: '', true);
         if (empty($data['endpoint']) || empty($data['keys']['p256dh']) || empty($data['keys']['auth'])) {
