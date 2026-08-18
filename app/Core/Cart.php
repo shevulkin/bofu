@@ -104,22 +104,75 @@ class Cart
         return array_sum(array_map(fn($i) => $i['qty'], self::items()));
     }
 
-    /** Розгорнуті рядки кошика з цінами */
+    /**
+     * Розгорнуті рядки кошика з цінами.
+     *
+     * Опт рахується саме тут, а не в Catalog::price: ціна залежить від
+     * кількості, а кількість знає лише кошик. Для товарів із qty_scope =
+     * 'product' вона ще й збирається з кількох рядків — пʼять свічок різного
+     * кольору мають дати оптову ціну, хоч лежать окремими позиціями.
+     */
     public static function detailed(?int $storeId = null): array
     {
+        $items = self::items();
+
+        // Кількість, за якою шукається поріг. Рахуємо до цін: рядок не може
+        // визначити свою знижку, поки невідомо, скільки того ж товару поруч.
+        $scoped = [];
+        foreach ($items as $item) {
+            $pid = (int)$item['product_id'];
+            $scoped[$pid] = ($scoped[$pid] ?? 0) + (int)$item['qty'];
+        }
+
         $rows = [];
-        foreach (self::items() as $key => $item) {
+        foreach ($items as $key => $item) {
             $p = DB::row('SELECT * FROM products WHERE id = ? AND active = 1', [$item['product_id']]);
             if (!$p) continue;
             $v = $item['variant_id'] ? DB::row('SELECT * FROM product_variants WHERE id = ?', [$item['variant_id']]) : null;
             [$price, $old] = Catalog::price($p, $v, $storeId);
+            $qty = (int)$item['qty'];
+
+            $tierQty = Catalog::qtyScope($p) === 'variant' ? $qty : (int)$scoped[(int)$p['id']];
+            $cap = Catalog::discountCap($p, $v);
+            $applied = 0.0;
+            $next = Catalog::nextTier($p, $tierQty);
+
+            if ($price !== null) {
+                // Ціна «до знижок» — та сама, від якої рахує знижку решта коду
+                // (Promo::ownPercent). Двох різних відліків тут бути не може:
+                // стеля тоді означала б різне залежно від того, який ярус у неї впреться.
+                $base = ($old !== null && (float)$old > 0) ? (float)$old : (float)$price;
+                $ownPct = $base > 0 ? ($base - (float)$price) / $base * 100 : 0.0;
+                // Стеля обрізає те, що опт ДОДАЄ. Зменшувати вже призначену
+                // акційну ціну вона не має права: це рішення власника, а не
+                // випадковий перебір ярусів.
+                $applied = max(0.0, min(Catalog::qtyPercent($p, $tierQty), $cap - $ownPct));
+                if ($applied > 0) {
+                    // Знімаємо від base, а не перераховуємо всю ціну заново:
+                    // так на копійках не зʼявляється розбіжність із $ownPct.
+                    $price = round((float)$price - $base * $applied / 100, 2);
+                    if ($old === null) $old = $base;
+                }
+                // Скільки наступний поріг дасть насправді — рахуємо тут, поки
+                // під рукою й відлік, і стеля. Підказка «ще 2 шт → −7%» мусить
+                // обіцяти рівно те, що покупець побачить, дійшовши до неї.
+                if ($next) {
+                    $next['effective'] = max(0.0, min((float)$next['percent'], $cap - $ownPct));
+                    if ($next['effective'] <= $applied) $next = null;   // стеля вже вибрана
+                }
+            }
+
             $rows[] = [
-                'key' => $key, 'product' => $p, 'variant' => $v, 'qty' => $item['qty'],
+                'key' => $key, 'product' => $p, 'variant' => $v, 'qty' => $qty,
                 'price' => $price, 'old' => $old,
-                'sum' => $price !== null ? $price * $item['qty'] : null,
+                'sum' => $price !== null ? $price * $qty : null,
                 'photo' => Catalog::photo($p),
                 // наявність саме цього варіанта по магазинах: [store_id => qty]
                 'stock' => Catalog::stockByStore((int)$p['id'], $v ? (int)$v['id'] : null),
+                // опт: скільки відсотків він дав, за якою кількістю й що буде далі
+                'wholesale' => $applied, 'tier_qty' => $tierQty,
+                'next_tier' => $next,
+                'cap' => $cap,
             ];
         }
         return $rows;
@@ -136,9 +189,9 @@ class Cart
         foreach (self::detailed($storeId) as $r) {
             $sum = (float)($r['sum'] ?? 0);
             $subtotal += $sum;
-            // знижка позиції враховує ту, що на ній уже є: код може не
-            // сумуватися з акцією або мати стелю сумарного відсотка
-            $discount += Promo::cut($sum, $promoCode, Promo::ownPercent($r));
+            // знижка позиції враховує ту, що на ній уже є (акція + опт): код
+            // може не сумуватися з нею й у будь-якому разі впирається в стелю
+            $discount += Promo::cut($sum, $promoCode, Promo::ownPercent($r), $r['cap'] ?? null);
         }
         return ['subtotal' => $subtotal, 'discount' => $discount, 'total' => max(0, $subtotal - $discount)];
     }

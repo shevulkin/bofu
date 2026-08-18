@@ -38,7 +38,28 @@
                 <div class="dim" style="color:var(--danger2)">Немає в наявності</div>
               <?php endif; ?>
             </td>
-            <td><?= e(price_fmt($r['price'])) ?></td>
+            <td>
+              <?php if (($r['wholesale'] ?? 0) > 0 && $r['old'] !== null): ?>
+                <s class="dim"><?= e(price_fmt($r['old'])) ?></s><br>
+              <?php endif; ?>
+              <?= e(price_fmt($r['price'])) ?>
+              <?php if (($r['wholesale'] ?? 0) > 0): ?>
+                <div class="cart-tier is-on">опт −<?= e(QtyDiscounts::pct((float)$r['wholesale'])) ?>%</div>
+              <?php endif; ?>
+              <?php
+                /* Наступний поріг. Найдорожча помилка оптової шкали — та, про
+                   яку покупець дізнається після оформлення: «взяв би девʼять,
+                   якби знав». Тому підказка стоїть рівно там, де кнопка «+»,
+                   і називає, скільки саме не вистачає. Відсоток уже обрізаний
+                   стелею в Cart::detailed — обіцяємо те, що справді буде. */
+                $next = $r['next_tier'] ?? null;
+              ?>
+              <?php if ($next): ?>
+                <div class="cart-tier">
+                  ще <?= (int)$next['need'] ?> шт → −<?= e(QtyDiscounts::pct((float)$next['effective'])) ?>%
+                </div>
+              <?php endif; ?>
+            </td>
             <td>
               <form method="post" action="<?= e(url('/cart/update')) ?>" style="display:inline-flex;gap:6px;align-items:center">
                 <?= Csrf::field() ?>

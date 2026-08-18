@@ -116,6 +116,161 @@ class Catalog
         return [$raw, $old];
     }
 
+    // ------------------------------------------------------------------ опт
+
+    /**
+     * Стеля сумарної знижки на позицію, коли її не задали ніде, %.
+     *
+     * Тридцять — межа, за якою знижка перестає бути знижкою й починає бути
+     * схожою на помилку в ціні. Нижче опт майже не відчувається на великих
+     * партіях; вище акція, опт і промокод складаються в цифру, якої ніхто
+     * не планував, — кожен ярус окремо здається невеликим. Значення можна
+     * підняти будь-де; дефолт рятує від випадковості, а не від рішення.
+     */
+    public const DEFAULT_MAX_DISCOUNT = 30.0;
+
+    /** @var array|null оптові шкали, кешовані на запит */
+    private static ?array $qtyCache = null;
+
+    /** Оптові шкали (кешовано на запит) */
+    public static function qtyDiscounts(): array
+    {
+        return self::$qtyCache ??= DB::all('SELECT * FROM qty_discounts WHERE active = 1 ORDER BY min_qty, id');
+    }
+
+    /**
+     * Забути все, що каталог памʼятає на час запиту: шкали, дерево розділів,
+     * бренди товарів.
+     *
+     * Потрібно тому, хто щойно змінив саму структуру каталогу, — інакше в
+     * тому самому запиті він прочитає те, що вже неправда. Адмінка після
+     * збереження перенаправляє й цього не помітила б, але покладатися на
+     * перенаправлення означає лишити пастку наступному виклику: кеші тут
+     * повʼязані (шкала розділу шукається через дерево), тож чиститься все
+     * разом — половина скинутих кешів гірша за жоден.
+     */
+    public static function forgetCaches(): void
+    {
+        self::$qtyCache = null;
+        self::$catParents = null;
+        self::$brandsCache = [];
+    }
+
+    /** Чи діє опт на цей товар. Немає стовпця (стара база, тест) — діє */
+    public static function wholesale(array $product): bool
+    {
+        return !array_key_exists('wholesale', $product)
+            || $product['wholesale'] === null
+            || (int)$product['wholesale'] === 1;
+    }
+
+    /** Що рахувати для порогу: 'product' — усі фасовки разом, 'variant' — кожну окремо */
+    public static function qtyScope(array $product): string
+    {
+        return ($product['qty_scope'] ?? 'product') === 'variant' ? 'variant' : 'product';
+    }
+
+    /**
+     * Оптова шкала товару: рядки за зростанням порога.
+     *
+     * Ярусів три — товар, розділ (далі його батьківський), загальна шкала, —
+     * і виграє НАЙБЛИЖЧИЙ заповнений, цілком. Не найбільший відсоток серед
+     * усіх, як в акціях: там шкали накладаються на різні товари й перетин
+     * випадковий, а тут ярус нижче — це навмисне уточнення яруса вище.
+     * Брали б максимум — шкала розділу назавжди перебивала б шкалу товару,
+     * і сказати «на цей сорт опт менший» стало б неможливо.
+     *
+     * Тому ж порожня шкала товару означає «як у розділі», а не «знижок
+     * немає»: щоб сказати друге, є вимикач wholesale.
+     */
+    public static function qtyTiers(array $product): array
+    {
+        return self::qtyResolve($product)['tiers'];
+    }
+
+    /**
+     * Те саме, але з відповіддю на «звідки взялась ця шкала»:
+     * ['tiers' => [...], 'level' => 'off|product|category|global', 'category_id' => ?int].
+     *
+     * Потрібно адмінці: порожня шкала в картці товару означає «як у розділі»,
+     * і людина мусить бачити, як саме — інакше порожнє поле читається як
+     * «знижок немає», а насправді знижка є.
+     */
+    public static function qtyResolve(array $product): array
+    {
+        if (!self::wholesale($product)) return ['tiers' => [], 'level' => 'off', 'category_id' => null];
+        $rows = self::qtyDiscounts();
+
+        $sorted = static function (array $tiers): array {
+            usort($tiers, static fn($a, $b) => (int)$a['min_qty'] <=> (int)$b['min_qty']);
+            return $tiers;
+        };
+        $level = static function (callable $match) use ($rows): array {
+            $out = [];
+            foreach ($rows as $r) if ($match($r)) $out[] = $r;
+            return $out;
+        };
+
+        $pid = (int)($product['id'] ?? 0);
+        if ($pid > 0) {
+            $own = $level(static fn(array $r): bool => (int)($r['product_id'] ?? 0) === $pid);
+            if ($own) return ['tiers' => $sorted($own), 'level' => 'product', 'category_id' => null];
+        }
+
+        foreach (self::ancestorIds((int)($product['category_id'] ?? 0)) as $cid) {
+            $cat = $level(static fn(array $r): bool =>
+                (int)($r['product_id'] ?? 0) === 0 && (int)($r['category_id'] ?? 0) === $cid);
+            if ($cat) return ['tiers' => $sorted($cat), 'level' => 'category', 'category_id' => $cid];
+        }
+
+        $all = $level(static fn(array $r): bool =>
+            (int)($r['product_id'] ?? 0) === 0 && (int)($r['category_id'] ?? 0) === 0);
+        return ['tiers' => $sorted($all), 'level' => $all ? 'global' : 'none', 'category_id' => null];
+    }
+
+    /** Скільки відсотків дає опт за таку кількість. 0 — шкала до неї ще не дійшла */
+    public static function qtyPercent(array $product, int $qty): float
+    {
+        $best = 0.0;
+        foreach (self::qtyTiers($product) as $t) {
+            if ($qty >= (int)$t['min_qty']) $best = max($best, (float)$t['percent']);
+        }
+        return $best;
+    }
+
+    /**
+     * Найближчий поріг, якого ще не досягли: ['need' => скільки ще штук,
+     * 'min_qty' => поріг, 'percent' => відсоток]. null — шкали немає або
+     * вона вже вичерпана.
+     *
+     * Потрібен покупцеві, а не розрахунку: знижка, про яку не сказали за крок
+     * до неї, не працює як привід узяти більше.
+     */
+    public static function nextTier(array $product, int $qty): ?array
+    {
+        $have = self::qtyPercent($product, $qty);
+        foreach (self::qtyTiers($product) as $t) {
+            $min = (int)$t['min_qty'];
+            if ($min > $qty && (float)$t['percent'] > $have) {
+                return ['need' => $min - $qty, 'min_qty' => $min, 'percent' => (float)$t['percent']];
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Стеля сумарної знижки на позицію, %. Варіація → товар → налаштування.
+     * Порожнє поле означає «як ярусом вище», тому нуль тут задають явно.
+     */
+    public static function discountCap(array $product, ?array $variant = null): float
+    {
+        foreach ([$variant['max_discount'] ?? null, $product['max_discount'] ?? null] as $own) {
+            if ($own !== null && $own !== '') return max(0.0, (float)$own);
+        }
+        $set = trim((string)Settings::get('max_discount_default', ''));
+        return $set === '' ? self::DEFAULT_MAX_DISCOUNT : max(0.0, (float)$set);
+    }
+
     /** Довідник брендів: усі або лише активні */
     public static function brands(bool $activeOnly = false): array
     {

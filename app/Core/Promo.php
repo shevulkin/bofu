@@ -159,10 +159,10 @@ class Promo
      * (акція магазину чи стара ціна); від неї залежить, чи додасться код і
      * наскільки. Округлення тут одне на весь код — див. Cart::total.
      */
-    public static function cut(float $sum, ?array $promo, float $ownPct = 0.0): float
+    public static function cut(float $sum, ?array $promo, float $ownPct = 0.0, ?float $itemCap = null): float
     {
         if (!$promo || $sum <= 0) return 0.0;
-        $pct = self::extraPercent($promo, $ownPct);
+        $pct = self::extraPercent($promo, $ownPct, $itemCap);
         return $pct > 0 ? round($sum * $pct / 100, 2) : 0.0;
     }
 
@@ -170,17 +170,26 @@ class Promo
      * Скільки відсотків код реально додасть до позиції, яка вже має знижку $ownPct.
      * Не сумується — 0 на будь-якій зниженій ціні; є стеля — код обрізається
      * рівно до неї (акція 20% + код 15% зі стелею 25% дають 5, а не 15).
+     *
+     * Стель дві й вони з різних місць: у коду своя (max_total_percent), у
+     * товару своя (Catalog::discountCap). Діє найменша — стеля означає «не
+     * більше ніж», і дві такі умови інакше складатись не вміють.
      */
-    public static function extraPercent(array $promo, float $ownPct = 0.0): float
+    public static function extraPercent(array $promo, float $ownPct = 0.0, ?float $itemCap = null): float
     {
         $pct = (float)$promo['percent'];
         if ($ownPct > 0 && !self::stacks($promo)) return 0.0;
-        $cap = $promo['max_total_percent'] ?? null;
-        if ($cap !== null && $cap !== '') {
-            $left = (float)$cap - $ownPct;
-            $pct = min($pct, max(0.0, $left));
-        }
+        $cap = self::cap($promo, $itemCap);
+        if ($cap !== null) $pct = min($pct, max(0.0, $cap - $ownPct));
         return $pct;
+    }
+
+    /** Стеля, що справді діє на позицію: найменша з коду й товару. null — стелі немає */
+    public static function cap(array $promo, ?float $itemCap = null): ?float
+    {
+        $own = $promo['max_total_percent'] ?? null;
+        if ($own === null || $own === '') return $itemCap;
+        return $itemCap === null ? (float)$own : min($itemCap, (float)$own);
     }
 
     /** Чи складається код із наявними знижками (за замовчуванням — так) */
@@ -205,20 +214,31 @@ class Promo
     public static function note(?array $promo, array $rows): string
     {
         if (!$promo) return '';
-        $skipped = 0; $applied = 0; $capped = 0;
+        $skipped = 0; $applied = 0; $capped = 0; $blocked = 0; $capHit = null;
         foreach ($rows as $r) {
             $sum = (float)($r['sum'] ?? 0);
             if ($sum <= 0) continue;
-            $eff = self::extraPercent($promo, self::ownPercent($r));
-            if ($eff <= 0) { $skipped++; continue; }
+            $own = self::ownPercent($r);
+            $itemCap = $r['cap'] ?? null;
+            $eff = self::extraPercent($promo, $own, $itemCap);
+            if ($eff <= 0) {
+                // Дві різні причини нуля, і покупцеві вони кажуть різне: код
+                // не складається зі знижкою — чи складається, але стеля вже
+                // вибрана акцією та оптом.
+                if ($own > 0 && !self::stacks($promo)) $skipped++;
+                else { $blocked++; $capHit ??= self::cap($promo, $itemCap); }
+                continue;
+            }
             $applied++;
-            if ($eff < (float)$promo['percent'] - 0.001) $capped++;
+            if ($eff < (float)$promo['percent'] - 0.001) { $capped++; $capHit ??= self::cap($promo, $itemCap); }
         }
         if ($skipped && !$applied) return 'Код не діє на товари, які вже продаються зі знижкою';
         if ($skipped) return 'На товари, що вже зі знижкою, код не поширюється';
-        if ($capped) {
-            $cap = rtrim(rtrim(number_format((float)$promo['max_total_percent'], 2, ',', ''), '0'), ',');
-            return 'Сумарна знижка на товар обмежена ' . $cap . '%, тож на акційні позиції код додав менше';
+        if (($capped || $blocked) && $capHit !== null) {
+            $cap = rtrim(rtrim(number_format($capHit, 2, ',', ''), '0'), ',');
+            return $blocked && !$applied
+                ? 'Сумарна знижка на товар обмежена ' . $cap . '%, і її вже вибрано — код нічого не додає'
+                : 'Сумарна знижка на товар обмежена ' . $cap . '%, тож на частину позицій код додав менше';
         }
         return '';
     }

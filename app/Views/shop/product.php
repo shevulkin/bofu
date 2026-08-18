@@ -94,6 +94,46 @@
           </div>
         </form>
 
+        <?php
+        /* Оптова шкала. Показуємо саме ціну за штуку, а не самі відсотки:
+           «−7%» треба перемножити в голові, «186 грн/шт» — ні, і рішення взяти
+           більше приймається на місці. Знижка, про яку покупець дізнається аж
+           у кошику, працює вдвічі гірше — тому вона стоїть тут, поруч із
+           полем кількості, а не десь у описі.
+
+           Ціна тут базова, без урахування магазину: на сторінці товару ще
+           невідомо, з якої точки поїде замовлення. */
+        $tiers = $price !== null ? Catalog::qtyTiers($p) : [];
+        $capPct = Catalog::discountCap($p, $variants[0] ?? null);
+        // Ті самі відлік і стеля, що в Cart::detailed. Інакше картка обіцяла б
+        // одне, а кошик рахував інше — і винним виглядав би кошик.
+        $tierBase = ($old_price !== null && (float)$old_price > 0) ? (float)$old_price : (float)$price;
+        $tierOwn = $tierBase > 0 ? ($tierBase - (float)$price) / $tierBase * 100 : 0.0;
+        ?>
+        <?php if ($tiers): ?>
+          <div class="qty-tiers-box" id="qtyTiers">
+            <h3>Дешевше за кількість</h3>
+            <table class="qty-tiers-list">
+              <?php foreach ($tiers as $t):
+                $pct = max(0.0, min((float)$t['percent'], $capPct - $tierOwn));
+                if ($pct <= 0) continue;
+                $each = round((float)$price - $tierBase * $pct / 100, 2);
+              ?>
+                <tr>
+                  <td>від <?= (int)$t['min_qty'] ?> шт</td>
+                  <td class="qty-tiers-pct">−<?= e(QtyDiscounts::pct($pct)) ?>%</td>
+                  <td class="qty-tiers-each"><?= e(price_fmt($each)) ?>/шт</td>
+                </tr>
+              <?php endforeach; ?>
+            </table>
+            <?php if (Catalog::qtyScope($p) === 'product' && $variants): ?>
+              <p class="dim">Рахуються всі фасовки разом — можна змішувати.</p>
+            <?php elseif ($variants): ?>
+              <p class="dim">Рахується кожна фасовка окремо.</p>
+            <?php endif; ?>
+          </div>
+        <?php endif; ?>
+
         <?php $lowStock = ($p['low_stock_threshold'] ?? null) !== null && $p['low_stock_threshold'] !== '' ? (int)$p['low_stock_threshold'] : null; ?>
         <?php $anyStock = false; foreach ($availability as $av) $anyStock = $anyStock || $av['qty'] > 0; ?>
 

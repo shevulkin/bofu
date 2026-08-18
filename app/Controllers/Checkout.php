@@ -93,7 +93,7 @@ class Checkout
         $items = [];
         foreach ($rows as $r) {
             $sum = (float)($r['sum'] ?? 0);
-            $cut = Promo::cut($sum, $promo, Promo::ownPercent($r));
+            $cut = Promo::cut($sum, $promo, Promo::ownPercent($r), $r['cap'] ?? null);
             $items[$r['key']] = [
                 'sum' => price_fmt($sum - $cut),
                 'old' => $cut > 0 ? price_fmt($sum) : null,
