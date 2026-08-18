@@ -48,6 +48,7 @@
             ['/admin/vchasno', 'Каса (ПРРО)', Auth::can('fiscal.manage') && FiscalProvider::anyConfigured()],
             ['/admin/promos', 'Акції та промокоди', Auth::can('promos.manage')],
             ['/admin/bundles', 'Набори (разом дешевше)', Auth::can('promos.manage')],
+            ['/admin/wholesale', 'Оптові знижки', Auth::can('promos.manage')],
             ['/admin/subscribers', 'Розсилка', Auth::can('subscribers.manage')],
         ]],
         ['Каталог', [

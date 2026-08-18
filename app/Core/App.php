@@ -265,6 +265,9 @@ class App
             // Набори «разом дешевше»: свій екран, бо в набору є склад —
             // список товарів, який не вміщається рядком серед акцій
             '/admin/bundles'            => [$A.'BundlesAdmin', 'index', 'promos.manage'],
+            // Оптові шкали: своя сторінка, бо в них є питання, якого немає в
+            // акцій, — котра шкала справді діє після перебивання ярусів
+            '/admin/wholesale'          => [$A.'Wholesale', 'index', 'promos.manage'],
             '/admin/diplomas'           => [$A.'Diplomas', 'index', 'diplomas.manage'],
             '/admin/users'              => [$A.'Users', 'index', 'users.manage'],
             '/admin/users/message'      => [$A.'Users', 'message', 'users.manage'],
