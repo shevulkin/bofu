@@ -182,17 +182,78 @@ class Cart
      * Підсумки. Знижку рахуємо по кожній позиції окремо, а не від загальної суми:
      * покупець бачить перераховану ціну кожного товару, і ці числа мають скластися
      * рівно в «до сплати» — інакше на копійках форма не сходиться сама з собою.
+     *
+     * Порядок знижок: акція й опт уже сидять у ціні позиції (Cart::detailed),
+     * далі набір, і останнім промокод. Не довільний: кожна наступна бачить, що
+     * на позиції вже є, і бере лише те, що лишилось до стелі. Промокод останній
+     * тому, що він єдиний, який покупець приносить сам, — і саме йому чесно
+     * дістатись залишку, а не витіснити те, що діяло й без нього.
+     *
+     * @return array{subtotal:float,discount:float,total:float,bundles:array}
      */
-    public static function total(?int $storeId = null, ?array $promoCode = null): array
+    public static function breakdown(?int $storeId = null, ?array $promoCode = null): array
     {
-        $subtotal = 0.0; $discount = 0.0;
-        foreach (self::detailed($storeId) as $r) {
+        $rows = self::detailed($storeId);
+        $hits = Bundles::match($rows);
+
+        $subtotal = 0.0; $fromBundles = 0.0; $fromPromo = 0.0;
+        foreach ($rows as &$r) {
             $sum = (float)($r['sum'] ?? 0);
             $subtotal += $sum;
-            // знижка позиції враховує ту, що на ній уже є (акція + опт): код
-            // може не сумуватися з нею й у будь-якому разі впирається в стелю
-            $discount += Promo::cut($sum, $promoCode, Promo::ownPercent($r), $r['cap'] ?? null);
+
+            // Знижка набору вже порахована по позиціях і вже обрізана стелею
+            $inSet = (float)($hits['lines'][$r['key']] ?? 0);
+
+            // Коду лишається те, що не забрали акція, опт і набір. $sum без
+            // знятого набором — щоб код не знижував удруге ті самі гривні.
+            $cut = Promo::cut(
+                max(0.0, $sum - $inSet), $promoCode,
+                Promo::ownPercent($r) + self::pctOf($r, $inSet),
+                $r['cap'] ?? null);
+
+            $r['bundle_cut'] = $inSet;
+            $r['promo_cut'] = $cut;
+            $r['cut'] = round($inSet + $cut, 2);
+            $r['final'] = max(0.0, round($sum - $r['cut'], 2));
+            $fromBundles += $inSet;
+            $fromPromo += $cut;
         }
-        return ['subtotal' => $subtotal, 'discount' => $discount, 'total' => max(0, $subtotal - $discount)];
+        unset($r);
+
+        $discount = round($fromBundles + $fromPromo, 2);
+        return [
+            'rows' => $rows,
+            'subtotal' => $subtotal,
+            // Знижка одним числом — для замовлення; окремо по джерелах — для
+            // підсумків: покупцю показують не «−240 грн», а за що саме.
+            'discount' => $discount,
+            'bundle_discount' => round($fromBundles, 2),
+            'promo_discount' => round($fromPromo, 2),
+            'total' => max(0, round($subtotal - $discount, 2)),
+            // які набори спрацювали — підсумкам є що назвати поіменно
+            'bundles' => $hits['applied'],
+        ];
+    }
+
+    /** Самі числа, без рядків: те, що потрібно підсумкам і замовленню */
+    public static function total(?int $storeId = null, ?array $promoCode = null): array
+    {
+        $b = self::breakdown($storeId, $promoCode);
+        unset($b['rows']);
+        return $b;
+    }
+
+    /**
+     * Скільки відсотків від ціни «до знижок» становлять ці гривні. Потрібно,
+     * щоб стеля рахувалась в одних одиницях: набір знімає гроші, а акція,
+     * опт і код міряються у відсотках.
+     */
+    private static function pctOf(array $r, float $money): float
+    {
+        if ($money <= 0) return 0.0;
+        $price = (float)($r['price'] ?? 0);
+        $qty = (int)($r['qty'] ?? 0);
+        $base = ($r['old'] ?? null) !== null && (float)$r['old'] > 0 ? (float)$r['old'] : $price;
+        return $base > 0 && $qty > 0 ? $money / ($base * $qty) * 100 : 0.0;
     }
 }

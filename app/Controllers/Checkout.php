@@ -10,7 +10,11 @@ class Checkout
     public static function form(): never
     {
         if (!Cart::items()) redirect('/cart');
-        $rows = Cart::detailed();
+        // Рядки беремо з тих самих підсумків, що й числа внизу форми: інакше
+        // список позицій і «до сплати» рахувалися б двома різними шляхами й
+        // розійшлися б на першій же новій знижці.
+        $totals = Cart::breakdown(null, self::promo());
+        $rows = $totals['rows'];
         $stores = Catalog::stores();
         // Чого бракує в кожному магазині для самовивозу (з урахуванням варіанта).
         // Разом із тим, де цю позицію можна забрати натомість: людині, що вже
@@ -43,7 +47,7 @@ class Checkout
 
         View::show('cart/checkout', [
             'rows' => $rows,
-            'totals' => Cart::total(null, self::promo()),
+            'totals' => $totals,
             'stores' => $stores, 'missing' => $missing,
             // Карта самовивозу: питання «яка точка до мене ближча» списком назв
             // не вирішується, а саме його й ставлять, обираючи самовивіз
@@ -87,16 +91,14 @@ class Checkout
         Csrf::verify();
         $posted = Promo::fromInput($_POST['promo_code'] ?? '');
         [$promo, $error] = Promo::apply($posted, Auth::id(), self::buyerPhone());
-        $rows = Cart::detailed();
-        $totals = Cart::total(null, $promo);
+        $totals = Cart::breakdown(null, $promo);
+        $rows = $totals['rows'];
 
         $items = [];
         foreach ($rows as $r) {
-            $sum = (float)($r['sum'] ?? 0);
-            $cut = Promo::cut($sum, $promo, Promo::ownPercent($r), $r['cap'] ?? null);
             $items[$r['key']] = [
-                'sum' => price_fmt($sum - $cut),
-                'old' => $cut > 0 ? price_fmt($sum) : null,
+                'sum' => price_fmt($r['final']),
+                'old' => $r['cut'] > 0 ? price_fmt($r['sum']) : null,
             ];
         }
         json_response([
@@ -111,8 +113,10 @@ class Checkout
             // заощадили 0 грн» чи менша за очікувану сума виглядали б як
             // поломка, а не як умова коду.
             'note' => Promo::note($promo, $rows),
-            // нульову знижку price_fmt показав би як «За запитом» — це про ціну, не про суму
-            'discount' => $totals['discount'] > 0 ? price_fmt($totals['discount']) : '0 грн',
+            // Саме промокодова частина: набори стоять у підсумках окремими
+            // рядками й від застосування коду не змінюються.
+            // Нульову знижку price_fmt показав би як «За запитом» — це про ціну, не про суму
+            'discount' => $totals['promo_discount'] > 0 ? price_fmt($totals['promo_discount']) : '0 грн',
             'subtotal' => price_fmt($totals['subtotal']),
             'total' => price_fmt($totals['total']),
             'items' => $items,

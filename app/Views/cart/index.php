@@ -70,7 +70,18 @@
                 <button class="btn btn-line btn-xs" name="action" value="inc">+</button>
               </form>
             </td>
-            <td><b><?= e(price_fmt($r['sum'])) ?></b></td>
+            <td>
+              <?php /* Позицію, що ввійшла в набір, показуємо зі знятою знижкою,
+                       але з підписом: інакше сума рядка не сходиться з тим, що
+                       написано в стовпці «Ціна». */ ?>
+              <?php if (($r['bundle_cut'] ?? 0) > 0): ?>
+                <s class="dim"><?= e(price_fmt($r['sum'])) ?></s><br>
+                <b><?= e(price_fmt($r['sum'] - $r['bundle_cut'])) ?></b>
+                <div class="cart-tier is-on">у наборі</div>
+              <?php else: ?>
+                <b><?= e(price_fmt($r['sum'])) ?></b>
+              <?php endif; ?>
+            </td>
             <td>
               <form method="post" action="<?= e(url('/cart/update')) ?>"><?= Csrf::field() ?>
                 <input type="hidden" name="key" value="<?= e($r['key']) ?>">
@@ -81,6 +92,17 @@
         <?php endforeach; ?>
       </table>
       <div class="totals">
+        <?php /* Набір називаємо поіменно й до підсумку. Знижку за кількість
+                 видно з ціни позиції, а знижку за поєднання — ні: вона
+                 виникає з того, ЩО лежить поруч, і без підпису читається як
+                 помилка в рахунку. */ ?>
+        <?php if ($totals['bundles'] ?? []): ?>
+          <div class="row"><span class="muted">Товари:</span><span><?= e(price_fmt($totals['subtotal'])) ?></span></div>
+          <?php foreach ($totals['bundles'] as $hit): ?>
+            <div class="row"><span class="muted"><?= e(Bundles::label($hit)) ?>:</span>
+              <span>−<?= e(price_fmt($hit['cut'])) ?></span></div>
+          <?php endforeach; ?>
+        <?php endif; ?>
         <div class="row grand"><span>Разом:</span><span><?= e(price_fmt($totals['total'])) ?></span></div>
       </div>
       <div style="display:flex;justify-content:flex-end;gap:14px;margin-top:26px">

@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 namespace Controllers;
 
-use DB, View, Catalog, Content, Attrs, Auth, Csrf, StockWatch, JsonLd;
+use DB, View, Catalog, Content, Attrs, Auth, Csrf, StockWatch, JsonLd, Bundles;
 
 class Shop
 {
@@ -201,6 +201,9 @@ class Shop
             'variant_axes' => $axes, 'variant_data' => $variantData,
             'images' => $images, 'availability' => $availability,
             'price' => $price, 'old_price' => $old, 'related' => $related,
+            // Набори, у які входить цей товар. Пропозиція комбінації працює
+            // лише поруч із товаром: у кошику покупець уже вирішив, що бере.
+            'bundles' => Bundles::forProduct((int)$p['id']),
             // Вага й ціна за 100 г для стану «до вибору варіанта»; далі їх
             // переставляє JS разом із ціною — так само, як наявність.
             //

@@ -3,13 +3,16 @@ declare(strict_types=1);
 
 namespace Controllers;
 
-use View, Cart, Csrf, DB, Catalog;
+use View, Cart, Csrf, DB, Catalog, Bundles;
 
 class CartController
 {
     public static function index(): never
     {
-        $rows = Cart::detailed();
+        // Рядки й підсумки — з одного розрахунку: знижка набору належить
+        // позиціям, і рядок кошика має показати рівно те, що ввійшло в суму
+        $totals = Cart::breakdown();
+        $rows = $totals['rows'];
         // Порожній кошик — це не помилка, а розвилка: людина або ще нічого не
         // обрала, або передумала. Порожній екран із одним посиланням лишає її
         // наодинці з цим рішенням; кілька позицій дають привід лишитись.
@@ -22,7 +25,7 @@ class CartController
         View::show('cart/index', [
             'rows' => $rows,
             'suggest' => $suggest,
-            'totals' => Cart::total(),
+            'totals' => $totals,
             'stores' => Catalog::stores(),
             'page_title' => 'Кошик — ' . cfg('app_name'),
         ]);
@@ -68,6 +71,50 @@ class CartController
         if ($ajax) json_response(['ok' => true, 'count' => Cart::count(), 'note' => $note]);
         flash('success', $note ?? 'Додано до кошика');
         redirect(safe_back($_POST['back'] ?? null, '/cart'));
+    }
+
+    /**
+     * Покласти набір цілком.
+     *
+     * Кладемо саме той склад, що показала сторінка (Bundles::expand): якщо в
+     * позиції набору фасовка не задана, вибір робить набір, а не покупець —
+     * інакше «Додати набір» відкривало б три картки товару поспіль і
+     * перестало б бути однією дією.
+     *
+     * Те, чого не вистачило, не відкочує решту: покупець побачить, що саме
+     * доклалось не повністю, і вирішить сам. Мовчки покласти половину набору
+     * було б гірше — знижка не спрацює, а причина лишиться невидимою.
+     */
+    public static function addBundle(): never
+    {
+        Csrf::verify();
+        $bundle = Bundles::find((int)($_POST['bundle_id'] ?? 0));
+        $full = $bundle && $bundle['active'] ? Bundles::expand($bundle) : null;
+        $back = safe_back($_POST['back'] ?? null, '/cart');
+
+        if (!$full) {
+            flash('error', 'Цього набору більше немає — щось із його складу закінчилось.');
+            redirect($back);
+        }
+
+        $short = [];
+        foreach ($full['expanded'] as $it) {
+            $pid = (int)$it['product']['id'];
+            $vid = $it['variant'] ? (int)$it['variant']['id'] : null;
+            $want = (int)$it['qty'];
+            $got = Cart::add($pid, $vid, $want);
+            if ($got < $want) {
+                $short[] = $it['product']['name'] . ($it['variant'] ? ', ' . $it['variant']['name'] : '');
+            }
+        }
+
+        if ($short) {
+            flash('error', 'Набір доклали не повністю — не вистачило: ' . implode(', ', $short)
+                . '. Знижка за набір спрацює, коли все буде в кошику.');
+        } else {
+            flash('success', 'Набір «' . $bundle['title'] . '» у кошику — знижка вже врахована.');
+        }
+        redirect('/cart');
     }
 
     /** Варіант обовʼязковий лише там, де вибір справді є: один варіант — це не вибір */
