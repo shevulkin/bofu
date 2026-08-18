@@ -504,10 +504,20 @@ $roEdit = $canEdit ? '' : 'disabled';
 <?php if (!$isNew && $canEdit): ?>
 <div class="admin-card" id="photos" style="margin-top:22px;scroll-margin-top:16px">
   <h2 class="h-serif">Фотографії</h2>
-  <p class="dim" style="margin:0 0 14px">Перше фото — головне: воно у каталозі, кошику та при поширенні в соцмережах.
+  <p class="dim" style="margin:0 0 14px">Перше спільне фото — головне: воно у каталозі, кошику та при поширенні в соцмережах.
     Решта показуються мініатюрами на сторінці товару в цьому ж порядку.</p>
+  <?php if ($variants): ?>
+    <p class="dim" style="margin:-8px 0 14px">Кадр можна закріпити за варіантом — тоді на сторінці його побачить лише той,
+      хто обрав цей варіант, а спільні фото покажуться після нього. Головним закріплене фото не буває:
+      у каталозі товар представляє себе цілком.</p>
+  <?php endif; ?>
   <div class="img-grid">
-    <?php $last = count($images) - 1; foreach ($images as $i => $img): $isMain = $i === 0; ?>
+    <?php
+    $last = count($images) - 1;
+    foreach ($images as $i => $img):
+      $imgVid = (int)($img['variant_id'] ?? 0);
+      $isMain = $img['path'] === ($p['image'] ?? '');
+    ?>
       <div class="img-cell<?= $isMain ? ' is-main' : '' ?>">
         <img src="<?= e(asset(Images::displayThumb($img['path']))) ?>" alt="">
         <?php if ($isMain): ?><span class="img-badge">Головне</span><?php endif; ?>
@@ -523,7 +533,9 @@ $roEdit = $canEdit ? '' : 'disabled';
             <button class="btn btn-line btn-xs" name="dir" value="up" title="Раніше" <?= $i === 0 ? 'disabled' : '' ?>>←</button>
             <button class="btn btn-line btn-xs" name="dir" value="down" title="Пізніше" <?= $i === $last ? 'disabled' : '' ?>>→</button>
           </form>
-          <?php if (!$isMain): ?>
+          <?php /* Закріплений кадр головним не робимо: у каталозі він обіцяв би
+                   один варіант замість товару. Спершу зніміть мітку. */ ?>
+          <?php if (!$isMain && !$imgVid): ?>
             <form method="post" action="<?= e(url('/admin/products/' . $p['id'])) ?>"><?= Csrf::field() ?>
               <input type="hidden" name="_action" value="main_image">
               <input type="hidden" name="image_id" value="<?= (int)$img['id'] ?>">
@@ -531,6 +543,21 @@ $roEdit = $canEdit ? '' : 'disabled';
             </form>
           <?php endif; ?>
         </div>
+        <?php if ($variants): ?>
+          <form method="post" action="<?= e(url('/admin/products/' . $p['id'])) ?>" style="margin-top:6px"><?= Csrf::field() ?>
+            <input type="hidden" name="_action" value="image_variant">
+            <input type="hidden" name="image_id" value="<?= (int)$img['id'] ?>">
+            <select name="variant_id" onchange="this.form.submit()" style="width:100%"
+                    title="Кому належить кадр: усім варіантам чи одному">
+              <option value="0">спільне фото</option>
+              <?php foreach ($variants as $v): ?>
+                <option value="<?= (int)$v['id'] ?>"<?= $imgVid === (int)$v['id'] ? ' selected' : '' ?>>
+                  <?= e($v['name']) ?><?= (int)$v['active'] === 1 ? '' : ' (вимкнений)' ?>
+                </option>
+              <?php endforeach; ?>
+            </select>
+          </form>
+        <?php endif; ?>
         <span class="dim"><?= (int)$img['width'] ?>×<?= (int)$img['height'] ?> · <?= round($img['bytes'] / 1024) ?> КБ</span>
       </div>
     <?php endforeach; ?>

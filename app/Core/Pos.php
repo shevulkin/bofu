@@ -238,7 +238,7 @@ class Pos
                     'variant_id' => $v ? (int)$v['id'] : 0,
                     'title' => (string)$p['name'],
                     'variant_name' => $v ? (string)$v['name'] : '',
-                    'photo' => Catalog::photo($p),
+                    'photo' => Catalog::photo($p, $v),
                     'price' => $price,
                     'stock' => $storeId ? (int)($stock[$storeId] ?? 0) : (int)array_sum($stock),
                     'made_to_order' => !empty($p['made_to_order']),

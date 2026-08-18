@@ -7,7 +7,7 @@ declare(strict_types=1);
  */
 class Schema
 {
-    public const VERSION = 42;
+    public const VERSION = 43;
 
     /** Оновлення існуючої бази до поточної версії без втрати даних */
     public static function upgrade(): void
@@ -574,6 +574,23 @@ class Schema
              */
             self::createAll();   // bundles + bundle_items
         }
+        if ($ver < 43) {
+            /*
+             * Фото варіанта.
+             *
+             * Досі галерея належала товару цілком, і на сторінці мед у банці
+             * 0,5 виглядав так само, як ящик: перемикач міняв ціну й вагу, а
+             * картинка лишалась та сама. Для фасовок це терпимо, для кольору —
+             * ні: «оберіть колір» без кадру самого кольору не вибір, а здогад.
+             *
+             * Мітка на фото, а не поле в варіанті: у варіанта тоді була б рівно
+             * одна картинка, а колір показують кількома — загальний план,
+             * фактура, деталь. Порожній variant_id лишає кадр спільним, тому
+             * всі наявні фото поводяться далі так, як поводились.
+             */
+            self::addColumn('product_images', 'variant_id', 'int null');
+            self::createAll();   // індекс product_images.variant_id
+        }
         Settings::set('schema_version', (string)self::VERSION);
     }
 
@@ -888,6 +905,11 @@ class Schema
             ],
             'product_images' => [
                 'id' => 'id', 'product_id' => 'int', 'path' => 'str',
+                // Фото належить товару, а варіанту лише позначається. Порожньо
+                // — кадр спільний: макро, упаковка, розріз однакові для всіх
+                // фасовок, і змушувати заводити їх у кожну означало б тримати
+                // пʼять копій одного файлу заради одного «червоного».
+                'variant_id' => 'int null',
                 'width' => 'int default 0', 'height' => 'int default 0', 'bytes' => 'int default 0', 'sort' => 'int default 0',
             ],
             'product_attrs' => [
@@ -1267,7 +1289,7 @@ class Schema
             // sku/barcode — те, за чим шукає каса: точний збіг на кожен скан
             'products' => ['category_id', 'active', 'featured', 'sku', 'barcode'],
             'product_variants' => ['product_id', 'sku', 'barcode'],
-            'product_images' => ['product_id'],
+            'product_images' => ['product_id', 'variant_id'],
             'product_attrs' => ['product_id', 'attribute_id'],
             'product_brands' => ['product_id', 'brand_id'],
             'attribute_values' => ['attribute_id'],

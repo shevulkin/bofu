@@ -159,6 +159,7 @@
               : 'Немає в наявності'));
         note.textContent = bits.join(' · ');
       }
+      updatePhotos(v);
       updateAvailability(v);
       updateAddButton(v);
       // гасимо значення, які не поєднуються з поточним вибором
@@ -191,6 +192,49 @@
           if (+qtyInput.value > v.qty) qtyInput.value = v.qty;
         }
       }
+    }
+
+    /**
+     * Галерея обраної фасовки.
+     *
+     * Список приходить готовим із сервера (свої кадри, далі спільні): порядок
+     * і заглушку вирішує Catalog::gallery, і повторювати те саме правило тут
+     * означало б завести другу його версію, яка колись розійдеться з першою.
+     *
+     * Фасовка без своїх кадрів отримує той самий список, що й товар, — тому
+     * перебирати галерею можна щоразу, не питаючи, чи є в неї фото.
+     */
+    function updatePhotos(v) {
+      var main = document.getElementById('mainPhoto');
+      var photos = v.photos || [];
+      if (!main || !photos.length) return;
+      main.src = photos[0].full;
+
+      var box = document.getElementById('productThumbs');
+      if (box) {
+        box.textContent = '';
+        // Одне фото — мініатюри не потрібні: вона повторювала б головне фото,
+        // а перегляд рахував би один кадр за два.
+        (photos.length > 1 ? photos : []).forEach(function (ph, i) {
+          var b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'thumb' + (i ? '' : ' active');
+          b.dataset.full = ph.full;
+          b.dataset.lbSkip = '';   // своя дія: підмінити головне фото
+          b.setAttribute('aria-label', 'Фото ' + (i + 1) + ' з ' + photos.length);
+          var im = document.createElement('img');
+          im.src = ph.thumb;
+          im.alt = main.alt + ' — фото ' + (i + 1);
+          im.loading = 'lazy';
+          b.appendChild(im);
+          box.appendChild(b);
+        });
+        box.hidden = photos.length < 2;
+      }
+      // Коли мініатюр немає, список для перегляду складає саме головне фото —
+      // те саме правило, що й при першому показі сторінки.
+      if (photos.length > 1) main.removeAttribute('data-full');
+      else main.dataset.full = photos[0].full;
     }
 
     function updateAvailability(v) {
@@ -537,31 +581,48 @@
   }
 
   boxes.forEach(function (box) {
-    var nodes = Array.prototype.slice.call(box.querySelectorAll('[data-full]'));
-    if (!nodes.length) return;
-    var list = nodes.map(function (n) {
-      var img = n.tagName === 'IMG' ? n : n.querySelector('img');
-      return { full: n.dataset.full, alt: (img && img.alt) || n.getAttribute('aria-label') || '' };
-    });
+    /*
+     * Список збирається на кліку, а не при завантаженні. На сторінці товару
+     * галерея перебирається при виборі фасовки, і список, знятий один раз,
+     * показував би кадри, яких на сторінці вже немає.
+     */
+    function collect() {
+      var nodes = Array.prototype.slice.call(box.querySelectorAll('[data-full]'));
+      return {
+        nodes: nodes,
+        list: nodes.map(function (n) {
+          var img = n.tagName === 'IMG' ? n : n.querySelector('img');
+          return { full: n.dataset.full, alt: (img && img.alt) || n.getAttribute('aria-label') || '' };
+        }),
+      };
+    }
 
-    nodes.forEach(function (n, i) {
+    // Курсор-лупа лишається розміткою: мініатюри перегляду не відкривають
+    // (у них своя дія), тож позначаємо все інше — і велике фото над ними.
+    box.querySelectorAll('[data-full]').forEach(function (n) {
+      if (n.dataset.lbSkip === undefined) n.classList.add('is-zoomable');
+    });
+    var starter = box.querySelector('[data-lb-open]');
+    if (starter) starter.classList.add('is-zoomable');
+
+    box.addEventListener('click', function (e) {
+      var n = e.target.closest('[data-full]');
       // мініатюри картки товару вже мають свою дію — підмінити головне фото.
       // Вони складають список, але самі перегляду не відкривають.
-      if (n.dataset.lbSkip !== undefined) return;
-      n.classList.add('is-zoomable');
-      n.addEventListener('click', function (e) { e.preventDefault(); open(list, i, n); });
-    });
-
-    // Окремий відкривач — велике фото над мініатюрами. Починає з того кадру,
-    // який людина зараз бачить, а не з першого: вона вже обрала, на що дивиться.
-    var starter = box.querySelector('[data-lb-open]');
-    if (starter && !starter.dataset.full) {
-      starter.classList.add('is-zoomable');
-      starter.addEventListener('click', function (e) {
+      if (n && n.dataset.lbSkip === undefined) {
         e.preventDefault();
-        var active = box.querySelector('[data-full].active');
-        open(list, Math.max(0, nodes.indexOf(active)), starter);
-      });
-    }
+        var own = collect();
+        open(own.list, Math.max(0, own.nodes.indexOf(n)), n);
+        return;
+      }
+      // Окремий відкривач — велике фото над мініатюрами. Починає з того кадру,
+      // який людина зараз бачить, а не з першого: вона вже обрала, на що дивиться.
+      var from = e.target.closest('[data-lb-open]');
+      if (!from || from.dataset.full !== undefined) return;
+      e.preventDefault();
+      var all = collect();
+      if (!all.nodes.length) return;
+      open(all.list, Math.max(0, all.nodes.indexOf(box.querySelector('[data-full].active'))), from);
+    });
   });
 })();

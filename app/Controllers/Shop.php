@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 namespace Controllers;
 
-use DB, View, Catalog, Content, Attrs, Auth, Csrf, StockWatch, JsonLd, Bundles;
+use DB, View, Catalog, Content, Attrs, Auth, Csrf, StockWatch, JsonLd, Bundles, Images;
 
 class Shop
 {
@@ -141,7 +141,6 @@ class Shop
         $catParent = Catalog::parentCategory($cat);   // «Мед» над «Липовим» — для крихт
         $variants = Catalog::variants((int)$p['id']);
         $attrs = Catalog::attrs((int)$p['id']);
-        $images = Catalog::gallery($p); // головне фото першим, далі додаткові
         $stores = Catalog::stores();
 
         // варіанти як комбінації характеристик (розмір, колір…)
@@ -151,6 +150,13 @@ class Shop
 
         // варіант, обраний за замовчуванням — з нього беремо ціну й наявність до першого кліку
         $first = $variants[0] ?? null;
+
+        // Галерея — теж від обраної фасовки: сторінка відкривається на першій,
+        // тож і кадри показує її. Далі їх переставляє JS разом із ціною.
+        $images = Catalog::gallery($p, $first);   // головне фото першим, далі додаткові
+        // Пошуковикам віддаємо всі фото товару, а не лише кадри першої
+        // фасовки: розмітка описує товар цілком.
+        $allImages = Catalog::gallery($p);
 
         // наявність по магазинах: для обраного варіанта (або товару без варіантів)
         $availability = [];
@@ -190,6 +196,14 @@ class Shop
                 'qty' => $qty, 'opts' => $opts, 'store_price' => $storePrices,
                 'weight_fmt' => weight_fmt($vw),
                 'per_100g' => price_per_100g($vp, $vw),
+                // Готова галерея фасовки: свої кадри, далі спільні. Рахуємо
+                // тут, а не в браузері, бо порядок і заглушка — те саме
+                // правило, що й для першого показу, і роздвоювати його між
+                // PHP та JS означає рано чи пізно розвести їх.
+                'photos' => array_map(fn($im) => [
+                    'full'  => asset($im['path']),
+                    'thumb' => asset(Images::displayThumb($im['path'])),
+                ], Catalog::gallery($p, $v)),
             ];
         }
 
@@ -217,7 +231,7 @@ class Shop
             'jsonld_product' => true,
             'jsonld' => [
                 JsonLd::product(
-                    $p, $images, $price,
+                    $p, $allImages, $price,
                     array_map(fn($n) => ['@type' => 'Brand', 'name' => $n], Catalog::brandNames($p)),
                     Catalog::stock((int)$p['id']) > 0 || !empty($p['made_to_order'])
                 ),

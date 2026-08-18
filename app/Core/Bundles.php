@@ -234,7 +234,7 @@ class Bundles
             $qty = max(1, (int)$it['qty']);
             $sum = round($sum + $price * $qty, 2);
             $items[] = ['product' => $p, 'variant' => $v, 'qty' => $qty, 'price' => $price,
-                        'photo' => Catalog::photo($p)];
+                        'photo' => Catalog::photo($p, $v)];
         }
         if (!$items) return null;
 
