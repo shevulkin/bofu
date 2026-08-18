@@ -565,7 +565,7 @@ class Orders
         foreach ($rows as $r) {
             $sum = (float)$r['sum'];
             $subtotal += $sum;
-            $discount += Promo::cut($sum, $promo, Promo::ownPercent($r));
+            $discount += Promo::cut($sum, $promo, Promo::ownPercent($r), $r['cap'] ?? null);
         }
 
         $userId = Customers::resolve($phone, $name);

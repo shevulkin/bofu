@@ -153,6 +153,10 @@
         '<input type="number" step="0.01" name="variant[' + k + '][price]" placeholder="ціна">' +
         '<input type="text" name="variant[' + k + '][sku]" placeholder="артикул">' +
         '<input type="text" name="variant[' + k + '][barcode]" placeholder="штрихкод" inputmode="numeric" autocomplete="off">' +
+        // Вага й стеля знижки належать фасовці так само, як ціна: рядок без них
+        // мав би менше колонок, ніж наявні варіанти, і сітка розʼїхалась би
+        '<input type="text" name="variant[' + k + '][weight]" placeholder="вага, кг">' +
+        '<input type="text" name="variant[' + k + '][max_discount]" placeholder="стеля, %">' +
         '<label class="checkbox"><input type="checkbox" name="variant[' + k + '][active]" checked> вкл.</label>' +
         '<button type="button" class="btn btn-danger btn-xs row-del" title="Прибрати">✕</button>';
       row.querySelector('.row-del').addEventListener('click', function () { row.remove(); });

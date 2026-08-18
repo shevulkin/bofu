@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 namespace Controllers\Admin;
 
-use DB, View, Auth, Catalog, Settings;
+use DB, View, Auth, Catalog, Settings, QtyDiscounts;
 
 class Promos
 {
@@ -42,6 +42,20 @@ class Promos
                 DB::query('UPDATE promotions SET active = 1 - active WHERE id = ?', [(int)$_POST['id']]);
             }
             if ($action === 'del_promo') { DB::delete('promotions', 'id = ?', [(int)$_POST['id']]); flash('success', 'Акцію видалено'); }
+            if ($action === 'qty_tiers') {
+                // Стеля живе поруч зі шкалою навмисно: саме вона вирішує, скільки
+                // з набраних відсотків покупець побачить у кошику насправді.
+                $cap = trim((string)($_POST['max_discount_default'] ?? ''));
+                if ($cap !== '') {
+                    Settings::set('max_discount_default',
+                        (string)max(0.0, min(100.0, (float)str_replace(',', '.', $cap))));
+                }
+                $cat = (int)($_POST['tier_category_id'] ?? 0);
+                $errors = QtyDiscounts::save(null, $cat ?: null, (array)($_POST['tier'] ?? []));
+                foreach ($errors as $err) flash('error', $err);
+                if (!$errors) flash('success', 'Оптову шкалу збережено');
+                redirect('/admin/promos' . ($cat ? '?tier_cat=' . $cat : ''));
+            }
             if ($action === 'sale_banner') {
                 Settings::set('sale_banner_active', isset($_POST['sale_active']) ? '1' : '0');
                 Settings::set('sale_banner_text', trim($_POST['sale_text'] ?? ''));
@@ -50,6 +64,7 @@ class Promos
             }
             redirect('/admin/promos');
         }
+        $tierCat = (int)($_GET['tier_cat'] ?? 0);
         View::show('admin/promos', [
             // разом із фактичною кількістю використань — без неї ліміт у списку
             // нічого не означає: незрозуміло, скільки від нього лишилось
@@ -62,7 +77,40 @@ class Promos
                                  LEFT JOIN products p ON p.id = pr.product_id ORDER BY pr.id DESC'),
             'stores' => Catalog::stores(), 'categories' => Catalog::categories(),
             'products' => DB::all('SELECT id, name FROM products WHERE active = 1 ORDER BY name'),
+            // Ярус, який зараз редагують: 0 — загальна шкала магазину
+            'tier_cat' => $tierCat,
+            'tier_rows' => QtyDiscounts::level(null, $tierCat ?: null),
+            // Огляд усіх заповнених ярусів: без нього незрозуміло, чи шкала,
+            // яку ви щойно ввели, взагалі до когось дійде — її може перебивати
+            // ярус нижче, а їх на сторінці не видно.
+            'tier_map' => self::tierMap(),
             'page_title' => 'Акції та промокоди — адмінка',
         ], 'layouts/admin');
+    }
+
+    /**
+     * Які яруси шкали заповнені: загальна, розділи (з назвами) і скільки товарів
+     * мають власну. Товари поіменно не перелічуємо — їх бувають сотні, а питання,
+     * на яке має відповісти список, одне: «чи є щось нижче за мій ярус».
+     *
+     * @return array{global:array,categories:array,products:int}
+     */
+    private static function tierMap(): array
+    {
+        $cats = [];
+        $rows = DB::all('SELECT q.*, c.name AS cat_name FROM qty_discounts q
+                         JOIN categories c ON c.id = q.category_id
+                         WHERE q.product_id IS NULL AND q.category_id IS NOT NULL
+                         ORDER BY c.sort, c.name, q.min_qty');
+        foreach ($rows as $r) {
+            $cid = (int)$r['category_id'];
+            $cats[$cid]['name'] ??= (string)$r['cat_name'];
+            $cats[$cid]['tiers'][] = $r;
+        }
+        return [
+            'global' => QtyDiscounts::level(null, null),
+            'categories' => $cats,
+            'products' => (int)DB::val('SELECT COUNT(DISTINCT product_id) FROM qty_discounts WHERE product_id IS NOT NULL'),
+        ];
     }
 }

@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 namespace Controllers\Admin;
 
-use DB, View, Auth, Barcode, Catalog, Images, Attrs, StockWatch;
+use DB, View, Auth, Barcode, Catalog, Images, Attrs, StockWatch, QtyDiscounts;
 
 class Products
 {
@@ -17,6 +17,20 @@ class Products
     {
         $v = (float)str_replace(',', '.', trim((string)$raw));
         return $v > 0 ? round(min($v, 1000), 3) : null;
+    }
+
+    /**
+     * Стеля знижки, %.
+     *
+     * Порожньо — «як ярусом вище» (варіація бере від товару, товар — із
+     * налаштувань), тому null тут не те саме, що 0. Нуль — це осмислене
+     * «знижок на цю позицію не буває взагалі», і задають його явно.
+     */
+    private static function percent($raw): ?float
+    {
+        $raw = trim((string)$raw);
+        if ($raw === '') return null;
+        return max(0.0, min(100.0, (float)str_replace(',', '.', $raw)));
     }
 
     /**
@@ -449,6 +463,11 @@ class Products
             'store_prices' => $store_prices, 'store_stock' => $store_stock,
             'variant_prices' => $variant_prices, 'variant_stock' => $variant_stock,
             'dict' => Attrs::all(),
+            // Своя шкала окремо від успадкованої: порожнє поле в картці означає
+            // «як у розділі», і форма мусить показати, як саме, — інакше порожнеча
+            // читається як «знижок немає», а знижка при цьому діє.
+            'qty_tiers' => QtyDiscounts::level($id, null),
+            'qty_inherit' => Catalog::qtyResolve($p),
             'page_title' => 'Товар: ' . $p['name'] . ' — адмінка',
         ], 'layouts/admin');
     }
@@ -586,9 +605,17 @@ class Products
                 'weight' => self::weight($_POST['weight'] ?? ''),
                 'taxgrp' => self::taxGroup($_POST['taxgrp'] ?? ''),
                 'uktzed' => trim($_POST['uktzed'] ?? '') ?: null,
+                // Опт. Порожня шкала означає «як у розділі», тому «знижки за
+                // кількість немає» доводиться казати окремим прапорцем.
+                'wholesale' => isset($_POST['wholesale']) ? 1 : 0,
+                'qty_scope' => ($_POST['qty_scope'] ?? '') === 'variant' ? 'variant' : 'product',
+                'max_discount' => self::percent($_POST['max_discount'] ?? ''),
                 'updated_at' => now(),
             ], 'id = ?', [$id]);
             self::syncBrands($id, (array)($_POST['brand_ids'] ?? []));
+            foreach (QtyDiscounts::save($id, null, (array)($_POST['tier'] ?? [])) as $err) {
+                flash('error', $err);
+            }
 
             // Варіанти: назви з характеристик не чіпаємо — вони збираються автоматично
             $withOptions = Attrs::variantOptionsFor($id);
@@ -607,6 +634,7 @@ class Products
                     // Вага належить фасовці: банка на 0.5 і на 1.5 кг — це
                     // різні посилки, хоч мед у них однаковий
                     'weight' => self::weight($v['weight'] ?? ''),
+                    'max_discount' => self::percent($v['max_discount'] ?? ''),
                     'active' => !empty($v['active']) ? 1 : 0,
                     'sort' => $sort++,
                 ];
@@ -622,6 +650,7 @@ class Products
                     'sku' => trim($v['sku'] ?? '') ?: null,
                     'barcode' => trim($v['barcode'] ?? '') ?: null,
                     'weight' => self::weight($v['weight'] ?? ''),
+                    'max_discount' => self::percent($v['max_discount'] ?? ''),
                     'active' => !empty($v['active']) ? 1 : 0,
                     'sort' => $sort++,
                 ]);

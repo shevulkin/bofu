@@ -173,13 +173,18 @@
         <summary class="co-sum-h">Ваше замовлення <span class="dim" style="font-size:14px">· <?= e($goods) ?></span>
           <b class="co-fold-total" id="foldTotal"><?= e(price_fmt($totals['total'])) ?></b></summary>
         <div class="co-items">
-          <?php foreach ($rows as $r): $cut = Promo::cut((float)($r['sum'] ?? 0), $promo, Promo::ownPercent($r)); ?>
+          <?php foreach ($rows as $r): $cut = Promo::cut((float)($r['sum'] ?? 0), $promo, Promo::ownPercent($r), $r['cap'] ?? null); ?>
             <div class="co-item" data-key="<?= e($r['key']) ?>">
               <img src="<?= e(asset($r['photo'])) ?>" alt="" loading="lazy">
               <div style="min-width:0">
                 <div class="co-item-name"><?= e($r['product']['name']) ?></div>
                 <div class="dim">
                   <?= $r['variant'] ? e($r['variant']['name']) . ' · ' : '' ?><?= (int)$r['qty'] ?> × <?= e(price_fmt($r['price'])) ?>
+                  <?php /* Ціна вже оптова — без підпису вона виглядає як помилка,
+                           бо не збігається з тією, що покупець бачив у каталозі */ ?>
+                  <?php if (($r['wholesale'] ?? 0) > 0): ?>
+                    · <span style="color:var(--gold)">опт −<?= e(QtyDiscounts::pct((float)$r['wholesale'])) ?>%</span>
+                  <?php endif; ?>
                 </div>
               </div>
               <div class="co-item-sum">
