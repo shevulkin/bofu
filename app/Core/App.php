@@ -165,6 +165,9 @@ class App
         // --- кошик і замовлення ---
         if ($path === '/cart') { Controllers\CartController::index(); }
         if ($path === '/cart/add' && $method === 'POST') { Controllers\CartController::add(); }
+        // Набір кладеться однією дією: розкладати його на три кліки означало б
+        // питати покупця про те, що вже вирішено складом набору
+        if ($path === '/cart/add-bundle' && $method === 'POST') { Controllers\CartController::addBundle(); }
         if ($path === '/cart/update' && $method === 'POST') { Controllers\CartController::update(); }
         // сторінка оформлення лише читає; POST сюди приймати нема потреби, а без нього
         // стороння сторінка не може записати покупцеві промокод у сесію
@@ -259,6 +262,9 @@ class App
             '/admin/vchasno'            => [$A.'Kasa', 'index', 'fiscal.manage'],
             '/admin/vchasno/goods'      => [$A.'Kasa', 'goods', 'fiscal.manage'],
             '/admin/promos'             => [$A.'Promos', 'index', 'promos.manage'],
+            // Набори «разом дешевше»: свій екран, бо в набору є склад —
+            // список товарів, який не вміщається рядком серед акцій
+            '/admin/bundles'            => [$A.'BundlesAdmin', 'index', 'promos.manage'],
             '/admin/diplomas'           => [$A.'Diplomas', 'index', 'diplomas.manage'],
             '/admin/users'              => [$A.'Users', 'index', 'users.manage'],
             '/admin/users/message'      => [$A.'Users', 'message', 'users.manage'],

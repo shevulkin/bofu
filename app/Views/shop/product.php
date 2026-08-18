@@ -134,6 +134,49 @@
           </div>
         <?php endif; ?>
 
+        <?php /* «Разом дешевше». Стоїть тут, а не в кошику: у кошику покупець
+                 уже вирішив, що бере, і пропозиція читається як спроба
+                 дописати щось у чек. Поруч із товаром вона відповідає на
+                 питання, яке людина ставить собі сама, — «а що до цього
+                 беруть».
+
+                 Показуємо не відсоток, а обидві суми: «490 замість 545» не
+                 треба перемножувати в голові, а різниця між ними і є вся
+                 відповідь. */ ?>
+        <?php foreach ($bundles ?? [] as $bd): ?>
+          <div class="bundle-box">
+            <h3>Разом дешевше · <?= e($bd['title']) ?></h3>
+            <ul class="bundle-items">
+              <?php foreach ($bd['expanded'] as $it): ?>
+                <li<?= (int)$it['product']['id'] === (int)$p['id'] ? ' class="is-this"' : '' ?>>
+                  <img src="<?= e(asset(Images::displayThumb($it['photo']))) ?>" alt="" loading="lazy">
+                  <span>
+                    <?= e($it['product']['name']) ?><?= $it['variant'] ? ', ' . e($it['variant']['name']) : '' ?>
+                    <?php if ($it['qty'] > 1): ?> <b>× <?= (int)$it['qty'] ?></b><?php endif; ?>
+                    <?php if ((int)$it['product']['id'] === (int)$p['id']): ?>
+                      <i class="bundle-this">цей товар</i>
+                    <?php endif; ?>
+                  </span>
+                  <em><?= e(price_fmt($it['price'] * $it['qty'])) ?></em>
+                </li>
+              <?php endforeach; ?>
+            </ul>
+            <div class="bundle-foot">
+              <div class="bundle-price">
+                <s><?= e(price_fmt($bd['sum'])) ?></s>
+                <b><?= e(price_fmt($bd['total'])) ?></b>
+                <span>вигода <?= e(price_fmt($bd['cut'])) ?></span>
+              </div>
+              <form method="post" action="<?= e(url('/cart/add-bundle')) ?>">
+                <?= Csrf::field() ?>
+                <input type="hidden" name="bundle_id" value="<?= (int)$bd['id'] ?>">
+                <input type="hidden" name="back" value="/product/<?= e($p['slug']) ?>">
+                <button class="btn btn-gold btn-sm" type="submit">Додати набір</button>
+              </form>
+            </div>
+          </div>
+        <?php endforeach; ?>
+
         <?php $lowStock = ($p['low_stock_threshold'] ?? null) !== null && $p['low_stock_threshold'] !== '' ? (int)$p['low_stock_threshold'] : null; ?>
         <?php $anyStock = false; foreach ($availability as $av) $anyStock = $anyStock || $av['qty'] > 0; ?>
 

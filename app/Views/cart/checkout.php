@@ -18,7 +18,7 @@
   // на головній; двох правил узгодження на сайт бути не повинно.
   $units = array_sum(array_map(fn($r) => (int)$r['qty'], $rows));
   $goods = plural_n($units, 'товар', 'товари', 'товарів');
-  $saved = fn(array $t) => 'ви заощадили ' . price_fmt($t['discount']);
+  $saved = fn(array $t) => 'ви заощадили ' . price_fmt($t['promo_discount'] ?? $t['discount']);
 ?>
 <section class="section" style="padding-top:44px">
   <div class="container co-wrap">
@@ -173,7 +173,7 @@
         <summary class="co-sum-h">Ваше замовлення <span class="dim" style="font-size:14px">· <?= e($goods) ?></span>
           <b class="co-fold-total" id="foldTotal"><?= e(price_fmt($totals['total'])) ?></b></summary>
         <div class="co-items">
-          <?php foreach ($rows as $r): $cut = Promo::cut((float)($r['sum'] ?? 0), $promo, Promo::ownPercent($r), $r['cap'] ?? null); ?>
+          <?php foreach ($rows as $r): $cut = (float)($r['cut'] ?? 0); ?>
             <div class="co-item" data-key="<?= e($r['key']) ?>">
               <img src="<?= e(asset($r['photo'])) ?>" alt="" loading="lazy">
               <div style="min-width:0">
@@ -189,7 +189,7 @@
               </div>
               <div class="co-item-sum">
                 <?php if ($cut > 0): ?><s class="co-old"><?= e(price_fmt($r['sum'])) ?></s><?php endif; ?>
-                <span class="co-now"><?= e(price_fmt(($r['sum'] ?? 0) - $cut)) ?></span>
+                <span class="co-now"><?= e(price_fmt($r['final'] ?? (($r['sum'] ?? 0) - $cut))) ?></span>
               </div>
             </div>
           <?php endforeach; ?>
@@ -213,9 +213,17 @@
 
         <div class="totals">
           <div class="row"><span class="muted">Товари:</span><span id="sumSubtotal"><?= e(price_fmt($totals['subtotal'])) ?></span></div>
-          <div class="row" id="sumDiscountRow"<?= $totals['discount'] > 0 ? '' : ' style="display:none"' ?>>
+          <?php /* Набір — окремим рядком і поіменно. Знижка за кількість
+                   видно з ціни позиції, а знижка за поєднання — ні: вона
+                   виникає з того, ЩО лежить поруч, і без підпису читається
+                   як помилка в рахунку. */ ?>
+          <?php foreach ($totals['bundles'] ?? [] as $hit): ?>
+            <div class="row"><span class="muted"><?= e(Bundles::label($hit)) ?>:</span>
+              <span>−<?= e(price_fmt($hit['cut'])) ?></span></div>
+          <?php endforeach; ?>
+          <div class="row" id="sumDiscountRow"<?= ($totals['promo_discount'] ?? 0) > 0 ? '' : ' style="display:none"' ?>>
             <span class="muted" id="sumDiscountLabel"><?= $promo ? e(Promo::label($promo)) : 'Знижка' ?>:</span>
-            <span id="sumDiscount">−<?= e($totals['discount'] > 0 ? price_fmt($totals['discount']) : '0 грн') ?></span>
+            <span id="sumDiscount">−<?= e(($totals['promo_discount'] ?? 0) > 0 ? price_fmt($totals['promo_discount']) : '0 грн') ?></span>
           </div>
           <?php /* Доставка окремим рядком, хай навіть без суми.
                    «До сплати: 600 грн» без згадки про доставку читається як

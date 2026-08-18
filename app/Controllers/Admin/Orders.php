@@ -561,12 +561,13 @@ class Orders
         if ($short) return ['Товару немає на складі: ' . OrderFlow::unavailableLine($short)
             . '. Виправте залишки в картці товару або приберіть позицію.'];
 
-        $subtotal = 0.0; $discount = 0.0;
-        foreach ($rows as $r) {
-            $sum = (float)$r['sum'];
-            $subtotal += $sum;
-            $discount += Promo::cut($sum, $promo, Promo::ownPercent($r), $r['cap'] ?? null);
-        }
+        // Підсумки рахує той самий Cart::total, що й на вітрині: акція, опт,
+        // набір і код складаються в порядку, який тримається в одному місці.
+        // Своя копія цього ланцюга розійшлася б із сайтом на першій же зміні —
+        // і покупець за прилавком заплатив би не те, що йому пообіцяв сайт.
+        $totals = Cart::total($storeId ?: null, $promo);
+        $subtotal = (float)$totals['subtotal'];
+        $discount = (float)$totals['discount'];
 
         $userId = Customers::resolve($phone, $name);
         $number = 'BOFU-' . date('ymd') . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 4));
