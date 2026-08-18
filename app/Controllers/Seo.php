@@ -47,7 +47,7 @@ class Seo
             $urls[] = ['/product/' . $p['slug'], '0.8', $p['updated_at']];
         }
         foreach (DB::all('SELECT slug FROM categories WHERE active = 1') as $c) {
-            $urls[] = ['/shop?cat=' . $c['slug'], '0.7'];
+            $urls[] = [shop_path($c['slug']), '0.7'];
         }
         echo '<?xml version="1.0" encoding="UTF-8"?>' . "\n" . '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' . "\n";
         foreach ($urls as $u) {

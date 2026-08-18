@@ -24,6 +24,7 @@ final class FormatTest
         $this->testPluralTeens();
         $this->testWeight();
         $this->testPer100g();
+        $this->testShopUrl();
 
         echo "\n" . ($this->fail === 0
             ? "УСЕ ДОБРЕ: {$this->pass} перевірок\n"
@@ -95,6 +96,32 @@ final class FormatTest
         $this->eqStr('без ваги — нічого', price_per_100g(180, null), '');
         $this->eqStr('без ціни — нічого', price_per_100g(null, 0.35), '');
         $this->eqStr('ціна «за запитом» не ділиться', price_per_100g(0, 0.35), '');
+    }
+
+    /**
+     * Адреси каталогу.
+     *
+     * Розділ живе у шляху (/shop/med), фільтри лишаються параметрами. Правило
+     * зібране в один хелпер саме тому, що раніше рядок '/shop?cat=' був
+     * розсипаний по десятку шаблонів; тест стежить, щоб форма адреси не
+     * розʼїхалась між ними знову.
+     */
+    private function testShopUrl(): void
+    {
+        $this->group('адреси каталогу');
+        $this->eqStr('без розділу', shop_path(), '/shop');
+        $this->eqStr('розділ у шляху', shop_path('med'), '/shop/med');
+        $this->eqStr('порожній slug — просто каталог', shop_path(''), '/shop');
+        $this->eqStr('null — просто каталог', shop_path(null), '/shop');
+
+        // Фільтри лишаються параметрами: вони уточнюють ту саму сторінку,
+        // а не створюють нову.
+        $this->ok('сортування додається параметром',
+            str_ends_with(shop_url('med', ['sort' => 'price_asc']), '/shop/med?sort=price_asc'));
+        $this->ok('порожні параметри не потрапляють в адресу',
+            !str_contains(shop_url('med', ['sort' => '', 'min' => null, 'attr' => []]), '?'));
+        $this->ok('масив характеристик переживає збірку',
+            str_contains(shop_url('med', ['attr' => ['sort-medu' => ['Липа']]]), 'attr'));
     }
 }
 

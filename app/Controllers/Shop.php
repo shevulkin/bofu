@@ -7,12 +7,37 @@ use DB, View, Catalog, Content, Attrs, Auth, Csrf, StockWatch, JsonLd;
 
 class Shop
 {
-    public static function index(): never
+    public static function index(?string $pathSlug = null): never
     {
         $cats = Catalog::categories();
-        $catSlug = $_GET['cat'] ?? '';
+
+        /*
+         * Категорія приходить зі шляху (/shop/med). Параметр ?cat= лишається
+         * робочим, але живе рівно стільки, скільки треба на редирект: адреси
+         * з ним уже роздані посиланнями й лежать у чужих закладках, а дві
+         * адреси однієї сторінки — це дублікат для пошуковика й розбіжна
+         * статистика для нас.
+         *
+         * 301, а не 302: адреса змінилась назавжди, і саме так її має
+         * запамʼятати і браузер, і Google. Решта параметрів (сортування,
+         * фільтри) переїжджає разом із нею — інакше редирект з'їдав би вибір
+         * покупця.
+         */
+        if ($pathSlug === null && ($_GET['cat'] ?? '') !== '') {
+            $rest = $_GET;
+            unset($rest['cat']);
+            http_response_code(301);
+            header('Location: ' . shop_url((string)$_GET['cat'], $rest));
+            exit;
+        }
+
+        $catSlug = $pathSlug ?? '';
         $current = null;
         foreach ($cats as $c) if ($c['slug'] === $catSlug) $current = $c;
+        // Неіснуючий розділ — саме 404, а не мовчазний показ усього каталогу:
+        // інакше будь-яка описка в адресі віддавала б «усі товари» під виглядом
+        // сторінки розділу, і пошуковик індексував би їх сотнями копій.
+        if ($catSlug !== '' && !$current) { http_response_code(404); View::show('errors/404'); }
         // Розділ обраного підрозділу — для крихт і для панелі, яка має
         // відкритись саме на тій гілці, де людина зараз стоїть
         $parentCat = Catalog::parentCategory($current);
@@ -83,7 +108,7 @@ class Shop
                 ['Магазин', $current ? '/shop' : null],
                 // підрозділ веде крихти через свій розділ — тим самим шляхом,
                 // яким людина сюди дійшла панеллю каталогу
-                $parentCat ? [$parentCat['name'], '/shop?cat=' . $parentCat['slug']] : null,
+                $parentCat ? [$parentCat['name'], shop_path($parentCat['slug'])] : null,
                 $current ? [$current['name'], null] : null,
             ])))],
         ]);
@@ -198,8 +223,8 @@ class Shop
                 JsonLd::breadcrumbs(array_values(array_filter([
                     ['Головна', '/'],
                     ['Магазин', '/shop'],
-                    $catParent ? [$catParent['name'], '/shop?cat=' . $catParent['slug']] : null,
-                    $cat ? [$cat['name'], '/shop?cat=' . $cat['slug']] : null,
+                    $catParent ? [$catParent['name'], shop_path($catParent['slug'])] : null,
+                    $cat ? [$cat['name'], shop_path($cat['slug'])] : null,
                     [$p['name'], null],
                 ]))),
             ],

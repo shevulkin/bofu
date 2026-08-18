@@ -144,6 +144,10 @@ class App
         // --- вітрина ---
         if ($path === '/') { Controllers\Home::index(); }
         if ($path === '/shop') { Controllers\Shop::index(); }
+        // Розділ каталогу окремою адресою: /shop/med замість /shop?cat=med.
+        // Один сегмент вистачає й для підрозділів — slug категорії унікальний.
+        // Старі адреси з ?cat= сюди ж і переїжджають, редиректом (Shop::index).
+        if (preg_match('~^/shop/([a-z0-9-]+)$~', $path, $m)) { Controllers\Shop::index($m[1]); }
         if (preg_match('~^/product/([a-z0-9-]+)$~', $path, $m)) { Controllers\Shop::product($m[1]); }
         if ($path === '/about') { Controllers\Home::about(); }
         if ($path === '/courses') { Controllers\Home::courses(); }

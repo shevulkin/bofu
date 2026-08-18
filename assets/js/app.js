@@ -426,3 +426,142 @@
       .finally(function () { if (btn) btn.disabled = false; });
   });
 })();
+
+/**
+ * Лайтбокс: фото на весь екран.
+ *
+ * Мед у сотах, віск, шкіряні рукавиці купують очима — а роздивитись їх на
+ * сайті було неможливо: мініатюри лише підміняли головне фото тим самим
+ * розміром. Тепер будь-яка галерея відкривається на весь екран.
+ *
+ * Розмітка не переписується під кожну сторінку. Модуль шукає контейнери з
+ * `data-lightbox` і збирає всередині все, у чого є `data-full` — повний шлях
+ * до великого файлу. Так одна й та сама поведінка дістається і картці товару,
+ * і галереї, і будь-чому, що зʼявиться потім.
+ *
+ * Вікно одне на сторінку й створюється при першому відкритті: більшість
+ * відвідувачів фото не збільшує, і платити за це розміткою в кожному
+ * документі не варто.
+ */
+(function () {
+  var boxes = document.querySelectorAll('[data-lightbox]');
+  if (!boxes.length) return;
+
+  var lb, imgEl, capEl, numEl, prevBtn, nextBtn;
+  var items = [], at = 0, opener = null;
+
+  function build() {
+    if (lb) return;
+    lb = document.createElement('div');
+    lb.className = 'lb';
+    lb.setAttribute('role', 'dialog');
+    lb.setAttribute('aria-modal', 'true');
+    lb.setAttribute('aria-label', 'Перегляд фото');
+    lb.innerHTML =
+      '<button class="lb-x" type="button" aria-label="Закрити">&times;</button>' +
+      '<button class="lb-nav lb-prev" type="button" aria-label="Попереднє фото">&#8249;</button>' +
+      '<figure class="lb-fig"><img alt=""><figcaption></figcaption></figure>' +
+      '<button class="lb-nav lb-next" type="button" aria-label="Наступне фото">&#8250;</button>' +
+      '<div class="lb-num" aria-hidden="true"></div>';
+    document.body.appendChild(lb);
+    imgEl = lb.querySelector('img');
+    capEl = lb.querySelector('figcaption');
+    numEl = lb.querySelector('.lb-num');
+    prevBtn = lb.querySelector('.lb-prev');
+    nextBtn = lb.querySelector('.lb-next');
+
+    lb.querySelector('.lb-x').addEventListener('click', close);
+    prevBtn.addEventListener('click', function () { go(-1); });
+    nextBtn.addEventListener('click', function () { go(1); });
+    // клік повз фото — теж закриття: так поводяться всі перегляди фото,
+    // і саме цього людина спробує першим, не шукаючи хрестика
+    lb.addEventListener('click', function (e) { if (e.target === lb || e.target.classList.contains('lb-fig')) close(); });
+
+    // Свайп на телефоні. Поріг у 40 px відсіює тремтіння пальця, а
+    // вертикальний рух не гортає — ним прокручують.
+    var x0 = null, y0 = null;
+    lb.addEventListener('touchstart', function (e) {
+      x0 = e.touches[0].clientX; y0 = e.touches[0].clientY;
+    }, { passive: true });
+    lb.addEventListener('touchend', function (e) {
+      if (x0 === null) return;
+      var dx = e.changedTouches[0].clientX - x0, dy = e.changedTouches[0].clientY - y0;
+      if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy)) go(dx < 0 ? 1 : -1);
+      x0 = y0 = null;
+    });
+  }
+
+  function show() {
+    var it = items[at];
+    imgEl.src = it.full;
+    imgEl.alt = it.alt || '';
+    capEl.textContent = it.alt || '';
+    capEl.hidden = !it.alt;
+    numEl.textContent = items.length > 1 ? (at + 1) + ' / ' + items.length : '';
+    // одне фото — гортати нема чого, і стрілки лише заважають
+    prevBtn.hidden = nextBtn.hidden = items.length < 2;
+  }
+
+  function go(step) {
+    if (items.length < 2) return;
+    at = (at + step + items.length) % items.length;   // по колу
+    show();
+  }
+
+  function open(list, i, from) {
+    build();
+    items = list; at = i; opener = from || null;
+    show();
+    lb.classList.add('is-open');
+    // сторінка під вікном не має їхати від прокрутки
+    document.body.style.overflow = 'hidden';
+    document.addEventListener('keydown', onKey);
+    lb.querySelector('.lb-x').focus();
+  }
+
+  function close() {
+    if (!lb) return;
+    lb.classList.remove('is-open');
+    document.body.style.overflow = '';
+    document.removeEventListener('keydown', onKey);
+    // фокус повертається туди, звідки прийшли: інакше клавіатура опиняється
+    // на початку сторінки й людина шукає своє місце заново
+    if (opener && opener.focus) opener.focus();
+    opener = null;
+  }
+
+  function onKey(e) {
+    if (e.key === 'Escape') { close(); return; }
+    if (e.key === 'ArrowLeft') { go(-1); return; }
+    if (e.key === 'ArrowRight') go(1);
+  }
+
+  boxes.forEach(function (box) {
+    var nodes = Array.prototype.slice.call(box.querySelectorAll('[data-full]'));
+    if (!nodes.length) return;
+    var list = nodes.map(function (n) {
+      var img = n.tagName === 'IMG' ? n : n.querySelector('img');
+      return { full: n.dataset.full, alt: (img && img.alt) || n.getAttribute('aria-label') || '' };
+    });
+
+    nodes.forEach(function (n, i) {
+      // мініатюри картки товару вже мають свою дію — підмінити головне фото.
+      // Вони складають список, але самі перегляду не відкривають.
+      if (n.dataset.lbSkip !== undefined) return;
+      n.classList.add('is-zoomable');
+      n.addEventListener('click', function (e) { e.preventDefault(); open(list, i, n); });
+    });
+
+    // Окремий відкривач — велике фото над мініатюрами. Починає з того кадру,
+    // який людина зараз бачить, а не з першого: вона вже обрала, на що дивиться.
+    var starter = box.querySelector('[data-lb-open]');
+    if (starter && !starter.dataset.full) {
+      starter.classList.add('is-zoomable');
+      starter.addEventListener('click', function (e) {
+        e.preventDefault();
+        var active = box.querySelector('[data-full].active');
+        open(list, Math.max(0, nodes.indexOf(active)), starter);
+      });
+    }
+  });
+})();

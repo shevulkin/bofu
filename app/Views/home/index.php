@@ -54,7 +54,7 @@
     </div>
     <div class="cat-chips">
       <?php foreach ($categories as $c): ?>
-        <a class="chip" href="<?= e(url('/shop?cat=' . $c['slug'])) ?>"><?= e($c['name']) ?></a>
+        <a class="chip" href="<?= e(shop_url($c['slug'])) ?>"><?= e($c['name']) ?></a>
       <?php endforeach; ?>
     </div>
     <div class="kicker" style="margin-top:26px">Обрано для вас</div>
@@ -88,9 +88,9 @@
       <h2>Моє життя у галереї</h2>
       <a class="btn btn-line btn-sm" href="<?= e(url('/gallery')) ?>">Уся галерея →</a>
     </div>
-    <div class="gallery-grid"<?= edit_mark('gallery') ?>>
+    <div class="gallery-grid" data-lightbox<?= edit_mark('gallery') ?>>
       <?php foreach ($gallery_preview as $g): ?>
-        <div class="gallery-item"><img src="<?= e(asset(Images::displayThumb($g[1]))) ?>" alt="<?= e($g[0]) ?>" loading="lazy"><span><?= e($g[0]) ?></span></div>
+        <div class="gallery-item" data-full="<?= e(asset($g[1])) ?>"><img src="<?= e(asset(Images::displayThumb($g[1]))) ?>" alt="<?= e($g[0]) ?>" loading="lazy"><span><?= e($g[0]) ?></span></div>
       <?php endforeach; ?>
     </div>
   </div>

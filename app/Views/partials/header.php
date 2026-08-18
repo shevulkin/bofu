@@ -38,9 +38,9 @@ $navCats = Catalog::categoryTree();
           <div class="nav-drop-menu" id="navShopMenu" data-nav-drop-menu hidden>
             <a class="nav-drop-all" href="<?= e(url('/shop')) ?>">Усі товари</a>
             <?php foreach ($navCats as $c): ?>
-              <a href="<?= e(url('/shop?cat=' . $c['slug'])) ?>"><?= e($c['name']) ?></a>
+              <a href="<?= e(shop_url($c['slug'])) ?>"><?= e($c['name']) ?></a>
               <?php foreach ($c['children'] ?? [] as $k): ?>
-                <a class="nav-drop-sub" href="<?= e(url('/shop?cat=' . $k['slug'])) ?>"><?= e($k['name']) ?></a>
+                <a class="nav-drop-sub" href="<?= e(shop_url($k['slug'])) ?>"><?= e($k['name']) ?></a>
               <?php endforeach; ?>
             <?php endforeach; ?>
           </div>
@@ -123,9 +123,9 @@ $navCats = Catalog::categoryTree();
       <div class="m-drop-menu" id="navShopMenuMobile" data-nav-drop-menu hidden>
         <a class="nav-drop-all" href="<?= e(url('/shop')) ?>">Усі товари</a>
         <?php foreach ($navCats as $c): ?>
-          <a href="<?= e(url('/shop?cat=' . $c['slug'])) ?>"><?= e($c['name']) ?></a>
+          <a href="<?= e(shop_url($c['slug'])) ?>"><?= e($c['name']) ?></a>
           <?php foreach ($c['children'] ?? [] as $k): ?>
-            <a class="nav-drop-sub" href="<?= e(url('/shop?cat=' . $k['slug'])) ?>"><?= e($k['name']) ?></a>
+            <a class="nav-drop-sub" href="<?= e(shop_url($k['slug'])) ?>"><?= e($k['name']) ?></a>
           <?php endforeach; ?>
         <?php endforeach; ?>
       </div>

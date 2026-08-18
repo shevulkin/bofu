@@ -56,13 +56,13 @@
         <a class="chip <?= !$current_cat ? 'active' : '' ?>" href="<?= e(url('/shop')) ?>">Усі</a>
         <?php foreach ($cat_tree as $c): $cid = (int)$c['id']; $kids = $c['children'] ?? []; ?>
           <?php if (!$kids): ?>
-            <a class="chip <?= $curId === $cid ? 'active' : '' ?>" href="<?= e(url('/shop?cat=' . $c['slug'])) ?>"><?= e($c['name']) ?></a>
+            <a class="chip <?= $curId === $cid ? 'active' : '' ?>" href="<?= e(shop_url($c['slug'])) ?>"><?= e($c['name']) ?></a>
           <?php else: $open = $openId === $cid; ?>
             <span class="chip-group<?= $open ? ' is-open' : '' ?>">
               <?php /* сам розділ лишається клікабельним: у ньому є й власні
                        товари, і ті, що в підрозділах */ ?>
               <a class="chip <?= $curId === $cid ? 'active' : ($open ? 'in-branch' : '') ?>"
-                 href="<?= e(url('/shop?cat=' . $c['slug'])) ?>"><?= e($c['name']) ?></a>
+                 href="<?= e(shop_url($c['slug'])) ?>"><?= e($c['name']) ?></a>
               <button type="button" class="chip-more" data-cat-toggle="<?= $cid ?>"
                       aria-controls="catsub-<?= $cid ?>" aria-expanded="<?= $open ? 'true' : 'false' ?>"
                       aria-label="Підрозділи: <?= e($c['name']) ?>" title="Підрозділи">
@@ -75,18 +75,21 @@
       <?php foreach ($cat_tree as $c): $cid = (int)$c['id']; $kids = $c['children'] ?? []; if (!$kids) continue; ?>
         <div class="cat-subs" id="catsub-<?= $cid ?>" data-cat-subs="<?= $cid ?>" <?= $openId === $cid ? '' : 'hidden' ?>>
           <a class="chip chip-sub <?= $curId === $cid ? 'active' : '' ?>"
-             href="<?= e(url('/shop?cat=' . $c['slug'])) ?>">Усе в розділі</a>
+             href="<?= e(shop_url($c['slug'])) ?>">Усе в розділі</a>
           <?php foreach ($kids as $k): ?>
             <a class="chip chip-sub <?= $curId === (int)$k['id'] ? 'active' : '' ?>"
-               href="<?= e(url('/shop?cat=' . $k['slug'])) ?>"><?= e($k['name']) ?></a>
+               href="<?= e(shop_url($k['slug'])) ?>"><?= e($k['name']) ?></a>
           <?php endforeach; ?>
         </div>
       <?php endforeach; ?>
     </nav>
 
     <?php $hasActiveFilters = $filters['q'] !== '' || $filters['min'] !== '' || $filters['max'] !== '' || !empty($filters['store_id']) || $filters['sort'] !== '' || array_filter($filters['attr']) || $filters['brand']; ?>
-    <form class="filters" id="filtersPanel" method="get" action="<?= e(url('/shop')) ?>" style="<?= $hasActiveFilters ? '' : 'display:none' ?>">
-      <?php if ($current_cat): ?><input type="hidden" name="cat" value="<?= e($current_cat['slug']) ?>"><?php endif; ?>
+    <?php /* Розділ каталогу тепер у самій адресі форми, а не прихованим полем:
+             сторінка розділу — це /shop/med, і фільтри уточнюють саме її.
+             Прихований `cat` повернув би стару адресу з параметром, а звідти
+             покупця одразу відкинуло б редиректом. */ ?>
+    <form class="filters" id="filtersPanel" method="get" action="<?= e(shop_url($current_cat['slug'] ?? null)) ?>" style="<?= $hasActiveFilters ? '' : 'display:none' ?>">
       <div class="filters-row">
         <div><label>Пошук</label><input type="text" name="q" value="<?= e($filters['q']) ?>" placeholder="Назва, опис, артикул…"></div>
         <div><label>Ціна від</label><input type="number" name="min" value="<?= e($filters['min']) ?>" min="0" step="1"></div>
@@ -146,7 +149,7 @@
         <div style="display:flex;gap:12px;margin-top:14px;flex-wrap:wrap">
           <button class="btn btn-gold btn-sm" type="submit">Застосувати фільтри</button>
           <?php if ($hasActiveFilters): ?>
-            <a class="btn btn-line btn-sm" href="<?= e(url('/shop' . ($current_cat ? '?cat=' . $current_cat['slug'] : ''))) ?>">Скинути</a>
+            <a class="btn btn-line btn-sm" href="<?= e(shop_url($current_cat['slug'] ?? null)) ?>">Скинути</a>
           <?php endif; ?>
         </div>
       <?php endif; ?>
