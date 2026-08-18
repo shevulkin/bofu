@@ -73,6 +73,14 @@ $roots = array_values(array_filter($cats, fn($c) => !($c['depth'] ?? 0)));
 Нуль означає порожню полицю в каталозі — покупець зайде в розділ і нічого не побачить.
 
 Поки тут не нуль, категорію не можна видалити: хрестик у колонці «Видалити» буде заблокований.">Товарів</th>
+      <th data-help-title="Колонка «Опт»"
+          data-help="Оптова шкала цього розділу: від скількох штук і на скільки відсотків дешевше.
+
+Діє на всі товари розділу й усіх його підрозділів — крім тих, у кого в картці задана власна шкала: вона розділ замінює, а не доповнює.
+
+«—» означає, що свого опту в розділі немає. Тоді товари беруть загальну шкалу магазину, якщо вона заповнена, а якщо ні — опту на них немає.
+
+Редагується не тут, а в розділі «Акції та промокоди»: там усі знижки лежать разом, і видно, як вони складаються між собою. Посилання «змінити» веде одразу до потрібного розділу.">Опт</th>
       <th class="num w-sort" data-help-title="Колонка «Порядок»"
           data-help="Порядок категорій у меню й каталозі. Менше число — вище в списку.
 
@@ -119,6 +127,16 @@ $roots = array_values(array_filter($cats, fn($c) => !($c['depth'] ?? 0)));
         </td>
         <td class="muted"><?= e(['product'=>'Товари','service'=>'Послуги','video'=>'Відео','course'=>'Курси'][$c['type']] ?? $c['type']) ?></td>
         <td class="muted num"><?= (int)$c['cnt'] ?></td>
+        <?php $ladder = $tiers[(int)$c['id']] ?? []; ?>
+        <td style="font-size:13px">
+          <?php if ($ladder): ?>
+            <?= e(QtyDiscounts::line($ladder)) ?>
+          <?php else: ?>
+            <span class="muted">—</span>
+          <?php endif; ?>
+          <a href="<?= e(url('/admin/promos?tier_cat=' . (int)$c['id'])) ?>"
+             style="margin-left:6px;white-space:nowrap"><?= $ladder ? 'змінити' : 'задати' ?></a>
+        </td>
         <td class="num"><input type="number" name="cat[<?= (int)$c['id'] ?>][sort]" value="<?= (int)$c['sort'] ?>"></td>
         <td class="col-mid"><input type="checkbox" name="cat[<?= (int)$c['id'] ?>][active]" <?= $c['active'] ? 'checked' : '' ?>></td>
         <td class="col-mid col-del">

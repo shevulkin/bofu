@@ -250,9 +250,34 @@ $roEdit = $canEdit ? '' : 'disabled';
 Галка стоїть — працює шкала: своя, якщо ви заповнили її нижче, або шкала розділу, якщо ні.
 
 Галка знята — опту немає взагалі, скільки б штук не взяли. Це різні речі: порожня шкала означає «як у розділі», а знята галка — «на цей товар знижки за кількість немає». Знімайте її там, де партія не здешевлює товар: одинична робота, товар із чужою фіксованою ціною, позиція з мінімальною маржею.">
-        <input type="checkbox" name="wholesale" <?= $wholesaleOn ? 'checked' : '' ?> <?= $roEdit ?>>
+        <input type="checkbox" name="wholesale" id="wholesaleOn" <?= $wholesaleOn ? 'checked' : '' ?> <?= $roEdit ?>>
         Опт діє на цей товар</label>
 
+      <?php /* Стеля лишається на видноті завжди: вона обмежує не лише опт, а
+               будь-яке поєднання знижок — акцію, набір, промокод. Сховати її
+               разом з оптом означало б прибрати з очей межу, яка діє й далі. */ ?>
+      <div class="field" data-help-title="Стеля знижки, %"
+           data-help="Найбільша сумарна знижка на цей товар — межа, за яку не вийде жодне поєднання акції, опту, набору й промокоду.
+
+Діє незалежно від опту: навіть коли галка «Опт діє» знята, стеля обмежує акцію разом із промокодом.
+
+Знижки складаються: акція 15% плюс опт 7% плюс код 10% дають 32%. Кожен ярус окремо здається невеликим, а разом вони доходять до цін, яких ніхто не планував. Стеля обрізає саме суму: у прикладі при стелі 25% код додасть 3%, а не 10%.
+
+Порожньо — береться загальна стеля з Налаштувань. Заповнюйте там, де товар витримує менше або більше за решту полиці.
+
+Стеля не чіпає ціну, яку ви призначили самі: якщо акція вже дає більше за стелю, вона лишається як є. Обмежується те, що додається зверху.">
+        <label>Стеля знижки, %</label>
+        <input type="number" min="0" max="100" step="0.01" name="max_discount"
+               value="<?= e(num_val($p['max_discount'] ?? '')) ?>"
+               placeholder="порожньо — загальна (<?= e(QtyDiscounts::pct(Catalog::discountCap([]))) ?>%)" <?= $roEdit ?>>
+      </div>
+    </div>
+
+    <?php /* Усе, що нижче, має сенс лише при ввімкненому опті. Поля, які нічого
+             не вирішують, — не нейтральні: вони змушують читати себе й гадати,
+             чи не залежить від них щось. */ ?>
+    <div id="wholesaleFields"<?= $wholesaleOn ? '' : ' hidden' ?>>
+    <div class="form-grid">
       <div class="field" data-help-title="Що рахувати для порогу"
            data-help="Як складається кількість, за якою спрацьовує поріг, коли в товару є фасовки.
 
@@ -266,20 +291,6 @@ $roEdit = $canEdit ? '' : 'disabled';
           <option value="product"<?= Catalog::qtyScope($p) === 'product' ? ' selected' : '' ?>>усі фасовки разом</option>
           <option value="variant"<?= Catalog::qtyScope($p) === 'variant' ? ' selected' : '' ?>>кожну фасовку окремо</option>
         </select>
-      </div>
-
-      <div class="field" data-help-title="Стеля знижки, %"
-           data-help="Найбільша сумарна знижка на цей товар — межа, за яку не вийде жодне поєднання акції, опту й промокоду.
-
-Знижки складаються: акція 15% плюс опт 7% плюс код 10% дають 32%. Кожен ярус окремо здається невеликим, а разом вони доходять до цін, яких ніхто не планував. Стеля обрізає саме суму: у прикладі при стелі 25% код додасть 3%, а не 10%.
-
-Порожньо — береться загальна стеля з Налаштувань. Заповнюйте там, де товар витримує менше або більше за решту полиці.
-
-Стеля не чіпає ціну, яку ви призначили самі: якщо акція вже дає більше за стелю, вона лишається як є. Обмежується те, що додається зверху.">
-        <label>Стеля знижки, %</label>
-        <input type="number" min="0" max="100" step="0.01" name="max_discount"
-               value="<?= e(num_val($p['max_discount'] ?? '')) ?>"
-               placeholder="порожньо — загальна (<?= e(QtyDiscounts::pct(Catalog::discountCap([]))) ?>%)" <?= $roEdit ?>>
       </div>
     </div>
 
@@ -296,21 +307,47 @@ $roEdit = $canEdit ? '' : 'disabled';
     </div>
 
     <?php if (!$qty_tiers): ?>
-      <p class="dim" style="margin:14px 0 0">
-        <?php if (!$wholesaleOn): ?>
-          Опт вимкнено — знижки за кількість на цей товар немає.
-        <?php elseif ($inherited['level'] === 'category'): ?>
-          Зараз діє шкала розділу
-          «<?= e((string)(DB::val('SELECT name FROM categories WHERE id = ?', [$inherited['category_id']]) ?? '—')) ?>»:
-          <b><?= e(QtyDiscounts::line($inherited['tiers'])) ?></b>.
-        <?php elseif ($inherited['level'] === 'global'): ?>
-          Зараз діє загальна шкала магазину: <b><?= e(QtyDiscounts::line($inherited['tiers'])) ?></b>.
-        <?php else: ?>
-          Шкали немає ні тут, ні в розділі, ні в загальних налаштуваннях — опт на цей товар не спрацює.
-        <?php endif; ?>
-      </p>
+      <?php
+        /* Що діє замість власної шкали. Рахуємо при вимкненому опті теж:
+           галку знімають і повертають у тій самій формі, і підказка мусить
+           бути готовою до моменту, коли її знову покажуть. */
+        $inheritLine = '';
+        if ($inherited['level'] === 'category') {
+            $inheritLine = 'Зараз діє шкала розділу «'
+                . (string)(DB::val('SELECT name FROM categories WHERE id = ?', [$inherited['category_id']]) ?? '—')
+                . '»: ' . QtyDiscounts::line($inherited['tiers']) . '.';
+        } elseif ($inherited['level'] === 'global') {
+            $inheritLine = 'Зараз діє загальна шкала магазину: ' . QtyDiscounts::line($inherited['tiers']) . '.';
+        } else {
+            $inheritLine = 'Шкали немає ні тут, ні в розділі, ні в загальних налаштуваннях — опт на цей товар не спрацює.';
+        }
+      ?>
+      <p class="dim" style="margin:14px 0 0"><?= e($inheritLine) ?></p>
     <?php endif; ?>
+    </div>
+
+    <?php /* Замість схованих полів — одне речення про те, чому їх немає.
+             Порожнє місце під галкою читалось би як недороблена сторінка. */ ?>
+    <p class="dim" id="wholesaleOffNote"<?= $wholesaleOn ? ' hidden' : '' ?> style="margin:14px 0 0">
+      Опт вимкнено — знижки за кількість на цей товар немає, скільки б штук не взяли.
+      Поставте галку, щоб задати шкалу або взяти її з розділу.
+    </p>
   </div>
+
+  <script>
+  /* Поля опту показуються рівно тоді, коли опт увімкнено. Стеля лишається
+     на видноті завжди: вона обмежує й акцію з промокодом. */
+  (function () {
+    var box = document.getElementById('wholesaleOn');
+    var fields = document.getElementById('wholesaleFields');
+    var off = document.getElementById('wholesaleOffNote');
+    if (!box || !fields) return;
+    box.addEventListener('change', function () {
+      fields.hidden = !box.checked;
+      if (off) off.hidden = box.checked;
+    });
+  })();
+  </script>
   <?php endif; ?>
 
   <?php if (!$isNew): ?>

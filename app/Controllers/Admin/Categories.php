@@ -104,8 +104,26 @@ class Categories
                          FROM categories c ORDER BY c.sort, c.id');
         View::show('admin/categories', [
             'cats' => self::treeOrder($cats),
+            // Оптова шкала кожного розділу. Редагується не тут, а в «Акціях»,
+            // разом з рештою знижок — але шукати її приходять сюди, і колонка,
+            // яка мовчить про наявну знижку, гірша за зайвий стовпець.
+            'tiers' => self::tiersByCategory(),
             'page_title' => 'Категорії — адмінка',
         ], 'layouts/admin');
+    }
+
+    /**
+     * Оптові шкали розділів: [category_id => [рядки шкали]].
+     * Одним запитом — інакше кожен рядок таблиці ходив би в базу сам.
+     */
+    private static function tiersByCategory(): array
+    {
+        $out = [];
+        $rows = DB::all('SELECT * FROM qty_discounts
+                         WHERE product_id IS NULL AND category_id IS NOT NULL
+                         ORDER BY category_id, min_qty');
+        foreach ($rows as $r) $out[(int)$r['category_id']][] = $r;
+        return $out;
     }
 
     /**

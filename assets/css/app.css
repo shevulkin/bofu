@@ -976,7 +976,7 @@ body.help-on [data-help] *{pointer-events:none}
 .attr-row{grid-template-columns:minmax(170px,1fr) minmax(170px,1.15fr) auto}
 .variant-row{grid-template-columns:minmax(170px,1fr) 110px 130px 150px 110px 100px auto auto}
 /* Склад набору: товар — фасовка — скільки штук */
-.bundle-row{grid-template-columns:minmax(220px,1fr) minmax(160px,240px) 110px}
+.bundle-row{grid-template-columns:minmax(220px,1fr) minmax(160px,240px) 110px auto}
 .grid-row.deleted{opacity:.45}
 .grid-row.deleted .gr-main{text-decoration:line-through}
 .variant-tags{display:flex;gap:8px;flex-wrap:wrap;padding-top:6px}
