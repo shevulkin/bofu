@@ -217,7 +217,13 @@ class Pos
     {
         $where = ['p.active = 1'];
         $args = [];
-        if ($categoryId) { $where[] = 'p.category_id = ?'; $args[] = $categoryId; }
+        if ($categoryId) {
+            // гілка розділу: продавець тисне «Мед» і бачить весь мед, а не лише
+            // те, що не розклали по сортах
+            [$cond, $branch] = Catalog::branchSql($categoryId);
+            $where[] = $cond;
+            foreach ($branch as $b) $args[] = $b;
+        }
         $products = DB::all('SELECT p.* FROM products p WHERE ' . implode(' AND ', $where)
             . ' ORDER BY p.name', $args);
 

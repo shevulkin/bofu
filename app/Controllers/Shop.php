@@ -13,6 +13,9 @@ class Shop
         $catSlug = $_GET['cat'] ?? '';
         $current = null;
         foreach ($cats as $c) if ($c['slug'] === $catSlug) $current = $c;
+        // Розділ обраного підрозділу — для крихт і для панелі, яка має
+        // відкритись саме на тій гілці, де людина зараз стоїть
+        $parentCat = Catalog::parentCategory($current);
 
         $filters = [
             'category_id' => $current['id'] ?? null,
@@ -46,13 +49,18 @@ class Shop
         // щойно проминув, — цілий екран без жодної нової позиції.
         $shownIds = array_map(fn($r) => (int)$r['id'], $products);
         $skip = $shownIds ? ' AND id NOT IN (' . implode(',', $shownIds) . ')' : '';
+        // «Інші категорії» — це вся гілка, а не сама категорія: підрозділ того
+        // самого розділу для покупця не «інше», він щойно звідти
+        $branch = $current ? Catalog::branchIds((int)$current['id']) : [];
         $other = DB::all('SELECT * FROM products WHERE active = 1 AND featured = 1' .
-            ($current ? ' AND category_id != ' . (int)$current['id'] : '') . $skip . ' ORDER BY id LIMIT 4');
+            ($branch ? ' AND category_id NOT IN (' . implode(',', $branch) . ')' : '') . $skip . ' ORDER BY id LIMIT 4');
         Catalog::preloadBrands($other);
 
         View::show('shop/index', [
             'categories' => $cats,
+            'cat_tree' => Catalog::categoryTree($cats),
             'current_cat' => $current,
+            'parent_cat' => $parentCat,
             'products' => $products,
             'other_products' => $other,
             'filters' => $filters,
@@ -73,6 +81,9 @@ class Shop
             'jsonld' => [JsonLd::breadcrumbs(array_values(array_filter([
                 ['Головна', '/'],
                 ['Магазин', $current ? '/shop' : null],
+                // підрозділ веде крихти через свій розділ — тим самим шляхом,
+                // яким людина сюди дійшла панеллю каталогу
+                $parentCat ? [$parentCat['name'], '/shop?cat=' . $parentCat['slug']] : null,
                 $current ? [$current['name'], null] : null,
             ])))],
         ]);
@@ -102,6 +113,7 @@ class Shop
         $p = DB::row('SELECT * FROM products WHERE slug = ? AND active = 1', [$slug]);
         if (!$p) { http_response_code(404); View::show('errors/404'); }
         $cat = DB::row('SELECT * FROM categories WHERE id = ?', [$p['category_id']]);
+        $catParent = Catalog::parentCategory($cat);   // «Мед» над «Липовим» — для крихт
         $variants = Catalog::variants((int)$p['id']);
         $attrs = Catalog::attrs((int)$p['id']);
         $images = Catalog::gallery($p); // головне фото першим, далі додаткові
@@ -186,6 +198,7 @@ class Shop
                 JsonLd::breadcrumbs(array_values(array_filter([
                     ['Головна', '/'],
                     ['Магазин', '/shop'],
+                    $catParent ? [$catParent['name'], '/shop?cat=' . $catParent['slug']] : null,
                     $cat ? [$cat['name'], '/shop?cat=' . $cat['slug']] : null,
                     [$p['name'], null],
                 ]))),

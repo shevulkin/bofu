@@ -1,3 +1,12 @@
+<?php
+/**
+ * @var array $cats  категорії в порядку дерева: підрозділ одразу під розділом, із depth
+ *
+ * Батьком може бути лише розділ верхнього рівня — глибше за один крок каталог
+ * не показує (див. Controllers\Admin\Categories).
+ */
+$roots = array_values(array_filter($cats, fn($c) => !($c['depth'] ?? 0)));
+?>
 <div class="admin-head"><h1 class="h-serif">Категорії</h1></div>
 <form class="admin-card" method="post" action="<?= e(url('/admin/categories')) ?>" style="display:flex;gap:14px;align-items:end;flex-wrap:wrap">
   <?= Csrf::field() ?><input type="hidden" name="_action" value="add">
@@ -8,12 +17,30 @@
 
 Категорія також визначає, які характеристики зʼявляться в картці товару й на які товари подіє акція, задана на категорію.">
     <label>Назва нової категорії</label><input type="text" name="name" required></div>
+  <div data-help-title="Всередині розділу"
+       data-help="Робить нову категорію підрозділом уже наявної: «Мед» → «Липовий», «Гречаний», «Різнотрав'я».
+
+У каталозі підрозділи сховані за стрілкою біля розділу. Покупець розгортає її й переходить одразу в потрібний сорт, а не гортає весь мед.
+
+«— верхній рівень» означає звичайний розділ, який стоїть у панелі сам по собі.
+
+Глибина одна: підрозділ не може мати власних підрозділів, тому в цьому списку лише розділи верхнього рівня. Тип нового підрозділу береться від розділу.">
+    <label>Всередині розділу</label>
+    <select name="parent_id">
+      <option value="">— верхній рівень</option>
+      <?php foreach ($roots as $c): ?>
+        <option value="<?= (int)$c['id'] ?>"><?= e($c['name']) ?></option>
+      <?php endforeach; ?>
+    </select>
+  </div>
   <div data-help-title="Тип категорії"
        data-help="Що лежатиме в цій категорії: Товари, Послуги, Відео чи Курси.
 
 Для меду й усього, що можна покласти в коробку, це «Товари» — звичайний вибір.
 
-Тип задається один раз при створенні й потім у таблиці лише показується, змінити його тут не можна. Тому не поспішайте.">
+Тип задається один раз при створенні й потім у таблиці лише показується, змінити його тут не можна. Тому не поспішайте.
+
+Для підрозділу поле не діє: він успадковує тип свого розділу.">
     <label>Тип</label>
     <select name="type"><option value="product">Товари</option><option value="service">Послуги</option><option value="video">Відео</option><option value="course">Курси</option></select>
   </div>
@@ -30,6 +57,12 @@
           data-help="Назву можна правити прямо в полі. Зміни застосуються після «Зберегти» внизу.
 
 Перейменування безпечне: товари лишаються в категорії, посилання не ламаються.">Назва</th>
+      <th data-help-title="Колонка «Всередині розділу»"
+          data-help="Показує й дозволяє змінити, у якому розділі лежить категорія. Підрозділи стоять у таблиці одразу під своїм розділом і позначені відступом.
+
+Перенести підрозділ в інший розділ можна будь-коли: товари нікуди не діваються, адреси сторінок не змінюються.
+
+Чого не можна: зробити підрозділом розділ, у якого вже є свої підрозділи, — глибина каталогу одна. Спершу винесіть його підрозділи наверх.">Всередині розділу</th>
       <th data-help-title="Колонка «Тип»"
           data-help="Товари, Послуги, Відео чи Курси — задається один раз при створенні категорії.
 
@@ -59,14 +92,38 @@
 
 Якщо треба просто прибрати розділ із сайту — не видаляйте, а зніміть галку «Активна».">Видалити</th>
     </tr>
-    <?php foreach ($cats as $c): $busy = (int)$c['cnt'] > 0; ?>
-      <tr>
-        <td><input type="text" name="cat[<?= (int)$c['id'] ?>][name]" value="<?= e($c['name']) ?>"></td>
+    <?php foreach ($cats as $c):
+      $busy = (int)$c['cnt'] > 0;
+      $sub = (int)($c['depth'] ?? 0) > 0;
+      // Розділ із власними підрозділами нікуди вкласти не можна — глибина одна.
+      // Показуємо це замкненим списком, а не помилкою після збереження.
+      $kids = 0;
+      foreach ($cats as $k) if ((int)($k['parent_id'] ?? 0) === (int)$c['id']) $kids++;
+    ?>
+      <tr data-cat-id="<?= (int)$c['id'] ?>" data-cat-parent="<?= (int)($c['parent_id'] ?? 0) ?>">
+        <td><?php if ($sub): ?><span class="muted" style="margin-right:6px">└</span><?php endif; ?>
+          <input type="text" name="cat[<?= (int)$c['id'] ?>][name]" value="<?= e($c['name']) ?>"
+                 style="<?= $sub ? 'width:calc(100% - 20px)' : '' ?>"></td>
+        <td>
+          <?php if ($kids): ?>
+            <span class="muted" title="У цьому розділі <?= $kids ?> підрозділ(и) — вкласти його в інший не можна">— верхній рівень</span>
+            <input type="hidden" name="cat[<?= (int)$c['id'] ?>][parent_id]" value="">
+          <?php else: ?>
+            <select name="cat[<?= (int)$c['id'] ?>][parent_id]">
+              <option value="">— верхній рівень</option>
+              <?php foreach ($roots as $r): if ((int)$r['id'] === (int)$c['id']) continue; ?>
+                <option value="<?= (int)$r['id'] ?>" <?= (int)($c['parent_id'] ?? 0) === (int)$r['id'] ? 'selected' : '' ?>><?= e($r['name']) ?></option>
+              <?php endforeach; ?>
+            </select>
+          <?php endif; ?>
+        </td>
         <td class="muted"><?= e(['product'=>'Товари','service'=>'Послуги','video'=>'Відео','course'=>'Курси'][$c['type']] ?? $c['type']) ?></td>
         <td class="muted num"><?= (int)$c['cnt'] ?></td>
         <td class="num"><input type="number" name="cat[<?= (int)$c['id'] ?>][sort]" value="<?= (int)$c['sort'] ?>"></td>
         <td class="col-mid"><input type="checkbox" name="cat[<?= (int)$c['id'] ?>][active]" <?= $c['active'] ? 'checked' : '' ?>></td>
         <td class="col-mid col-del">
+          <?php /* Розділ із підрозділами видаляється разом із ними — тому хрестик
+                   тут відкритий; те, що зникне, назве попередження перед збереженням */ ?>
           <input type="checkbox" class="js-del" name="cat[<?= (int)$c['id'] ?>][_delete]"
                  <?= $busy ? 'disabled title="Спершу перенесіть або видаліть товари цієї категорії"' : '' ?>>
         </td>
@@ -78,3 +135,27 @@
     <span class="admin-save-note"></span>
   </div>
 </form>
+<script>
+/* Розділ зникає разом із підрозділами — інакше вони лишились би в каталозі
+   самі по собі. Тому галка на розділі ставить галки і його підрозділам: у
+   попередженні перед збереженням людина побачить повний список того, що
+   зникне, а не лише назву розділу.
+
+   Підрозділ із товарами позначити не вийде (його галка заблокована) — тоді
+   збереження чесно скаже, що розділ лишився на місці. */
+(function(){
+  var boxes = document.querySelectorAll('.js-del');
+  if (!boxes.length) return;
+  Array.prototype.forEach.call(boxes, function(box){
+    box.addEventListener('change', function(){
+      var row = box.closest('tr');
+      if (!row) return;
+      var id = row.getAttribute('data-cat-id');
+      Array.prototype.forEach.call(document.querySelectorAll('tr[data-cat-parent="' + id + '"]'), function(kid){
+        var kb = kid.querySelector('.js-del');
+        if (kb && !kb.disabled) kb.checked = box.checked;
+      });
+    });
+  });
+})();
+</script>

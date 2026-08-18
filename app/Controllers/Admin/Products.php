@@ -41,7 +41,12 @@ class Products
         $where = ['1=1'];
         $params = [];
         if ($q !== '') { $where[] = '(p.name LIKE ? OR p.sku LIKE ?)'; $params[] = "%$q%"; $params[] = "%$q%"; }
-        if ($cat) { $where[] = 'p.category_id = ?'; $params[] = $cat; }
+        if ($cat) {
+            // разом із підрозділами — фільтр по «Меду» має показати весь мед
+            [$cond, $args] = Catalog::branchSql($cat);
+            $where[] = $cond;
+            foreach ($args as $a) $params[] = $a;
+        }
         if ($brand) {
             $where[] = 'EXISTS (SELECT 1 FROM product_brands pb WHERE pb.product_id = p.id AND pb.brand_id = ?)';
             $params[] = $brand;
@@ -342,7 +347,11 @@ class Products
             $params[] = '%' . $f['q'] . '%';
             $params[] = '%' . $f['q'] . '%';
         }
-        if ($f['cat']) { $where[] = 'p.category_id = ?'; $params[] = $f['cat']; }
+        if ($f['cat']) {
+            [$cond, $args] = Catalog::branchSql($f['cat']);
+            $where[] = $cond;
+            foreach ($args as $a) $params[] = $a;
+        }
         if ($f['brand']) {
             $where[] = 'EXISTS (SELECT 1 FROM product_brands pb WHERE pb.product_id = p.id AND pb.brand_id = ?)';
             $params[] = $f['brand'];

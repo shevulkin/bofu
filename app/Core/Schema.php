@@ -7,7 +7,7 @@ declare(strict_types=1);
  */
 class Schema
 {
-    public const VERSION = 38;
+    public const VERSION = 39;
 
     /** Оновлення існуючої бази до поточної версії без втрати даних */
     public static function upgrade(): void
@@ -460,6 +460,23 @@ class Schema
              */
             self::addColumn('stores', 'hours', 'str null');
         }
+        if ($ver < 39) {
+            /*
+             * Підкатегорії.
+             *
+             * Категорії лежали одним рядом: десяток розділів поруч, і людина,
+             * якій потрібен саме липовий мед, відкривала «Мед» цілком — сотню
+             * позицій, з яких дивилась чотири. Тепер розділ може мати підрозділи,
+             * а панель каталогу розгортає їх стрілкою: вибір звужується до
+             * потрібного ще до того, як сторінка щось завантажить.
+             *
+             * Рівно один рівень углиб, не дерево: другий крок уже вимагав би
+             * крихт у самій панелі, а підрозділи підрозділів дрібнішають до
+             * порожніх полиць. Обмеження тримає адмінка, а не база.
+             */
+            self::addColumn('categories', 'parent_id', 'int null');
+            self::createAll();   // індекс по parent_id
+        }
         Settings::set('schema_version', (string)self::VERSION);
     }
 
@@ -712,8 +729,12 @@ class Schema
             'user_roles' => [
                 'id' => 'id', 'user_id' => 'int', 'role' => 'str', 'created_at' => 'ts',
             ],
+            // parent_id — розділ, у якому лежить цей: «Мед» → «Липовий».
+            // Порожньо = верхній рівень. Глибше за один крок не пускає адмінка
+            // (Controllers\Admin\Categories): панель каталогу розгортається рівно раз.
             'categories' => [
                 'id' => 'id', 'name' => 'str', 'slug' => 'str unique',
+                'parent_id' => 'int null',
                 'type' => "str default 'product'", 'sort' => 'int default 0', 'active' => 'bool default 1',
             ],
             'products' => [
@@ -1093,6 +1114,8 @@ class Schema
         }
         // індекси
         $idx = [
+            // parent_id — за ним збирається гілка розділу на кожному відкритті каталогу
+            'categories' => ['parent_id'],
             // sku/barcode — те, за чим шукає каса: точний збіг на кожен скан
             'products' => ['category_id', 'active', 'featured', 'sku', 'barcode'],
             'product_variants' => ['product_id', 'sku', 'barcode'],

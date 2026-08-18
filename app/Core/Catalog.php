@@ -18,13 +18,23 @@ class Catalog
         return $promos;
     }
 
-    /** Найбільша знижка (%) для товару в контексті магазину (null = загальний сайт) */
-    public static function promoPercent(array $product, ?int $storeId = null): float
+    /**
+     * Найбільша знижка (%) для товару в контексті магазину (null = загальний сайт).
+     *
+     * $promos дозволяє передати готовий список замість запиту в базу — так само,
+     * як у bannerWarning(): кеш activePromotions() живе на весь запит, і акція,
+     * створена вже після першого звернення, інакше лишилась би непоміченою.
+     */
+    public static function promoPercent(array $product, ?int $storeId = null, ?array $promos = null): float
     {
         $best = 0.0;
-        foreach (self::activePromotions() as $p) {
+        foreach ($promos ?? self::activePromotions() as $p) {
             if ($p['product_id'] && (int)$p['product_id'] !== (int)$product['id']) continue;
-            if ($p['category_id'] && (int)$p['category_id'] !== (int)$product['category_id']) continue;
+            // Акція на розділ дістає й підрозділи: власник, який поставив −10%
+            // на «Мед», мав на увазі весь мед, а не лише те, що лишилось лежати
+            // в самому розділі.
+            if ($p['category_id']
+                && !in_array((int)$product['category_id'], self::branchIds((int)$p['category_id']), true)) continue;
             if ($p['store_id'] && $storeId !== null && (int)$p['store_id'] !== $storeId) continue;
             if ($p['store_id'] && $storeId === null) continue; // акція конкретного магазину не діє на сайт загалом
             $best = max($best, (float)$p['percent']);
@@ -119,13 +129,14 @@ class Catalog
      */
     public static function filterableBrands(?int $categoryId = null): array
     {
+        [$cond, $args] = self::branchSql($categoryId);
         $sql = 'SELECT b.*, COUNT(DISTINCT p.id) AS cnt
                   FROM brands b
                   JOIN product_brands pb ON pb.brand_id = b.id
                   JOIN products p ON p.id = pb.product_id AND p.active = 1'
-             . ($categoryId ? ' AND p.category_id = ?' : '')
+             . ($cond ? ' AND ' . $cond : '')
              . ' WHERE b.active = 1 GROUP BY b.id ORDER BY b.own DESC, b.sort, b.name';
-        return DB::all($sql, $categoryId ? [$categoryId] : []);
+        return DB::all($sql, $args);
     }
 
     /** @var array<int,array> бренди за id товару; порожній масив — «питали, брендів немає» */
@@ -316,9 +327,117 @@ class Catalog
                         OR NOT EXISTS (SELECT 1 FROM product_variants v
                                        WHERE v.product_id = p.id AND v.active = 1)))';
 
+    /**
+     * Активні категорії пласким списком, але в порядку дерева: підрозділ іде
+     * одразу за своїм розділом і несе `depth` = 1. Так кожен випадний список
+     * адмінки читається як дерево без жодної правки на місці.
+     *
+     * Підрозділ вимкненого розділу піднімається до верхнього рівня, а не
+     * зникає: сховали «Мед» — «Липовий мед» лишається доступним, інакше
+     * одна знята галка тихо ховала б півкаталогу.
+     */
     public static function categories(): array
     {
-        return DB::all('SELECT * FROM categories WHERE active = 1 ORDER BY sort, id');
+        $rows = DB::all('SELECT * FROM categories WHERE active = 1 ORDER BY sort, id');
+        $byParent = [];
+        $ids = array_map(fn($r) => (int)$r['id'], $rows);
+        foreach ($rows as $r) {
+            $pid = (int)($r['parent_id'] ?? 0);
+            $byParent[in_array($pid, $ids, true) ? $pid : 0][] = $r;
+        }
+        $out = [];
+        foreach ($byParent[0] ?? [] as $root) {
+            $root['depth'] = 0;
+            $out[] = $root;
+            foreach ($byParent[(int)$root['id']] ?? [] as $kid) {
+                $kid['depth'] = 1;
+                $out[] = $kid;
+            }
+        }
+        return $out;
+    }
+
+    /** Лише верхній рівень — для місць, де дерево не розгортається (головна, добірки) */
+    public static function rootCategories(): array
+    {
+        return array_values(array_filter(self::categories(), fn($c) => !($c['depth'] ?? 0)));
+    }
+
+    /**
+     * Категорії деревом: корені зі своїми `children`.
+     * $cats — готовий список із categories(), щоб не ходити в базу вдруге.
+     */
+    public static function categoryTree(?array $cats = null): array
+    {
+        $cats ??= self::categories();
+        $tree = [];
+        $pos = [];   // id кореня => його місце в $tree
+        foreach ($cats as $c) {
+            if (($c['depth'] ?? 0) === 0) {
+                $c['children'] = [];
+                $pos[(int)$c['id']] = count($tree);
+                $tree[] = $c;
+            } else {
+                $pid = (int)($c['parent_id'] ?? 0);
+                if (isset($pos[$pid])) $tree[$pos[$pid]]['children'][] = $c;
+            }
+        }
+        return $tree;
+    }
+
+    /** @var array<int,int> id категорії => id батьківської (0 = верхній рівень) */
+    private static ?array $catParents = null;
+
+    /** Батьківські звʼязки всіх категорій одним запитом (кешовано на запит) */
+    private static function catParents(): array
+    {
+        if (self::$catParents === null) {
+            self::$catParents = [];
+            foreach (DB::all('SELECT id, parent_id FROM categories') as $r) {
+                self::$catParents[(int)$r['id']] = (int)($r['parent_id'] ?? 0);
+            }
+        }
+        return self::$catParents;
+    }
+
+    /**
+     * Гілка розділу: він сам і його підрозділи.
+     *
+     * Товар лежить рівно в одній категорії, тож «Мед» без цього показував би
+     * порожню полицю, щойно власник розклав мед по підрозділах. Усе, що
+     * відбирає товари категорією — каталог, фільтри, акції, каса — питає гілку.
+     */
+    public static function branchIds(int $id): array
+    {
+        $ids = [$id];
+        foreach (self::catParents() as $cid => $pid) if ($pid === $id) $ids[] = $cid;
+        return $ids;
+    }
+
+    /** Ланцюг угору: сама категорія, далі її розділ. Порожньо, якщо категорії немає */
+    public static function ancestorIds(int $id): array
+    {
+        $parents = self::catParents();
+        if (!isset($parents[$id])) return [];
+        return $parents[$id] ? [$id, $parents[$id]] : [$id];
+    }
+
+    /** Розділ, у якому лежить підрозділ (null для верхнього рівня) */
+    public static function parentCategory(?array $cat): ?array
+    {
+        $pid = (int)($cat['parent_id'] ?? 0);
+        return $pid ? (DB::row('SELECT * FROM categories WHERE id = ?', [$pid]) ?: null) : null;
+    }
+
+    /**
+     * Умова «товар усередині гілки» для WHERE: [умова, параметри].
+     * Порожня категорія дає порожню умову — виклик просто нічого не додає.
+     */
+    public static function branchSql(?int $categoryId, string $col = 'p.category_id'): array
+    {
+        if (!$categoryId) return ['', []];
+        $ids = self::branchIds($categoryId);
+        return [$col . ' IN (' . implode(',', array_fill(0, count($ids), '?')) . ')', $ids];
     }
 
     public static function stores(): array
@@ -331,7 +450,12 @@ class Catalog
     {
         $where = ['p.active = 1'];
         $params = [];
-        if (!empty($f['category_id'])) { $where[] = 'p.category_id = ?'; $params[] = (int)$f['category_id']; }
+        if (!empty($f['category_id'])) {
+            // разом із підрозділами: обраний «Мед» показує і липовий, і гречаний
+            [$cond, $args] = self::branchSql((int)$f['category_id']);
+            $where[] = $cond;
+            foreach ($args as $a) $params[] = $a;
+        }
         if (!empty($f['q'])) {
             $where[] = '(p.name LIKE ? OR p.short_desc LIKE ? OR p.description LIKE ? OR p.sku LIKE ?)';
             $like = '%' . $f['q'] . '%';
@@ -465,8 +589,10 @@ class Catalog
      */
     public static function filterableAttrs(?int $categoryId): array
     {
-        $catSql = $categoryId ? ' AND p.category_id = ?' : '';
-        $params = $categoryId ? [$categoryId] : [];
+        // гілка, а не одна категорія: у розділі з підрозділами фільтри мають
+        // описувати те саме, що показано на полиці
+        [$cond, $params] = self::branchSql($categoryId);
+        $catSql = $cond ? ' AND ' . $cond : '';
 
         // значення з характеристик товару
         $rows = DB::all(

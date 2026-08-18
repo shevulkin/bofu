@@ -44,12 +44,16 @@ class Attrs
     /**
      * Характеристики, доречні для категорії: привʼязані до неї + загальні (без привʼязки).
      * Так для меду не пропонується «Матеріал», а «Термін зберігання» лишається всюди.
+     *
+     * Привʼязка до розділу діє й на його підрозділи: «Сорт меду» заводять один
+     * раз на «Мед», а не по разу на кожен сорт.
      */
     public static function forCategory(?int $categoryId, bool $onlyActive = true): array
     {
+        $chain = $categoryId ? Catalog::ancestorIds($categoryId) : [];
         $out = [];
         foreach (self::all($onlyActive) as $a) {
-            if (!$a['category_ids'] || ($categoryId && in_array($categoryId, $a['category_ids'], true))) $out[] = $a;
+            if (!$a['category_ids'] || array_intersect($chain, $a['category_ids'])) $out[] = $a;
         }
         return $out;
     }

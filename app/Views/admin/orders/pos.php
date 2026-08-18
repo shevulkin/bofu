@@ -174,11 +174,15 @@ USB-СКАНЕР: піднесіть сканер до етикетки — ві
                  Вибрана категорія їде прихованим полем у формі, щоб пережити ті
                  два перезавантаження, які в каси таки бувають, — зміну точки й
                  повернення з помилкою оформлення. */ ?>
+        <?php /* Підрозділи стоять тут одним рядом із розділами, а не за стрілкою,
+                 як у вітрині: каса — це один тап на дію, і зайвий крок «розгорнути»
+                 коштував би дорожче за довший ряд, який і так прокручується вбік.
+                 Розділ на касі показує всю свою гілку — і власні товари, і сортові. */ ?>
         <?php if ($cats): ?>
           <div class="cat-chips pos-cats" data-pos-cats style="margin-bottom:12px">
             <button type="button" class="chip <?= $cat ? '' : 'active' ?>" data-pos-cat="0">Усі</button>
             <?php foreach ($cats as $c): ?>
-              <button type="button" class="chip <?= $cat === (int)$c['id'] ? 'active' : '' ?>"
+              <button type="button" class="chip<?= ($c['depth'] ?? 0) ? ' chip-sub' : '' ?><?= $cat === (int)$c['id'] ? ' active' : '' ?>"
                       data-pos-cat="<?= (int)$c['id'] ?>"><?= e($c['name']) ?></button>
             <?php endforeach; ?>
           </div>
