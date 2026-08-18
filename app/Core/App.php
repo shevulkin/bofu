@@ -272,6 +272,11 @@ class App
         if (preg_match('~^/admin/orders/(\d+)$~', $path, $m)) {
             self::gate('orders.view'); $cls = $A.'Orders'; $cls::view((int)$m[1]);
         }
+        // Рахунок і видаткова накладна: окрема сторінка без адмінського обрамлення,
+        // щоб її можна було просто надрукувати або зберегти в PDF браузером
+        if (preg_match('~^/admin/orders/(\d+)/invoice$~', $path, $m)) {
+            self::gate('orders.view'); $cls = $A.'Orders'; $cls::invoice((int)$m[1]);
+        }
 
         http_response_code(404);
         echo View::render('errors/404');

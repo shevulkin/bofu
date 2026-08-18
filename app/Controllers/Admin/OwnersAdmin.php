@@ -85,6 +85,15 @@ class OwnersAdmin
                 'taxgrp' => isset(Vchasno::TAX_GROUPS[$tax]) ? $tax : null,
                 'cashier' => Vchasno::clean((string)($o['cashier'] ?? ''), 100) ?: null,
                 'note' => mb_substr(trim((string)($o['note'] ?? '')), 0, 500) ?: null,
+                // Реквізити для рахунків. IBAN лишаємо як ввели, лише без
+                // пробілів: у банківських виписках його друкують і так, і так,
+                // а звіряти рядок із пробілами посеред ночі — задоволення нижче
+                // середнього.
+                'full_name' => mb_substr(trim((string)($o['full_name'] ?? '')), 0, 200) ?: null,
+                'iban' => mb_substr(preg_replace('/\s+/', '', (string)($o['iban'] ?? '')) ?? '', 0, 40) ?: null,
+                'bank' => mb_substr(trim((string)($o['bank'] ?? '')), 0, 150) ?: null,
+                'address' => mb_substr(trim((string)($o['address'] ?? '')), 0, 250) ?: null,
+                'signer' => mb_substr(trim((string)($o['signer'] ?? '')), 0, 150) ?: null,
                 'active' => !empty($o['active']) ? 1 : 0,
             ], 'id = ?', [$id]);
         }

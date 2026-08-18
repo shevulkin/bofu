@@ -101,6 +101,45 @@
                  placeholder="як у налаштуваннях">
           <p class="field-hint">Чеки продажу підписані іменем продавця — це поле їх не стосується.</p>
         </div>
+      </div>
+
+      <?php /* Реквізити для рахунків. Окремим блоком, бо заповнюють їх раз і
+               назавжди, а дивляться на них лише тоді, коли клієнт просить
+               рахунок. */ ?>
+      <details<?= trim((string)($o['iban'] ?? '')) !== '' ? ' open' : '' ?> style="margin-top:6px">
+        <summary class="dim" style="cursor:pointer;font-size:13px">
+          🧾 Реквізити для рахунків
+          <?= trim((string)($o['iban'] ?? '')) !== '' ? '— заповнені' : '— не заповнені, рахунок не виставити' ?>
+        </summary>
+        <div class="form-grid" style="margin-top:10px">
+          <div class="field" style="grid-column:1/-1">
+            <label>Повна назва як у документах</label>
+            <input type="text" name="owner[<?= $id ?>][full_name]" value="<?= e($o['full_name'] ?? '') ?>"
+                   maxlength="200" placeholder="Фізична особа-підприємець Прізвище Імʼя Батькович">
+            <p class="field-hint">У списках зручне коротке імʼя, а в рахунку має стояти повне.</p>
+          </div>
+          <div class="field" style="grid-column:1/-1">
+            <label>IBAN</label>
+            <input type="text" name="owner[<?= $id ?>][iban]" value="<?= e($o['iban'] ?? '') ?>"
+                   maxlength="40" placeholder="UA00 0000 0000 0000 0000 0000 0000" spellcheck="false">
+          </div>
+          <div class="field">
+            <label>Банк</label>
+            <input type="text" name="owner[<?= $id ?>][bank]" value="<?= e($o['bank'] ?? '') ?>" maxlength="150">
+          </div>
+          <div class="field">
+            <label>Хто підписує документи</label>
+            <input type="text" name="owner[<?= $id ?>][signer]" value="<?= e($o['signer'] ?? '') ?>"
+                   maxlength="150" placeholder="Прізвище І. Б.">
+          </div>
+          <div class="field" style="grid-column:1/-1">
+            <label>Адреса</label>
+            <input type="text" name="owner[<?= $id ?>][address]" value="<?= e($o['address'] ?? '') ?>" maxlength="250">
+          </div>
+        </div>
+      </details>
+
+      <div class="form-grid" style="margin-top:10px">
         <div class="field" style="grid-column:1/-1">
           <label>Нотатка</label>
           <input type="text" name="owner[<?= $id ?>][note]" value="<?= e($o['note'] ?? '') ?>" maxlength="500"

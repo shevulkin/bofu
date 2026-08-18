@@ -680,6 +680,45 @@ class Orders
     }
 
     /**
+     * Рахунок на оплату або видаткова накладна — друкованою сторінкою.
+     *
+     * Без адмінського обрамлення: цю сторінку відкривають, щоб надрукувати або
+     * зберегти в PDF засобами браузера. Ставити заради двох бланків бібліотеку
+     * PDF у проєкт без залежностей — надто дорого за те, що браузер уміє сам.
+     *
+     * Документ виставляється на ПІДЗАМОВЛЕННЯ: продавець тут — конкретний ФОП,
+     * власник точки, і саме його IBAN та підпис стоять у бланку.
+     */
+    public static function invoice(int $id): never
+    {
+        Auth::requireCap('orders.view');
+        $order = OrderFlow::order($id);
+        if (!$order) { flash('error', 'Замовлення не знайдено.'); redirect('/admin/orders'); }
+        $parent = OrderFlow::head($order);
+        if (!self::canSee($parent)) { flash('error', 'Немає доступу до цього замовлення.'); redirect('/admin/orders'); }
+
+        $partId = (int)($_GET['part'] ?? 0);
+        $child = null;
+        foreach (OrderFlow::children((int)$parent['id']) as $c) {
+            if ($partId ? (int)$c['id'] === $partId : true) { $child = $c; break; }
+        }
+        if (!$child) { flash('error', 'Частину замовлення не знайдено.'); redirect('/admin/orders/' . $parent['id']); }
+
+        $kind = ($_GET['kind'] ?? 'inv') === 'act' ? 'act' : 'inv';
+        $gaps = \Invoice::missing($child, $parent);
+
+        View::show('admin/orders/invoice', [
+            'doc' => \Invoice::build($child, $parent, $kind),
+            'kind' => $kind,
+            'gaps' => $gaps,
+            'child' => $child,
+            'parent' => $parent,
+            'words' => \Invoice::words(round((float)$child['total'], 2)),
+            'page_title' => ($kind === 'inv' ? 'Рахунок ' : 'Накладна ') . \Invoice::number($child, $kind),
+        ], null);
+    }
+
+    /**
      * Пробний запит до каси на цьому пристрої — нічого не проводить.
      *
      * Питаємо стан ПРРО (task 18): єдине завдання, яке не створює жодного
@@ -1033,6 +1072,40 @@ class Orders
         // orders.fiscal (чек іде в ДПС, і повернення теж).
         if (str_starts_with((string)$action, 'fiscal_')) {
             self::fiscal($action, $tree, $parent, $back);
+        }
+
+        /*
+         * Оплата й реквізити покупця.
+         *
+         * Реквізити належать ЗАМОВЛЕННЮ, а не акаунту: сьогодні людина купує
+         * собі, завтра — на свій ФОП, і документи в цих двох випадках різні.
+         * Позначку про оплату теж ставлять на головне: гроші приходять одним
+         * платежем за весь рахунок.
+         */
+        if ($action === 'payment') {
+            Auth::requireCap('orders.status');
+            $type = (string)($_POST['buyer_type'] ?? '');
+            $kind = (string)($_POST['payment_kind'] ?? '');
+            $paid = !empty($_POST['paid']);
+            DB::update('orders', [
+                'buyer_type' => isset(\Invoice::BUYER_TYPES[$type]) ? $type : null,
+                'buyer_name' => mb_substr(trim((string)($_POST['buyer_name'] ?? '')), 0, 200) ?: null,
+                'buyer_tax_id' => mb_substr(trim((string)($_POST['buyer_tax_id'] ?? '')), 0, 20) ?: null,
+                'payment_kind' => isset(\Invoice::KINDS[$kind]) ? $kind : null,
+                // Дату не перезаписуємо, якщо оплата вже позначена: важливий
+                // саме перший момент, коли гроші прийшли, — від нього рахують
+                // і відвантаження, і чек.
+                'paid_at' => $paid ? ((string)($parent['paid_at'] ?? '') ?: now()) : null,
+            ], 'id = ?', [(int)$parent['id']]);
+
+            $was = (string)($parent['paid_at'] ?? '') !== '';
+            if ($paid !== $was) {
+                OrderFlow::log((int)$parent['id'], null, 'note',
+                    $paid ? 'Оплату отримано (' . mb_strtolower(\Invoice::kindLabel($kind)) . ').'
+                          : 'Позначку про оплату знято.', Auth::id());
+            }
+            flash('success', $paid ? 'Замовлення позначено оплаченим.' : 'Дані оплати збережено.');
+            redirect($back);
         }
 
         if ($action === 'transfer') {
