@@ -154,6 +154,7 @@ class Catalog
         self::$qtyCache = null;
         self::$catParents = null;
         self::$brandsCache = [];
+        self::$imgCache = [];
     }
 
     /** Чи діє опт на цей товар. Немає стовпця (стара база, тест) — діє */
@@ -699,14 +700,33 @@ class Catalog
         return $axes;
     }
 
+    private static array $imgCache = [];
+
+    /**
+     * Фото товару списком. Памʼятається на час запиту: сторінка товару збирає
+     * галерею окремо для кожної фасовки, а кошик — для кожного рядка, і всі
+     * вони питають один і той самий список.
+     */
     public static function images(int $productId): array
     {
-        return DB::all('SELECT * FROM product_images WHERE product_id = ? ORDER BY sort, id', [$productId]);
+        return self::$imgCache[$productId] ??=
+            DB::all('SELECT * FROM product_images WHERE product_id = ? ORDER BY sort, id', [$productId]);
     }
 
-    /** Головне фото товару */
-    public static function photo(array $product): string
+    /**
+     * Головне фото товару, а з фасовкою — її власне, якщо воно є.
+     *
+     * Фасовка без своїх кадрів показується фото товару: у кошику й на касі
+     * рядок має бути впізнаваним завжди, а «немає фото саме цього кольору» —
+     * причина показати загальне, а не заглушку.
+     */
+    public static function photo(array $product, ?array $variant = null): string
     {
+        if ($variant) {
+            foreach (self::images((int)$product['id']) as $im) {
+                if ((int)($im['variant_id'] ?? 0) === (int)$variant['id']) return (string)$im['path'];
+            }
+        }
         if (!empty($product['image'])) return $product['image'];
         $img = DB::row('SELECT path FROM product_images WHERE product_id = ? ORDER BY sort, id LIMIT 1', [$product['id']]);
         return $img['path'] ?? 'img/honey-jar.webp';
@@ -715,25 +735,51 @@ class Catalog
     /**
      * Галерея товару: головне фото першим, далі додаткові в заданому порядку.
      * Без дублів; якщо фото немає взагалі — одна заглушка.
+     *
+     * З обраною фасовкою порядок інший: спершу її кадри, далі спільні (ті, що
+     * не позначені жодною). Чужі при цьому не показуються зовсім — червона
+     * шапка в галереї, поки обрано синю, це не «більше фото», а помилка.
+     * Без фасовки список повний: так галерею бачить і адмінка, і той товар,
+     * у якого фасовок немає.
      */
-    public static function gallery(array $product): array
+    public static function gallery(array $product, ?array $variant = null): array
     {
         $rows = self::images((int)$product['id']);
         $main = (string)($product['image'] ?? '');
-        $out = []; $seen = [];
+        $vid  = $variant ? (int)$variant['id'] : 0;
 
-        if ($main !== '') {
-            foreach ($rows as $r) if ($r['path'] === $main) { $out[] = $r; break; }
-            // головне фото могли призначити поза списком (банер, галерея сайту)
-            if (!$out) $out[] = ['id' => 0, 'path' => $main, 'width' => 0, 'height' => 0, 'bytes' => 0];
-            $seen[$main] = true;
-        }
+        $own = $shared = $rest = [];
         foreach ($rows as $r) {
+            $rv = (int)($r['variant_id'] ?? 0);
+            if ($vid && $rv === $vid) $own[] = $r;
+            elseif (!$rv)            $shared[] = $r;
+            elseif (!$vid)           $rest[] = $r;
+        }
+        $ordered = array_merge($own, $shared, $rest);
+
+        $out = []; $seen = [];
+        // Головне фото веде галерею лише поки в обраної фасовки немає своїх
+        // кадрів: інакше покупець обирає колір, а бачить загальний план.
+        if (!$own && $main !== '') {
+            $hit = null;
+            foreach ($ordered as $r) if ($r['path'] === $main) { $hit = $r; break; }
+            // головне фото могли призначити поза списком (банер, галерея
+            // сайту) — воно нічиє, тож підходить будь-якій фасовці
+            if (!$hit && !in_array($main, array_column($rows, 'path'), true)) {
+                $hit = ['id' => 0, 'path' => $main, 'variant_id' => null, 'width' => 0, 'height' => 0, 'bytes' => 0];
+            }
+            if ($hit) { $out[] = $hit; $seen[$main] = true; }
+        }
+        foreach ($ordered as $r) {
             if (isset($seen[$r['path']])) continue;
             $seen[$r['path']] = true;
             $out[] = $r;
         }
-        if (!$out) $out[] = ['id' => 0, 'path' => 'img/honey-jar.webp', 'width' => 0, 'height' => 0, 'bytes' => 0];
+        // Фасовка без своїх кадрів і без спільних (усі фото розібрані по інших)
+        // показує головне фото товару: воно принаймні про цей товар, а заглушка
+        // ні про що.
+        if (!$out && $rows) $out[] = $rows[0];
+        if (!$out) $out[] = ['id' => 0, 'path' => 'img/honey-jar.webp', 'variant_id' => null, 'width' => 0, 'height' => 0, 'bytes' => 0];
         return $out;
     }
 

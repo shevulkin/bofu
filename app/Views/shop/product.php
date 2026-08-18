@@ -7,7 +7,14 @@
                мініатюрами (data-lb-skip) — у них своя дія, підмінити головне
                фото; збільшує клік по великому. */ ?>
       <div class="product-gallery" data-lightbox>
-        <?php $mainPhoto = $images[0]['path']; ?>
+        <?php
+        $mainPhoto = $images[0]['path'];
+        /* Товар із фасовками тримає мініатюри завжди, навіть коли зараз фото
+           одне: у сусідньої фасовки їх може бути три, і місце під них має
+           існувати до першого кліку — інакше блок доводилось би створювати
+           з JS, а це вже друга розмітка галереї. */
+        $thumbsBox = count($images) > 1 || $variants;
+        ?>
         <?php /* Список фото для перегляду беруть мініатюри — вони і є повним
                  переліком. Головне фото лише відкриває перегляд на тому кадрі,
                  який зараз показано (data-lb-open), інакше перше фото
@@ -16,14 +23,19 @@
         <img id="mainPhoto" src="<?= e(asset($mainPhoto)) ?>" alt="<?= e($p['name']) ?>"
              data-lb-open<?= count($images) > 1 ? '' : ' data-full="' . e(asset($mainPhoto)) . '"' ?>
              title="Натисніть, щоб роздивитись">
-        <?php if (count($images) > 1): ?>
-          <div class="thumbs" id="productThumbs">
-            <?php foreach ($images as $i => $img): ?>
-              <button type="button" class="thumb <?= $i === 0 ? 'active' : '' ?>" data-full="<?= e(asset($img['path'])) ?>" data-lb-skip
-                      aria-label="Фото <?= $i + 1 ?> з <?= count($images) ?>">
-                <img src="<?= e(asset(Images::displayThumb($img['path']))) ?>" alt="<?= e($p['name']) ?> — фото <?= $i + 1 ?>" loading="lazy">
-              </button>
-            <?php endforeach; ?>
+        <?php if ($thumbsBox): ?>
+          <?php /* Коли фото одне, блок лишається порожнім, а не просто схованим:
+                   мініатюра повторювала б головне фото, і перегляд рахував би
+                   один кадр за два. */ ?>
+          <div class="thumbs" id="productThumbs"<?= count($images) > 1 ? '' : ' hidden' ?>>
+            <?php if (count($images) > 1): ?>
+              <?php foreach ($images as $i => $img): ?>
+                <button type="button" class="thumb <?= $i === 0 ? 'active' : '' ?>" data-full="<?= e(asset($img['path'])) ?>" data-lb-skip
+                        aria-label="Фото <?= $i + 1 ?> з <?= count($images) ?>">
+                  <img src="<?= e(asset(Images::displayThumb($img['path']))) ?>" alt="<?= e($p['name']) ?> — фото <?= $i + 1 ?>" loading="lazy">
+                </button>
+              <?php endforeach; ?>
+            <?php endif; ?>
           </div>
         <?php endif; ?>
       </div>
@@ -267,7 +279,7 @@
       </div>
     </div>
 
-    <?php if (count($images) > 1): ?>
+    <?php if ($thumbsBox): ?>
       <script>
         (function () {
           var box = document.getElementById('productThumbs'), main = document.getElementById('mainPhoto');

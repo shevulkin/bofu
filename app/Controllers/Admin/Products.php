@@ -557,6 +557,26 @@ class Products
             redirect('/admin/products/' . $id);
         }
 
+        /*
+         * Кому належить кадр: конкретній фасовці чи всім одразу.
+         *
+         * Прибирати мітку треба так само легко, як ставити, — тому це один
+         * вибір зі списком «спільне» на початку, а не окрема кнопка «відвʼязати».
+         */
+        if ($action === 'image_variant') {
+            $imgId = (int)($_POST['image_id'] ?? 0);
+            $vid = (int)($_POST['variant_id'] ?? 0);
+            // Фасовка мусить бути саме цього товару: id приходить із форми, а
+            // формі вірити не можна — інакше фото чіплялось би до чужої картки.
+            if ($vid && !DB::row('SELECT 1 FROM product_variants WHERE id = ? AND product_id = ?', [$vid, $id])) $vid = 0;
+            if (DB::row('SELECT 1 FROM product_images WHERE id = ? AND product_id = ?', [$imgId, $id])) {
+                DB::update('product_images', ['variant_id' => $vid ?: null], 'id = ?', [$imgId]);
+                self::syncImages($id);   // головним лишається спільне фото
+                flash('success', $vid ? 'Фото закріплено за варіантом' : 'Фото знову спільне');
+            }
+            redirect('/admin/products/' . $id);
+        }
+
         // Порядок додаткових фото: міняємо місцями із сусідом
         if ($action === 'move_image') {
             $imgId = (int)($_POST['image_id'] ?? 0);
@@ -620,10 +640,11 @@ class Products
             // Варіанти: назви з характеристик не чіпаємо — вони збираються автоматично
             $withOptions = Attrs::variantOptionsFor($id);
             $sort = 0;
+            $freedImages = false;   // видалення фасовки звільняє її фото
             foreach ((array)($_POST['variant'] ?? []) as $vid => $v) {
                 if (str_starts_with((string)$vid, 'new')) continue;
                 $vid = (int)$vid;
-                if (!empty($v['_delete'])) { self::deleteVariant($id, $vid); continue; }
+                if (!empty($v['_delete'])) { self::deleteVariant($id, $vid); $freedImages = true; continue; }
                 $name = trim($v['name'] ?? '');
                 $auto = !empty($withOptions[$vid]);
                 if (!$auto && $name === '') continue; // текстовий варіант без назви — не чіпаємо
@@ -656,6 +677,10 @@ class Products
                 ]);
             }
 
+            // Фото, що лишились без своєї фасовки, стали спільними — а серед
+            // спільних обирається головне, тож перерахувати його треба тут же.
+            if ($freedImages) self::syncImages($id);
+
             // Характеристики: словник + значення зі списку (рядки перезаписуються цілком)
             Attrs::saveProductAttrs($id, (array)($_POST['attr'] ?? []), (int)($_POST['category_id'] ?? $p['category_id']));
         }
@@ -682,15 +707,23 @@ class Products
 
     /**
      * Наводить порядок у фото товару: sort = 0,1,2… без дірок,
-     * а `products.image` (головне фото) завжди дорівнює першому в списку.
+     * а `products.image` (головне фото) — перше спільне в списку.
+     *
+     * Саме спільне, а не просто перше: головне фото стоїть у каталозі, у
+     * кошику й у соцмережах, тобто представляє товар цілком. Кадр, знятий
+     * заради одного кольору, у цій ролі обманює — картка обіцяє синє, а
+     * товар продається в пʼяти кольорах. Якщо спільних немає зовсім, беремо
+     * перше будь-яке: показати хоч щось краще, ніж заглушку.
      */
     private static function syncImages(int $productId): void
     {
-        $rows = DB::all('SELECT id, path, sort FROM product_images WHERE product_id = ? ORDER BY sort, id', [$productId]);
+        $rows = DB::all('SELECT id, path, sort, variant_id FROM product_images WHERE product_id = ? ORDER BY sort, id', [$productId]);
         foreach ($rows as $i => $r) {
             if ((int)$r['sort'] !== $i) DB::update('product_images', ['sort' => $i], 'id = ?', [(int)$r['id']]);
         }
-        DB::update('products', ['image' => $rows[0]['path'] ?? null, 'updated_at' => now()], 'id = ?', [$productId]);
+        $main = null;
+        foreach ($rows as $r) if (!(int)($r['variant_id'] ?? 0)) { $main = $r['path']; break; }
+        DB::update('products', ['image' => $main ?? ($rows[0]['path'] ?? null), 'updated_at' => now()], 'id = ?', [$productId]);
     }
 
     /** Видалення варіанта разом з його цінами, залишками та характеристиками */
@@ -699,6 +732,9 @@ class Products
         DB::delete('variant_options', 'variant_id = ?', [$variantId]);
         DB::delete('store_prices', 'product_id = ? AND variant_id = ?', [$productId, $variantId]);
         DB::delete('store_stock', 'product_id = ? AND variant_id = ?', [$productId, $variantId]);
+        // Фото переживає свою фасовку: файл лишається придатним товару, а мітка
+        // на неіснуючий варіант зробила б кадр невидимим — ні спільний, ні чийсь.
+        DB::update('product_images', ['variant_id' => null], 'product_id = ? AND variant_id = ?', [$productId, $variantId]);
         DB::delete('product_variants', 'id = ? AND product_id = ?', [$variantId, $productId]);
     }
 

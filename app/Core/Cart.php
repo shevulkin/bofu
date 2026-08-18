@@ -166,7 +166,7 @@ class Cart
                 'key' => $key, 'product' => $p, 'variant' => $v, 'qty' => $qty,
                 'price' => $price, 'old' => $old,
                 'sum' => $price !== null ? $price * $qty : null,
-                'photo' => Catalog::photo($p),
+                'photo' => Catalog::photo($p, $v),
                 // наявність саме цього варіанта по магазинах: [store_id => qty]
                 'stock' => Catalog::stockByStore((int)$p['id'], $v ? (int)$v['id'] : null),
                 // опт: скільки відсотків він дав, за якою кількістю й що буде далі
