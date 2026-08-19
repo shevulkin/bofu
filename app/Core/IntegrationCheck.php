@@ -30,6 +30,7 @@ class IntegrationCheck
             self::novaPoshta(trim((string)($v['np_api_key'] ?? ''))),
             self::npSender(trim((string)($v['np_api_key'] ?? ''))),
             self::vchasno(trim((string)($v['vchasno_token'] ?? ''))),
+            self::acquiring((array)($v['acq'] ?? [])),
             self::google($v),
             self::email(trim((string)($v['mail_from'] ?? ''))),
             self::botSite(trim((string)($v['bot_site_url'] ?? ''))),
@@ -251,6 +252,50 @@ class IntegrationCheck
         return self::row('Google OAuth', 'ok', 'Ключі на місці',
             'Перевірити насправді можна лише входом: Google приймає ключі тільки в живому обміні. '
             . 'Redirect URI має точно збігатися з ' . GoogleAuth::redirectUri());
+    }
+
+    /**
+     * Оплата карткою.
+     *
+     * Живого запиту тут немає й бути не може: шлюз не має читального методу —
+     * будь-яке звернення до нього це або платіж, або службова дія над чужим
+     * платежем. Тому перевіряємо єдине, що можна перевірити не витрачаючи
+     * чиїхось грошей: чи сходиться комплект ключів і чи вміє наш PHP ними
+     * підписати. Саме тут ловляться дві найчастіші помилки підключення —
+     * зіпсований при копіюванні PEM і сертифікат від іншого середовища.
+     */
+    private static function acquiring(array $v): array
+    {
+        $name = 'Оплата карткою';
+        $gaps = Acquiring::missing($v);
+        if (!Settings::bool('acq_enabled') && $gaps) {
+            return self::row($name, 'off', 'Не налаштовано — покупці не бачать оплати карткою');
+        }
+        if ($gaps) return self::row($name, 'bad', implode('; ', $gaps));
+
+        // Ключ є й читається — лишається довести, що ним справді підписується.
+        // Порожній підпис тут означає зазвичай не «ключ поганий», а що openssl
+        // не знайшов свого конфіга, — і ця відмова інакше вилізла б на першій
+        // живій оплаті.
+        $probe = Acquiring::sign('bofu-selftest');
+        if ($probe === '') {
+            return self::row($name, 'bad', 'Ключ прийнявся, але підпис не формується',
+                'Зазвичай це OpenSSL, який не знаходить свій openssl.cnf. Вкажіть шлях у змінній OPENSSL_CONF '
+                . '(на Windows: C:\\xampp\\apache\\conf\\openssl.cnf) і перезапустіть Apache.');
+        }
+
+        $env = Acquiring::env();
+        $note = 'Що банк прийме саме ці реквізити, перевірка не доводить — шлюз не має запиту, '
+              . 'який нічого не робить. Це покаже перший платіж на тестовому середовищі. '
+              . 'І передайте банку адреси NOTIFY_URL та SUCCESS_URL — без NOTIFY_URL оплати '
+              . 'не позначатимуться автоматично.';
+        if (!Settings::bool('acq_enabled')) {
+            return self::row($name, 'warn', 'Усе на місці, але приймання оплат вимкнене галкою', $note);
+        }
+        return self::row($name, $env === 'test' ? 'warn' : 'ok',
+            'Ключі сходяться, підпис формується. Середовище: ' . ($env === 'test' ? 'тестове' : 'робоче')
+            . ', Merchant ' . Acquiring::merchantId() . ' / Terminal ' . Acquiring::terminalId(),
+            $env === 'test' ? 'Тестовий шлюз справжніх грошей не приймає — перемкніть на робоче, коли перевірите.' : $note);
     }
 
     private static function email(string $from): array

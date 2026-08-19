@@ -12,6 +12,10 @@
 /bin/agent/agent.log
 /bin/agent/agent.config.json
 /storage/*.sqlite*
+# ключі платіжного шлюзу — секрети, у репозиторії їм не місце.
+# Саму теку лишаємо: доступ до неї вже закритий storage/.htaccess
+/storage/keys/*
+!/storage/keys/.gitkeep
 # завантажені фото (контент, не код) — крім правил доступу до теки
 /assets/uploads/*
 !/assets/uploads/.htaccess

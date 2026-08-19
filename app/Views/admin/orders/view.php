@@ -451,7 +451,10 @@
                між «виставили» і «прийшло» минають дні, і всі ці дні хтось має
                бачити, чи чекати ще. */ ?>
       <?php $paid = trim((string)($parent['paid_at'] ?? '')) !== ''; ?>
-      <details style="margin-top:12px"<?= ($parent['payment_kind'] ?? '') === 'invoice' || $paid ? ' open' : '' ?>>
+      <?php /* Онлайн-оплата розгортає блок так само, як рахунок: там теж є що
+               робити руками — списати заблоковане, повернути гроші, перепитати
+               шлюз, коли сповіщення не дійшло. */ ?>
+      <details style="margin-top:12px"<?= ($parent['payment_kind'] ?? '') === 'invoice' || $paid || $payments ? ' open' : '' ?>>
         <summary class="dim" style="cursor:pointer;font-size:13px">
           💳 Оплата —
           <?php if ($paid): ?>
@@ -462,6 +465,93 @@
             не вказано
           <?php endif; ?>
         </summary>
+        <?php /* Оплата карткою на сайті.
+                 Спроби показуємо всі й зверху вниз від свіжої: коли покупець
+                 дзвонить «я платив, а у вас не видно», відповідь майже завжди
+                 в коді відмови попередньої спроби, а не в останній.
+
+                 Дії — лише біля тієї спроби, до якої вони стосуються: кнопка
+                 «повернути» під невдалим платежем не має існувати взагалі. */ ?>
+        <?php if ($payments): ?>
+          <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--bg3)">
+            <div class="dim" style="font-size:12.5px;margin-bottom:8px">Оплата карткою на сайті</div>
+            <?php foreach ($payments as $p): $st = (string)$p['status']; ?>
+              <div style="padding:8px 0;border-top:1px solid var(--bg3)">
+                <div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap">
+                  <b style="color:<?= in_array($st, ['paid', 'held'], true) ? 'var(--gold)' : 'inherit' ?>">
+                    <?= e(Acquiring::statusLabel($st)) ?></b>
+                  <span><?= e(price_fmt($p['amount'])) ?></span>
+                  <span class="dim" style="font-size:12px"><?= e($p['order_ref']) ?></span>
+                  <?php if ((float)$p['refunded'] > 0): ?>
+                    <span class="dim" style="font-size:12px">· повернено <?= e(price_fmt($p['refunded'])) ?></span>
+                  <?php endif; ?>
+                </div>
+                <div class="dim" style="font-size:12px;margin-top:3px">
+                  <?= e(date('d.m.Y H:i', strtotime((string)$p['created_at']))) ?>
+                  <?php if (!empty($p['proxy_pan'])): ?> · картка <?= e($p['proxy_pan']) ?><?php endif; ?>
+                  <?php if (!empty($p['wallet'])): ?> · <?= e($p['wallet'] === 'APPLE_PAY' ? 'Apple Pay' : 'Google Pay') ?><?php endif; ?>
+                  <?php if (!empty($p['approval_code'])): ?> · код <?= e($p['approval_code']) ?><?php endif; ?>
+                  <?php if (!empty($p['rrn'])): ?> · RRN <?= e($p['rrn']) ?><?php endif; ?>
+                  <?php if ((string)$p['env'] === 'test'): ?> · <b>тестовий шлюз</b><?php endif; ?>
+                </div>
+                <?php if ($st === 'failed' && ($p['error'] || $p['tran_code'])): ?>
+                  <div class="dim" style="font-size:12px;margin-top:3px">
+                    <?= e($p['error'] ?: Acquiring::codeLabel($p['tran_code'])) ?></div>
+                <?php endif; ?>
+
+                <?php /* Спроба зависла без відповіді: покупець пішов на шлюз і
+                         не повернувся. Сповіщення могло не дійти — тоді гроші
+                         списані, а замовлення виглядає неоплаченим. Кнопка
+                         питає шлюз напряму. */ ?>
+                <?php if (in_array($st, ['new', 'sent'], true) && $can_pay_sync): ?>
+                  <form method="post" action="<?= e(url('/admin/orders/' . $order['id'])) ?>" style="margin-top:6px">
+                    <?= Csrf::field() ?>
+                    <input type="hidden" name="action" value="pay_sync">
+                    <input type="hidden" name="payment_id" value="<?= (int)$p['id'] ?>">
+                    <button class="btn btn-line btn-xs" type="submit">Спитати шлюз про стан</button>
+                  </form>
+                <?php endif; ?>
+
+                <?php if ($st === 'held' && $can_refund): ?>
+                  <form method="post" action="<?= e(url('/admin/orders/' . $order['id'])) ?>"
+                        style="margin-top:8px;display:flex;gap:6px;align-items:flex-end;flex-wrap:wrap">
+                    <?= Csrf::field() ?>
+                    <input type="hidden" name="action" value="pay_capture">
+                    <input type="hidden" name="payment_id" value="<?= (int)$p['id'] ?>">
+                    <div class="field" style="margin:0;max-width:140px">
+                      <label style="font-size:12px">Сума списання</label>
+                      <input type="text" name="amount" placeholder="<?= e(num_val($p['amount'])) ?>" inputmode="decimal">
+                    </div>
+                    <button class="btn btn-gold btn-xs" type="submit">Списати заблоковане</button>
+                  </form>
+                  <p class="dim" style="font-size:12px;margin:6px 0 0">Порожнє поле — уся заблокована сума.
+                    Меншу вказують, коли частини товару не знайшлось; більшу шлюз прийме лише в межах +20%.</p>
+                <?php endif; ?>
+
+                <?php if (in_array($st, ['paid', 'refunded'], true) && $can_refund
+                          && round((float)$p['refunded'], 2) < round((float)$p['amount'], 2)): ?>
+                  <form method="post" action="<?= e(url('/admin/orders/' . $order['id'])) ?>"
+                        style="margin-top:8px;display:flex;gap:6px;align-items:flex-end;flex-wrap:wrap"
+                        onsubmit="return confirm('Повернути гроші на картку покупця? Скасувати повернення можна буде лише в банку.')">
+                    <?= Csrf::field() ?>
+                    <input type="hidden" name="action" value="pay_refund">
+                    <input type="hidden" name="payment_id" value="<?= (int)$p['id'] ?>">
+                    <div class="field" style="margin:0;max-width:140px">
+                      <label style="font-size:12px">Сума повернення</label>
+                      <input type="text" name="amount"
+                             placeholder="<?= e(num_val(round((float)$p['amount'] - (float)$p['refunded'], 2))) ?>"
+                             inputmode="decimal">
+                    </div>
+                    <button class="btn btn-line btn-xs" type="submit">Повернути на картку</button>
+                  </form>
+                  <p class="dim" style="font-size:12px;margin:6px 0 0">Порожнє поле — увесь залишок.
+                    Фіскальний чек повернення це не пробиває — його роблять окремо, у блоці чеків.</p>
+                <?php endif; ?>
+              </div>
+            <?php endforeach; ?>
+          </div>
+        <?php endif; ?>
+
         <form method="post" action="<?= e(url('/admin/orders/' . $order['id'])) ?>" style="margin-top:10px">
           <?= Csrf::field() ?>
           <input type="hidden" name="action" value="payment">

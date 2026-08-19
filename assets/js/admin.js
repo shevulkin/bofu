@@ -52,8 +52,10 @@
     checkBtn.addEventListener('click', function () {
       var form = checkBtn.closest('form');
       var data = new FormData();
-      // лише поля інтеграцій: перевірка не має відношення до перемикачів і текстів
-      Array.prototype.forEach.call(form.querySelectorAll('[name^="text["]'), function (i) {
+      // лише поля інтеграцій: перевірка не має відношення до перемикачів і текстів.
+      // acq[…] — реквізити еквайрингу: вони в іншій групі форми, але перевіряються
+      // так само незбереженими, інакше ключ довелось би зберігати наосліп
+      Array.prototype.forEach.call(form.querySelectorAll('[name^="text["], [name^="acq["]'), function (i) {
         data.append(i.name, i.value);
       });
       checkBtn.disabled = true;

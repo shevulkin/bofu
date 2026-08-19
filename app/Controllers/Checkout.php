@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 namespace Controllers;
 
-use DB, View, Cart, Csrf, Auth, Catalog, OrderFlow, Settings, AuthTokens, Newsletter, RateLimit, Addresses, Promo, Geo;
+use DB, View, Cart, Csrf, Auth, Catalog, OrderFlow, Settings, AuthTokens, Newsletter, RateLimit, Addresses, Promo, Geo, Acquiring;
 
 class Checkout
 {
@@ -56,6 +56,11 @@ class Checkout
             'addresses' => $addresses,
             'sel' => $addresses[0] ?? null,   // основна (Addresses::forUser сортує її першою)
             'np_enabled' => Settings::get('np_api_key') !== null && Settings::get('np_api_key') !== '',
+            // Оплата карткою показується, лише коли вона справді працює:
+            // кнопка «Оплатити», що веде в помилку, коштує магазину дорожче,
+            // ніж її відсутність — людина вже дійшла до останнього кроку
+            'card_enabled' => Acquiring::enabled(),
+            'card_test' => Acquiring::env() === 'test',
             'pre' => ['name' => $u['name'] ?? '', 'phone' => $u['phone'] ?? '', 'email' => $email],
             'subscribed' => Newsletter::isSubscribed($email ?: null),
             'page_title' => 'Оформлення замовлення — ' . cfg('app_name'),
@@ -138,6 +143,16 @@ class Checkout
         $emailRaw = trim($_POST['email'] ?? '');
         $email = $emailRaw === '' ? null : Newsletter::normEmail($emailRaw);
         $delivery = $_POST['delivery'] ?? 'np';
+        /*
+         * Спосіб оплати.
+         *
+         * Приймаємо «карткою» лише тоді, коли еквайринг справді налаштований:
+         * інакше підставлене в POST значення відправляло б покупця на сторінку
+         * оплати, якої немає, — тобто ламало б замовлення саме після того, як
+         * воно вже створене. Невідоме значення тихо стає оплатою при отриманні:
+         * це поведінка за замовчуванням, а не помилка, про яку варто кричати.
+         */
+        $payOnline = ($_POST['payment'] ?? 'later') === 'card' && Acquiring::enabled();
         $errors = [];
         if (mb_strlen($name) < 2) $errors[] = 'Вкажіть ім\'я отримувача';
         if (!$phone) $errors[] = 'Вкажіть коректний номер телефону — без нього ми не зможемо підтвердити замовлення';
@@ -230,6 +245,11 @@ class Checkout
             'np_flat' => $npType === 'courier' ? (trim($_POST['np_flat'] ?? '') ?: null) : null,
             'comment' => trim($_POST['comment'] ?? '') ?: null,
             'store_id' => $storeId,
+            // Обраний спосіб розрахунку — не факт оплати: paid_at лишається
+            // порожнім, доки гроші не прийшли. Продавець при цьому одразу
+            // бачить у картці «картка, чекаємо», а не гадає, чому замовлення
+            // висить без дзвінка.
+            'payment_kind' => $payOnline ? 'card' : null,
             'status' => 'new', 'promo_code' => $promo['code'] ?? null,
             'subtotal' => $totals['subtotal'], 'discount' => $totals['discount'], 'total' => $totals['total'],
             'created_at' => now(),
@@ -279,7 +299,16 @@ class Checkout
 
         Cart::clear();
         unset($_SESSION['promo_code']);
-        redirect('/order/success/' . $token);
+        /*
+         * Оплата карткою — окремим кроком, а не редіректом просто на шлюз.
+         *
+         * Замовлення вже створене й товар за ним зарезервований: якщо покупець
+         * закриє сторінку банку, продавець побачить неоплачене замовлення й
+         * зателефонує, а не втратить його мовчки. Кошик при цьому чистимо в
+         * обох випадках — повторне оформлення з нього створило б друге
+         * замовлення на ті самі товари, а оплатити перше можна за посиланням.
+         */
+        redirect(($payOnline ? '/pay/' : '/order/success/') . $token);
     }
 
     /** Підтвердження замовлення — лише за токеном із редіректу, номер для цього не годиться */
@@ -297,6 +326,12 @@ class Checkout
             // Одразу після оформлення накладних ще немає — блок просто не
             // зʼявиться, а на повторному заході вже буде.
             'shipments' => \Shipments::forParent((int)$order['id']),
+            // Оплата карткою: покупець має бачити не «замовлення прийнято»
+            // взагалі, а що саме сталося з його грошима. Неоплачене замовлення
+            // з обраною карткою лишає посилання на оплату — воно те саме, і
+            // спробувати ще раз можна хоч наступного дня.
+            'payment' => Acquiring::last((int)$order['id']),
+            'card_enabled' => Acquiring::enabled(),
             'page_title' => 'Замовлення прийнято — ' . cfg('app_name'),
         ]);
     }
@@ -321,6 +356,10 @@ class Checkout
         View::show('account/orders', [
             'orders' => $orders, 'children' => $children, 'items' => $items,
             'shipments' => $shipments,
+            // Кнопка «оплатити» біля неоплаченого замовлення показується, лише
+            // поки оплата карткою справді працює: інакше вона вела б у глухий
+            // кут людину, яка вже чекає на цю посилку
+            'card_enabled' => Acquiring::enabled(),
             'page_title' => 'Мої замовлення — ' . cfg('app_name'),
         ]);
     }

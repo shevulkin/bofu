@@ -31,8 +31,12 @@
       </div>
 
       <div>
+      <?php /* Кроки нумеруються лічильником, а не вручну: крок «Оплата»
+               з'являється лише там, де еквайринг налаштований, і сталі числа
+               давали б на половині магазинів послідовність 1, 2, 4. */ ?>
+      <?php $step = 0; ?>
       <div class="co-step">
-        <h3 class="co-step-h"><span class="co-num">1</span>Доставка</h3>
+        <h3 class="co-step-h"><span class="co-num"><?= ++$step ?></span>Доставка</h3>
 
         <?php if ($addresses): ?>
           <div class="field">
@@ -138,7 +142,7 @@
       </div><!-- /крок 1 -->
 
       <div class="co-step">
-        <h3 class="co-step-h"><span class="co-num">2</span>Отримувач</h3>
+        <h3 class="co-step-h"><span class="co-num"><?= ++$step ?></span>Отримувач</h3>
         <p class="co-note">Нова Пошта видає посилку лише тому, чиї імʼя й телефон вказані в накладній.
           Якщо забираєте самі — поставте галку, і дані підставляться з профілю.</p>
 
@@ -161,8 +165,36 @@
         </label>
       </div><!-- /крок 2 -->
 
+      <?php /* Оплата.
+               Крок з'являється лише тоді, коли еквайринг справді працює: вибір
+               із одного варіанта — це не вибір, а зайвий екран між покупцем і
+               кнопкою. Типовим лишається «при отриманні»: так магазин працював
+               досі, і мовчазна зміна звички на «спершу заплатіть» відлякує
+               більше людей, ніж приваблює зручність картки.
+
+               Обидва варіанти описані наслідками, а не назвами способів:
+               питання покупця тут не «яка платіжна система», а «коли з мене
+               спишуть гроші й що буде далі». */ ?>
+      <?php if ($card_enabled): ?>
       <div class="co-step">
-        <h3 class="co-step-h"><span class="co-num">3</span>Побажання <span class="dim" style="font-size:14px;font-family:var(--sans)">— необовʼязково</span></h3>
+        <h3 class="co-step-h"><span class="co-num"><?= ++$step ?></span>Оплата</h3>
+        <div class="field">
+          <div class="variants" id="payChips">
+            <label class="chip active"><input type="radio" name="payment" value="later" checked hidden>При отриманні</label>
+            <label class="chip"><input type="radio" name="payment" value="card" hidden>Карткою онлайн</label>
+          </div>
+        </div>
+        <p class="co-note" id="payNoteLater">Оплатите під час отримання — у відділенні перевізника
+          або в магазині при самовивозі. Зараз нічого не списується.</p>
+        <p class="co-note" id="payNoteCard" style="display:none">Після підтвердження замовлення ви перейдете
+          на захищену сторінку банку: Visa, Mastercard, Apple&nbsp;Pay або Google&nbsp;Pay.
+          Дані картки вводяться там і на наш сайт не потрапляють.
+          <?php if ($card_test): ?><br><b>Увага:</b> зараз увімкнено тестовий шлюз — справжні гроші не рухаються.<?php endif; ?></p>
+      </div><!-- /оплата -->
+      <?php endif; ?>
+
+      <div class="co-step">
+        <h3 class="co-step-h"><span class="co-num"><?= ++$step ?></span>Побажання <span class="dim" style="font-size:14px;font-family:var(--sans)">— необовʼязково</span></h3>
         <div class="field"><label>Коментар до замовлення</label>
           <textarea name="comment" rows="3" placeholder="Необовʼязково: зручний час дзвінка, побажання до пакування"></textarea></div>
       </div>
@@ -245,9 +277,10 @@
         <ul class="co-trust">
           <li>Оплата при отриманні або за домовленістю</li>
           <li>Продавець зателефонує, щоб підтвердити замовлення</li>
-          <li>Нічого не спишеться зараз — це не оплата</li>
+          <li id="trustPay">Нічого не спишеться зараз — це не оплата</li>
         </ul>
-        <button class="btn btn-gold co-submit" type="submit" style="width:100%">Підтвердити замовлення</button>
+        <button class="btn btn-gold co-submit" type="submit" style="width:100%"
+                data-submit-label="Підтвердити замовлення" data-pay-label="Перейти до оплати">Підтвердити замовлення</button>
         <?php /* Згода з умовами — під кнопкою, звичайним текстом, а не галкою.
                  Оформлення замовлення і є прийняттям оферти (ст. 11 Закону
                  «Про електронну комерцію»), тож окрема галка нічого не додає
@@ -264,7 +297,8 @@
       <!-- телефон: сума й кнопка завжди під рукою, без гортання через усю форму -->
       <div class="co-bar">
         <div class="co-bar-total"><span><?= e($goods) ?> · до сплати</span><b id="barTotal"><?= e(price_fmt($totals['total'])) ?></b></div>
-        <button class="btn btn-gold" type="submit">Підтвердити</button>
+        <button class="btn btn-gold" type="submit"
+                data-submit-label="Підтвердити" data-pay-label="Оплатити">Підтвердити</button>
       </div>
     </form>
   </div>
@@ -327,6 +361,30 @@
     }
   }
   if (meBox) meBox.addEventListener('change', applyMe);
+
+  /* Спосіб оплати. Перемикач міняє не лише позначку, а й підпис кнопки:
+     «Підтвердити замовлення» і «Перейти до оплати» — різні обіцянки, і людина
+     має знати, що станеться після натискання, ще до натискання. */
+  var payChips = document.querySelectorAll('#payChips .chip');
+  payChips.forEach(function(ch){
+    ch.addEventListener('click', function(){
+      payChips.forEach(function(c){ c.classList.remove('active'); c.querySelector('input').checked = false; });
+      ch.classList.add('active');
+      var input = ch.querySelector('input');
+      input.checked = true;
+      var card = input.value === 'card';
+      var later = document.getElementById('payNoteLater'), now = document.getElementById('payNoteCard');
+      if (later) later.style.display = card ? 'none' : '';
+      if (now) now.style.display = card ? '' : 'none';
+      document.querySelectorAll('[data-submit-label]').forEach(function(b){
+        b.textContent = card ? b.dataset.payLabel : b.dataset.submitLabel;
+      });
+      var trust = document.getElementById('trustPay');
+      if (trust) trust.textContent = card
+        ? 'Оплата карткою на захищеній сторінці банку'
+        : 'Нічого не спишеться зараз — це не оплата';
+    });
+  });
 
   var chips = document.querySelectorAll('#deliveryChips .chip');
   chips.forEach(function(ch){

@@ -9,9 +9,29 @@ class App
         // впаде помилкою або редіректом. Усе, що нижче, вже може щось віддати.
         Security::headers();
         if (!self::dbReady()) return;
-        Auth::start();
         $path = request_path();
         $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+
+        /*
+         * Відповіді платіжного шлюзу — до всього іншого й БЕЗ сесії.
+         *
+         * Обидві приходять із чужого сайту, а кука сесії має SameSite=Lax і в
+         * крос-сайтовий POST не потрапляє. Тобто session_start() тут завів би
+         * НОВУ порожню сесію й віддав браузеру її куку — покупець повернувся б
+         * з оплати розлогіненим, з порожнім кошиком і без своїх адрес. Ціна
+         * помилки більша за незручність: це виглядає як «магазин загубив мене
+         * разом із грошима».
+         *
+         * Тому ці два входи не читають і не пишуть сесію взагалі: замовлення
+         * вони знаходять за номером оплати, а покупця — за токеном замовлення.
+         * CSRF тут теж не діє й не має діяти: шлюз не браузер і токена не має,
+         * а справжність запиту доводить підпис (див. Acquiring).
+         */
+        $clean = rtrim($path, '/') ?: '/';
+        if ($clean === '/pay/notify' && $method === 'POST') { Controllers\PayController::notify(); }
+        if ($clean === '/pay/return') { Controllers\PayController::back(); }
+
+        Auth::start();
 
         // Сайт закрито від пошуковиків: заголовок діє й там, де немає HTML (sitemap, JSON, файли)
         if (Settings::bool('seo_noindex')) header('X-Robots-Tag: noindex, nofollow');
@@ -186,6 +206,14 @@ class App
         if ($path === '/checkout/promo' && $method === 'POST') { RateLimit::guard('promo', 40, 3600, null, true); Controllers\Checkout::applyPromo(); }
         if (preg_match('~^/order/success/([a-f0-9]{32})$~', $path, $m)) { Controllers\Checkout::success($m[1]); }
         if ($path === '/orders') { Controllers\Checkout::myOrders(); }
+
+        // --- оплата карткою ---
+        // Замовлення впізнається за тим самим токеном, що й сторінка «прийнято»:
+        // у гостя немає кабінету, і посилання з токеном — усе, що в нього є.
+        // Два входи шлюзу (/pay/notify, /pay/return) обробляються вище, до
+        // старту сесії, — див. пояснення в App::run().
+        if (preg_match('~^/pay/([a-f0-9]{32})$~', $path, $m)) { Controllers\PayController::page($m[1]); }
+        if ($path === '/pay/start' && $method === 'POST') { Controllers\PayController::start(); }
         // «повідомте, коли зʼявиться» — з лімітом: кнопка відкрита будь-кому,
         // хто увійшов, а запити дешеві й ідуть у чергу, яку читає продавець
         if ($path === '/stock/watch' && $method === 'POST') {

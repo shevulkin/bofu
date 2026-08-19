@@ -981,6 +981,14 @@ class Orders
             'fiscal_jobs' => Auth::can('orders.fiscal')
                 ? count(Fiscal::queuedForUser((int)Auth::id(), (int)$parent['id'])) : 0,
             'kasa_on' => FiscalProvider::anyConfigured(),
+            // Онлайн-оплата. Список спроб, а не одна: покупець, у якого не
+            // пройшла картка, пробує другу, і продавцю, якому дзвонять «я ж
+            // уже платив», потрібні саме всі спроби з кодами відмов.
+            'payments' => \Acquiring::forParent((int)$parent['id']),
+            // Питати шлюз про стан — читальна дія, її вистачає тому, хто веде
+            // замовлення. Рухати гроші (списати, повернути) — окреме право.
+            'can_pay_sync' => Auth::can('orders.status'),
+            'can_refund' => Auth::can('orders.refund'),
             // Чия це частина. Показуємо, лише коли власників справді кілька:
             // у мережі одного ФОПа цей рядок не каже нічого нового, а от коли
             // замовлення розпалося між двома платниками податків — це головне,
@@ -1106,6 +1114,51 @@ class Orders
                           : 'Позначку про оплату знято.', Auth::id());
             }
             flash('success', $paid ? 'Замовлення позначено оплаченим.' : 'Дані оплати збережено.');
+            redirect($back);
+        }
+
+        /*
+         * Онлайн-оплата: звірка, списання заблокованого, повернення.
+         *
+         * Усі три дії — над ГОЛОВНИМ замовленням: покупець платив одну суму за
+         * весь кошик однією операцією, і поділити її між магазинами на боці
+         * банку неможливо.
+         *
+         * Право окреме від «змінювати статус» навмисно: тут рухаються чужі
+         * гроші, і помилку виправляє банк, а не кнопка «скасувати».
+         */
+        if (in_array($action, ['pay_sync', 'pay_capture', 'pay_refund'], true)) {
+            $payment = \Acquiring::byId((int)($_POST['payment_id'] ?? 0));
+            if (!$payment || (int)$payment['parent_id'] !== (int)$parent['id']) {
+                flash('error', 'Платіж не знайдено.');
+                redirect($back);
+            }
+            // Звірка лише читає стан на шлюзі — на неї вистачає права вести
+            // замовлення. Гроші рухають дві інші дії, і вони суворіші.
+            if ($action === 'pay_sync') {
+                Auth::requireCap('orders.status');
+                $r = \Acquiring::sync($payment);
+                flash($r['ok'] ? 'success' : 'error', $r['ok']
+                    ? 'Шлюз підтверджує оплату.'
+                    : 'Стан на шлюзі: ' . ($r['error'] ?: 'оплату не підтверджено') . '.');
+                redirect($back);
+            }
+
+            Auth::requireCap('orders.refund');
+            // Порожня сума означає «повністю»: у найчастішому випадку її не
+            // треба ні вводити, ні звіряти з чимось
+            $raw = str_replace(',', '.', trim((string)($_POST['amount'] ?? '')));
+            $amount = $raw === '' ? null : (float)$raw;
+
+            if ($action === 'pay_capture') {
+                $r = \Acquiring::capture($payment, $amount, Auth::id());
+                flash($r['ok'] ? 'success' : 'error',
+                    $r['ok'] ? 'Заблоковані кошти списано.' : $r['error']);
+            } else {
+                $r = \Acquiring::refund($payment, $amount, Auth::id());
+                flash($r['ok'] ? 'success' : 'error',
+                    $r['ok'] ? 'Гроші повернено на картку покупця.' : $r['error']);
+            }
             redirect($back);
         }
 

@@ -15,6 +15,30 @@
               <b class="price"><?= e(price_fmt($o['total'])) ?></b>
             </summary>
             <div style="padding:0 22px 20px">
+              <?php /* Неоплачена картка — найперше, що має побачити людина,
+                       розгорнувши замовлення: доки гроші не прийшли, магазин
+                       його не збирає, і чекання тут узаємне. Скасоване не
+                       рахуємо: платити за нього не треба. */ ?>
+              <?php if ((string)($o['payment_kind'] ?? '') === 'card'
+                        && trim((string)($o['paid_at'] ?? '')) === ''
+                        && (string)$o['status'] !== 'canceled'): ?>
+                <?php /* Оплату могли вимкнути після оформлення. Тоді зникає
+                         кнопка, а не пояснення: людина має знати, що робити
+                         далі, а не лише те, що заплатити не вийшло. */ ?>
+                <?php if ($card_enabled): ?>
+                  <p style="margin:0 0 14px">
+                    <a class="btn btn-gold btn-xs" href="<?= e(url('/pay/' . $o['token'])) ?>">Оплатити карткою</a>
+                    <span class="dim" style="margin-left:8px;font-size:13px">замовлення чекає оплати</span>
+                  </p>
+                <?php else: ?>
+                  <p class="dim" style="margin:0 0 14px;font-size:13px">Оплата карткою на сайті наразі
+                    недоступна — продавець зателефонує й узгодить спосіб оплати.</p>
+                <?php endif; ?>
+              <?php elseif ((string)($o['payment_kind'] ?? '') === 'card' && trim((string)($o['paid_at'] ?? '')) !== ''): ?>
+                <p class="dim" style="margin:0 0 14px;font-size:13px">Оплачено карткою
+                  <?= e(date('d.m.Y', strtotime((string)$o['paid_at']))) ?>.</p>
+              <?php endif; ?>
+
               <?php if ($split): ?>
                 <p class="dim" style="margin:0 0 14px">Замовлення виконують <?= count($parts) ?> магазини — кожен відправляє свою частину, тому статуси можуть відрізнятися.</p>
               <?php endif; ?>

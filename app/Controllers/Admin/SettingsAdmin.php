@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 namespace Controllers\Admin;
 
-use View, Auth, Settings, WebPush, BotAuth, IntegrationCheck, RateLimit, Catalog, OrderFlow;
+use View, Auth, Settings, WebPush, BotAuth, IntegrationCheck, RateLimit, Catalog, OrderFlow, Acquiring;
 
 class SettingsAdmin
 {
@@ -67,7 +67,11 @@ class SettingsAdmin
     {
         Auth::requireCap('settings.manage');
         RateLimit::guard('settings_check', 30, 3600);
-        json_response(['ok' => true, 'rows' => IntegrationCheck::run((array)($_POST['text'] ?? []))]);
+        // Поля еквайрингу лежать в іншій групі форми (acq[…]), але перевіряти
+        // їх треба так само незбереженими — інакше «перевірити» означало б
+        // «спершу збережіть», а зберігати неперевірений ключ якраз і не хочеться
+        json_response(['ok' => true, 'rows' => IntegrationCheck::run(
+            (array)($_POST['text'] ?? []) + ['acq' => (array)($_POST['acq'] ?? [])])]);
     }
 
     public static function index(): never
@@ -147,6 +151,37 @@ class SettingsAdmin
                 Settings::set($key, isset($_POST[$key]) ? '1' : '0');
             }
 
+            /*
+             * Інтернет-еквайринг Raiffeisen Bank.
+             *
+             * Середовище приймаємо лише з переліку: підставлене значення
+             * означало б справжні гроші там, де очікували тест, — і навпаки,
+             * тобто «оплачені» замовлення без грошей.
+             *
+             * Ключ і сертифікат ЗАПИСУЄМО ЛИШЕ НЕПОРОЖНІМИ. Назад у форму вони
+             * не виводяться (приватний ключ не має вдруге їхати в браузер), і
+             * без цієї умови кожне збереження налаштувань стирало б їх
+             * порожньою textarea — тобто вимикало оплату на всьому сайті
+             * будь-якою правкою сусіднього поля.
+             */
+            Settings::set('acq_enabled', isset($_POST['acq_enabled']) ? '1' : '0');
+            $env = (string)($_POST['acq_env'] ?? '');
+            Settings::set('acq_env', isset(\Acquiring::BASE[$env]) ? $env : 'test');
+            foreach (['acq_merchant_id', 'acq_terminal_id', 'acq_desc'] as $key) {
+                if (isset($_POST['acq'][$key])) Settings::set($key, trim((string)$_POST['acq'][$key]));
+            }
+            foreach (['acq_key', 'acq_cert'] as $key) {
+                $pem = trim((string)($_POST['acq'][$key] ?? ''));
+                if ($pem !== '') Settings::set($key, $pem);
+            }
+            // Явне прибирання ключа — окремою галкою, а не порожнім полем:
+            // випадково стерти оплату не має бути так само легко, як зберегти
+            foreach (['acq_key' => 'acq_key_clear', 'acq_cert' => 'acq_cert_clear'] as $key => $flag) {
+                if (isset($_POST[$flag])) Settings::set($key, '');
+            }
+            Settings::set('acq_hold', isset($_POST['acq_hold']) ? '1' : '0');
+            Settings::set('acq_auto_fiscal', isset($_POST['acq_auto_fiscal']) ? '1' : '0');
+
             $oldViber = Settings::get('viber_bot_token', '');
             foreach (self::TEXT_KEYS as $key => $label) {
                 if (isset($_POST['text'][$key])) Settings::set($key, trim($_POST['text'][$key]));
@@ -193,6 +228,22 @@ class SettingsAdmin
                                        WHERE vchasno_token IS NOT NULL AND vchasno_token <> ''
                                        ORDER BY sort, id"),
             'vapid_public' => $vapidPub,
+            // Еквайринг. Самі ключі у форму не повертаємо — лише те, чи вони є
+            // й звідки читаються: приватний ключ, відданий у браузер, живе
+            // потім у кожному кеші й кожному розширенні цього браузера.
+            'acq_envs' => Acquiring::ENVS,
+            'acq_env' => Acquiring::env(),
+            'acq_gaps' => Acquiring::missing(),
+            'acq_has_key' => Acquiring::privateKey() !== '',
+            'acq_has_cert' => Acquiring::certificate() !== '',
+            'acq_key_dir' => Acquiring::keyDir(),
+            'acq_notify_url' => abs_url('/pay/notify'),
+            'acq_return_url' => abs_url('/pay/return'),
+            // Замовлення, які чекають на оплату карткою. Потрібні рівно тоді,
+            // коли оплату вимикають: сам вимикач нічого не ламає, але ці
+            // замовлення лишаються з обіцянкою, яку сайт більше не виконає, і
+            // комусь треба зателефонувати їхнім покупцям.
+            'acq_pending' => Acquiring::pending(),
             'page_title' => 'Налаштування — адмінка',
         ], 'layouts/admin');
     }
