@@ -232,6 +232,8 @@ class Cart
             'total' => max(0, round($subtotal - $discount, 2)),
             // які набори спрацювали — підсумкам є що назвати поіменно
             'bundles' => $hits['applied'],
+            // а до яких лишився крок — кошику є що запропонувати
+            'bundle_suggest' => $hits['suggest'] ?? [],
         ];
     }
 

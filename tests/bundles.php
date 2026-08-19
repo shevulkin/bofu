@@ -45,6 +45,8 @@ final class BundlesTest
             $this->testCap();
             $this->testPromo();
             $this->testShowcase();
+            $this->testNearMiss();
+            $this->testTopUp();
         } finally {
             $this->tearDown();
         }
@@ -343,6 +345,101 @@ final class BundlesTest
         $this->ok('набір із вимкненим товаром зникає з вітрини',
             count(Bundles::forProduct($this->honey)) === 1);
         DB::update('products', ['active' => 1], 'id = ?', [$this->propolis]);
+    }
+
+    // ------------------------------------------------------------------ підказка
+
+    private function testNearMiss(): void
+    {
+        $this->group('до набору лишився крок');
+
+        // Мед є, прополісу немає — це та мить, заради якої підказка й існує
+        $this->cart([$this->honey => 1]);
+        $s = Cart::total()['bundle_suggest'];
+        $mine = array_values(array_filter($s, fn($x) => (int)$x['bundle']['id'] === $this->bGift));
+        $this->ok('набір, до якого лишився крок, знайдено', count($mine) === 1);
+        $this->ok('названо, чого саме бракує',
+            count($mine[0]['need']) === 1 && (int)$mine[0]['need'][0]['product']['id'] === $this->propolis);
+        $this->ok('і скільки штук', (int)$mine[0]['need'][0]['short'] === 1);
+        $this->ok('вигода названа числом', (float)$mine[0]['cut'] === 15.0);
+
+        // Зібраний набір підказки не потребує: він уже спрацював
+        $this->cart([$this->honey => 1, $this->propolis => 1]);
+        $t = Cart::total();
+        $ids = array_map(fn($x) => (int)$x['bundle']['id'], $t['bundle_suggest']);
+        $this->ok('зібраний набір у підказки не потрапляє', !in_array($this->bGift, $ids, true));
+        $this->ok('бо він уже в знижці', count($t['bundles']) === 1);
+
+        // Порожній кошик і чужий товар — не привід перелічувати каталог:
+        // підказка мусить упізнаватись як продовження власного наміру
+        $this->cart([$this->soap => 1]);
+        $this->ok('товар поза наборами підказок не породжує',
+            Cart::total()['bundle_suggest'] === []);
+
+        // Штука, що вже пішла в один набір, до другого не рахується
+        $this->cart([$this->honey => 1, $this->propolis => 1]);
+        $s = Cart::total()['bundle_suggest'];
+        $fixed = array_values(array_filter($s, fn($x) => (int)$x['bundle']['id'] === $this->bFixed));
+        $this->ok('другий набір бачить, що мед уже зайнятий',
+            count($fixed) === 0 || (int)$fixed[0]['need'][0]['product']['id'] !== $this->candle);
+
+        // Забагато бракує — це вже не підказка, а реклама
+        $big = $this->mkBundle('Великий', 'percent', 10, [
+            [$this->honey, null, 1], [$this->candle, null, 1], [$this->soap, null, 1],
+        ]);
+        $this->cart([$this->honey => 1]);
+        $ids = array_map(fn($x) => (int)$x['bundle']['id'], Cart::total()['bundle_suggest']);
+        $this->ok('набір, де бракує двох із трьох, ще підказується', in_array($big, $ids, true));
+
+        $huge = $this->mkBundle('Величезний', 'percent', 10, [
+            [$this->honey, null, 1], [$this->candle, null, 1],
+            [$this->soap, null, 1], [$this->propolis, null, 1],
+        ]);
+        $ids = array_map(fn($x) => (int)$x['bundle']['id'], Cart::total()['bundle_suggest']);
+        $this->ok('а де бракує трьох — уже ні', !in_array($huge, $ids, true));
+
+        foreach ([$big, $huge] as $id) {
+            DB::delete('bundle_items', 'bundle_id = ?', [$id]);
+            DB::delete('bundles', 'id = ?', [$id]);
+        }
+        Bundles::forget();
+    }
+
+    private function testTopUp(): void
+    {
+        $this->group('кнопка добирає, а не додає наосліп');
+        $bundle = Bundles::find($this->bGift);
+
+        // Порожній кошик: добирати нема з чого, кладемо повний склад
+        $_SESSION['cart'] = [];
+        $this->ok('у порожньому кошику комплектів нуль', Bundles::setsIn($bundle, Cart::detailed()) === 0);
+
+        // Мед уже є — до набору бракує тільки прополісу
+        $this->cart([$this->honey => 1]);
+        $rows = Cart::detailed();
+        $this->ok('мед порахований як наявний',
+            Bundles::inCart($bundle['items'][0], $rows) === 1);
+        $this->ok('прополісу немає', Bundles::inCart($bundle['items'][1], $rows) === 0);
+        $this->ok('повних комплектів ще нуль', Bundles::setsIn($bundle, $rows) === 0);
+
+        // Комплект зібрано — наступний клік має цілити у другий
+        $this->cart([$this->honey => 1, $this->propolis => 1]);
+        $this->ok('комплект зібрався', Bundles::setsIn($bundle, Cart::detailed()) === 1);
+
+        $this->cart([$this->honey => 3, $this->propolis => 2]);
+        $this->ok('комплектів рівно стільки, скільки вистачає пар',
+            Bundles::setsIn($bundle, Cart::detailed()) === 2);
+
+        // «Будь-яка фасовка» рахує всі фасовки товару: набір збереться з тієї,
+        // що вже взяли, і кнопка не має класти ще одну «правильну»
+        $v = DB::insert('product_variants', ['product_id' => $this->propolis, 'name' => 'велика',
+            'price' => 60, 'active' => 1, 'sort' => 0]);
+        $_SESSION['cart'] = [
+            $this->propolis . ':' . $v => ['product_id' => $this->propolis, 'variant_id' => $v, 'qty' => 1],
+        ];
+        $this->ok('чужа фасовка теж рахується, коли в наборі «будь-яка»',
+            Bundles::inCart($bundle['items'][1], Cart::detailed()) === 1);
+        DB::delete('product_variants', 'id = ?', [$v]);
     }
 }
 

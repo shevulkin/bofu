@@ -91,6 +91,43 @@
           </tr>
         <?php endforeach; ?>
       </table>
+
+      <?php
+      /* «Ще трохи — і дешевше». Найдорожча помилка набору — та, про яку
+         покупець дізнається після оформлення: «взяв би й прополіс, якби знав».
+         Кошик — момент найвищої готовності купити, і саме тут ми точно
+         знаємо, чого бракує й скільки на цьому втрачається.
+
+         Під таблицею, а не під кожною позицією: набір належить кошику, а не
+         рядку, і повторений під трьома товарами він читався б як реклама.
+         Показуємо не більше двох — далі це вже перелік чужих товарів. */
+      $suggest = array_slice($totals['bundle_suggest'] ?? [], 0, 2);
+      ?>
+      <?php if ($suggest): ?>
+        <div class="bundle-hint-list">
+          <?php foreach ($suggest as $s): ?>
+            <div class="bundle-hint">
+              <div class="bundle-hint-text">
+                <b>Ще трохи — і дешевше.</b>
+                Додайте
+                <?php foreach ($s['need'] as $i => $n): ?>
+                  <?= $i ? ' і ' : '' ?><span class="bundle-hint-need"><?= e($n['product']['name']) ?><?=
+                    $n['variant'] ? ', ' . e($n['variant']['name']) : '' ?><?=
+                    $n['short'] > 1 ? ' × ' . (int)$n['short'] : '' ?></span>
+                <?php endforeach; ?>
+                — і набір «<?= e($s['bundle']['title']) ?>» здешевшає на
+                <b class="bundle-hint-cut"><?= e(price_fmt($s['cut'])) ?></b>.
+              </div>
+              <form method="post" action="<?= e(url('/cart/add-bundle')) ?>">
+                <?= Csrf::field() ?>
+                <input type="hidden" name="bundle_id" value="<?= (int)$s['bundle']['id'] ?>">
+                <button class="btn btn-gold btn-sm" type="submit">Додати те, чого бракує</button>
+              </form>
+            </div>
+          <?php endforeach; ?>
+        </div>
+      <?php endif; ?>
+
       <div class="totals">
         <?php /* Набір називаємо поіменно й до підсумку. Знижку за кількість
                  видно з ціни позиції, а знижку за поєднання — ні: вона

@@ -62,9 +62,10 @@ class Bundles
      * Що зібралось у цьому кошику.
      *
      * @param array $rows рядки Cart::detailed()
-     * @return array{total:float,lines:array<string,float>,applied:array}
+     * @return array{total:float,lines:array<string,float>,applied:array,suggest:array}
      *         lines — скільки гривень зняти з кожної позиції (за її ключем),
-     *         applied — які набори спрацювали й по скільки разів
+     *         applied — які набори спрацювали й по скільки разів,
+     *         suggest — які майже зібрались (див. missing)
      */
     public static function match(array $rows): array
     {
@@ -80,7 +81,7 @@ class Bundles
             $index[(int)$r['product']['id']][] = $k;
         }
 
-        $lines = []; $applied = []; $total = 0.0;
+        $lines = []; $applied = []; $suggest = []; $total = 0.0;
 
         foreach (self::all() as $b) {
             if (!$b['items']) continue;
@@ -96,7 +97,14 @@ class Bundles
                 $sets = min($sets, intdiv($have, max(1, (int)$it['qty'])));
                 if ($sets < 1) break;
             }
-            if ($sets < 1) continue;
+            if ($sets < 1) {
+                // Набір не зібрався — але, може, до нього лишився крок. Рахуємо
+                // від ЗАЛИШКІВ: штуки, які вже пішли в інший набір, до цього
+                // не належать, і обіцяти на них знижку було б неправдою.
+                $miss = self::missing($b, $byKey, $index, $left);
+                if ($miss) $suggest[] = $miss;
+                continue;
+            }
 
             // Забираємо штуки з кошика. Забрані не дістануться наступному
             // набору: та сама банка не може двічі бути «третьою в наборі»,
@@ -140,7 +148,87 @@ class Bundles
             $total = round($total + $got, 2);
         }
 
-        return ['total' => $total, 'lines' => $lines, 'applied' => $applied];
+        return ['total' => $total, 'lines' => $lines, 'applied' => $applied, 'suggest' => $suggest];
+    }
+
+    /**
+     * Скільки позицій може бракувати, щоб це ще була підказка.
+     *
+     * Одна-дві — «ви майже зібрали». Три й більше — перелік чужих товарів під
+     * виглядом поради, тобто реклама решти каталогу. Різниця не в числі, а в
+     * тому, чи впізнає покупець у пропозиції свій намір.
+     */
+    public const MAX_MISSING = 2;
+
+    /**
+     * Набір, до якого лишився крок: чого саме бракує й скільки це дасть.
+     *
+     * Найдорожча помилка набору — та, про яку покупець дізнається після
+     * оформлення: «взяв би й прополіс, якби знав». Кошик — момент найвищої
+     * готовності купити, і саме тут ми точно знаємо, чого бракує.
+     *
+     * Порожньо, коли підказувати нічого: у кошику немає жодної позиції набору
+     * (тоді це не підказка, а реклама), бракує забагато, або набір узагалі
+     * більше не збирається.
+     *
+     * @return array{bundle:array,need:array,cut:float,sum:float,total:float}|null
+     */
+    private static function missing(array $b, array $byKey, array $index, array $left): ?array
+    {
+        $shortOf = [];   // product_id => скількох штук бракує
+        $present = 0;
+        foreach ($b['items'] as $it) {
+            $have = 0;
+            foreach ($index[(int)$it['product_id']] ?? [] as $k) {
+                if (self::fits($byKey[$k], $it)) $have += $left[$k];
+            }
+            if ($have > 0) $present++;
+            $short = max(0, (int)$it['qty'] - $have);
+            if ($short > 0) $shortOf[(int)$it['product_id']] = $short;
+        }
+        // Нічого не бракує — набір зібрався б і без підказки; нічого немає —
+        // покупець цього набору не починав, і починати за нього ми не будемо.
+        if (!$shortOf || !$present) return null;
+        if (count($shortOf) > self::MAX_MISSING) return null;
+
+        $full = self::expand($b);
+        if (!$full || $full['cut'] <= 0) return null;
+
+        // Назви беремо з розгорнутого складу — там уже підібрані фасовки й ціни
+        $need = [];
+        foreach ($full['expanded'] as $row) {
+            $pid = (int)$row['product']['id'];
+            if (!isset($shortOf[$pid])) continue;
+            $need[] = $row + ['short' => $shortOf[$pid]];
+        }
+        if (!$need) return null;
+
+        return ['bundle' => $b, 'need' => $need,
+                'cut' => $full['cut'], 'sum' => $full['sum'], 'total' => $full['total']];
+    }
+
+    /**
+     * Скільки штук цієї позиції набору вже лежить у кошику.
+     * «Будь-яка фасовка» рахує всі: набір збереться з тієї, що вже взяли.
+     */
+    public static function inCart(array $item, array $rows): int
+    {
+        $n = 0;
+        foreach ($rows as $r) {
+            if (($r['price'] ?? null) === null) continue;
+            if (self::fits($r, $item)) $n += (int)$r['qty'];
+        }
+        return $n;
+    }
+
+    /** Скільки повних комплектів набору вже зібрано з того, що в кошику */
+    public static function setsIn(array $bundle, array $rows): int
+    {
+        $sets = PHP_INT_MAX;
+        foreach ($bundle['items'] as $it) {
+            $sets = min($sets, intdiv(self::inCart($it, $rows), max(1, (int)$it['qty'])));
+        }
+        return $bundle['items'] ? max(0, $sets) : 0;
     }
 
     /** Скільки гривень знижки дає набір за $sets комплектів на суму $content */
@@ -233,8 +321,11 @@ class Bundles
 
             $qty = max(1, (int)$it['qty']);
             $sum = round($sum + $price * $qty, 2);
+            // Рядок набору лишаємо при собі: за ним рахується, скільки цієї
+            // позиції вже в кошику («будь-яка фасовка» рахує всі фасовки),
+            // а по підібраній тут $v — що саме класти, коли її не задавали.
             $items[] = ['product' => $p, 'variant' => $v, 'qty' => $qty, 'price' => $price,
-                        'photo' => Catalog::photo($p, $v)];
+                        'photo' => Catalog::photo($p, $v), 'item' => $it];
         }
         if (!$items) return null;
 
