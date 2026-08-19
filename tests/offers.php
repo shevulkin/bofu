@@ -41,6 +41,7 @@ final class OffersTest
             $this->testDealOwnership();
             $this->testCart();
             $this->testConsume();
+            $this->testMaintain();
         } finally {
             $this->tearDown();
         }
@@ -264,6 +265,73 @@ final class OffersTest
 
         Cart::clear();
         $this->wipeOffers();
+    }
+
+    /**
+     * Нагадування. Найдорожча помилка тут не «не нагадали», а «нагадали
+     * вдруге»: розмова, що пише щогодини, це не турбота, це спам, і після
+     * нього людина вимикає канал цілком.
+     */
+    private function testMaintain(): void
+    {
+        $this->group('мовчанка: нагадати один раз і сказати про закриття');
+
+        // 1. Пропозиція чекає на продавця довше за обіцяний строк
+        $r = Offers::propose($this->product, null, $this->buyer, 5, 400);
+        $id = (int)$r['offer']['id'];
+        $this->age($id, Offers::replyHours() + 1);
+
+        $out = Offers::maintain();
+        $this->ok('нагадали продавцю про зависле', $out['stalled'] === 1);
+        $this->ok('мітку про нагадування проставлено', Offers::find($id)['reminded_at'] !== null);
+
+        $again = Offers::maintain();
+        $this->ok('удруге про те саме не нагадуємо', $again['stalled'] === 0);
+
+        // Хід скидає відлік: після відповіді чекати починаємо заново
+        Offers::counter($id, 5, 450, '', $this->seller);
+        $this->ok('хід знімає мітку нагадування', Offers::find($id)['reminded_at'] === null);
+
+        // 2. Тепер уже покупець мовчить на наші умови
+        $this->age($id, Offers::replyHours() + 1);
+        $out = Offers::maintain();
+        $this->ok('нагадали покупцю про наші умови', $out['waiting'] === 1);
+
+        // 3. Погодженій ціні лишились години
+        Offers::accept($id, 'buyer', null, $this->buyer);
+        DB::update('offers', [
+            'expires_at' => date('Y-m-d H:i:s', time() + 60),
+            'reminded_at' => null,
+        ], 'id = ?', [$id]);
+        $out = Offers::maintain();
+        $this->ok('попередили, що ціна спливає', $out['expiring'] === 1);
+
+        // 4. Строк вийшов — угода стає «lapsed», і про це кажуть уголос
+        DB::update('offers', ['expires_at' => date('Y-m-d H:i:s', time() - 60)], 'id = ?', [$id]);
+        $out = Offers::maintain();
+        $this->ok('погоджена ціна, що згоріла, — це lapsed, а не expired',
+            Offers::find($id)['status'] === 'lapsed');
+        $this->ok('покупцю сказали про закриття', $out['closed'] === 1);
+        $this->ok('мітку про сказане збережено', Offers::find($id)['notified_at'] !== null);
+
+        $this->ok('удруге про закриття не пишемо', Offers::maintain()['closed'] === 0);
+
+        // 5. Розмова, на яку ми так і не відповіли, — це вже expired
+        $this->wipeOffers();
+        $r2 = Offers::propose($this->product, null, $this->buyer, 5, 400);
+        $id2 = (int)$r2['offer']['id'];
+        DB::update('offers', ['expires_at' => date('Y-m-d H:i:s', time() - 60)], 'id = ?', [$id2]);
+        Offers::maintain();
+        $this->ok('розмова без відповіді — expired', Offers::find($id2)['status'] === 'expired');
+
+        $this->wipeOffers();
+    }
+
+    /** Зістарити розмову: наче останній хід був стільки-то годин тому */
+    private function age(int $offerId, int $hours): void
+    {
+        DB::update('offers', ['updated_at' => date('Y-m-d H:i:s', time() - $hours * 3600)],
+            'id = ?', [$offerId]);
     }
 
     private function testConsume(): void
