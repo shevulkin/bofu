@@ -30,7 +30,7 @@ while (count($rows) < 2) $rows[] = ['product_id' => 0, 'variant_id' => null, 'qt
           <?php endforeach; ?>
         </select>
         <select name="item[<?= $i ?>][variant_id]" class="js-bundle-variant" data-row="<?= $i ?>">
-          <option value="0">будь-яка фасовка</option>
+          <option value="0">будь-який варіант</option>
           <?php foreach ($variants[$pid] ?? [] as $v): ?>
             <option value="<?= (int)$v['id'] ?>"<?= (int)($it['variant_id'] ?? 0) === (int)$v['id'] ? ' selected' : '' ?>><?= e($v['name']) ?></option>
           <?php endforeach; ?>
@@ -66,7 +66,7 @@ if (empty($GLOBALS['__bundle_items_js'])):
       var target = row ? row.querySelector('.js-bundle-variant') : null;
       if (!target) return;
       var items = VARIANTS[sel.value] || [];
-      target.innerHTML = '<option value="0">будь-яка фасовка</option>';
+      target.innerHTML = '<option value="0">будь-який варіант</option>';
       items.forEach(function (v) {
         var o = document.createElement('option');
         o.value = v.id; o.textContent = v.name;
@@ -109,7 +109,7 @@ if (empty($GLOBALS['__bundle_items_js'])):
       row.innerHTML =
         '<select name="item[' + k + '][product_id]" class="js-bundle-product" data-row="' + k + '">' + opts + '</select>' +
         '<select name="item[' + k + '][variant_id]" class="js-bundle-variant" data-row="' + k + '">' +
-          '<option value="0">будь-яка фасовка</option></select>' +
+          '<option value="0">будь-який варіант</option></select>' +
         '<input type="number" min="1" step="1" name="item[' + k + '][qty]" value="1">' +
         '<button class="btn btn-danger btn-xs bundle-row-del" type="button" title="Прибрати позицію">✕</button>';
       list.appendChild(row);
