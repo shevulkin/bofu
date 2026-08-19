@@ -185,6 +185,12 @@
                   <?php if (($r['wholesale'] ?? 0) > 0): ?>
                     · <span style="color:var(--gold)">опт −<?= e(QtyDiscounts::pct((float)$r['wholesale'])) ?>%</span>
                   <?php endif; ?>
+                  <?php /* Те саме й тут: ціна, про яку домовились, не збігається
+                           ні з каталогом, ні з жодною знижкою, і без підпису
+                           читалась би як помилка в останню мить перед оплатою */ ?>
+                  <?php if (!empty($r['offer_id'])): ?>
+                    · <span style="color:var(--gold)">домовлена ціна</span>
+                  <?php endif; ?>
                 </div>
               </div>
               <div class="co-item-sum">

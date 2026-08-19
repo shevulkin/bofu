@@ -146,6 +146,116 @@
           </div>
         <?php endif; ?>
 
+        <?php
+        /* Торг.
+         *
+         * Стоїть одразу під оптовою шкалою — і це найважливіше в його
+         * розташуванні. Шкала щойно відповіла на питання «а дешевше буде?»
+         * готовими ярусами; людина, яка дочитала до кінця й не знайшла свого
+         * випадку («мені треба сім, а поріг від десяти», «беру на весь
+         * колектив, але за вашою ціною не складається»), у цю секунду або
+         * пише в дірект, або закриває вкладку. Форма стоїть саме там, де
+         * виникає це питання.
+         *
+         * Ціну просимо за штуку, але приймаємо й суму за партію: «маю 5 000 на
+         * подарунки» — це те, як людина насправді думає, і змушувати її ділити
+         * в голові означає втратити частину пропозицій на арифметиці.
+         *
+         * Підлогу («нижче за стільки не розглядаємо») не показуємо навмисно.
+         * Назви ми число — і кожна наступна пропозиція була б рівно цим
+         * числом; торгу не лишилось би, лишилась би ще одна знижка, яку
+         * магазин роздає сам собі.
+         */
+        $offerState = $offer_states[$variants ? (int)$variants[0]['id'] : 0] ?? ['state' => 'none'];
+        ?>
+        <?php if (!empty($offer_allowed)): ?>
+          <div class="offer-box" id="offerBox">
+            <h3>Не влаштовує ціна? Запропонуйте свою</h3>
+
+            <?php if (!$auth_user): ?>
+              <p class="dim" style="margin:0">
+                Скажіть, скільки штук берете і за скільки готові — продавець відповість особисто:
+                погодиться, запропонує свої умови або пояснить, чому цього разу не вийде.
+              </p>
+              <p style="margin:12px 0 0">
+                <a class="btn btn-line btn-sm" href="<?= e(url('/profile')) ?>"
+                   onclick="var b=document.getElementById('loginBtn');if(b){b.click();return false}">Увійти, щоб запропонувати ціну</a>
+              </p>
+              <p class="dim" style="margin:10px 0 0;font-size:13px">
+                Вхід потрібен для одного: щоб відповідь продавця мала куди прийти.
+              </p>
+            <?php else: ?>
+              <?php /* Стан розмови й форма — два різні екрани одного блоку.
+                       Показується завжди рівно один: пропонувати ціну, коли
+                       твоя пропозиція вже лежить у продавця, немає сенсу. */ ?>
+              <div id="offerState"<?= $offerState['state'] === 'none' ? ' hidden' : '' ?>>
+                <p class="offer-state-line" id="offerStateText"></p>
+                <div class="offer-state-actions" id="offerStateActions"></div>
+              </div>
+
+              <form method="post" action="<?= e(url('/bargain/new')) ?>" id="offerForm"
+                    <?= $offerState['state'] === 'none' ? '' : 'hidden' ?>>
+                <?= Csrf::field() ?>
+                <input type="hidden" name="product_id" value="<?= (int)$p['id'] ?>">
+                <input type="hidden" name="variant_id" id="offerVariant" value="<?= $variants ? (int)$variants[0]['id'] : '' ?>">
+                <input type="hidden" name="back" value="/product/<?= e($p['slug']) ?>">
+                <p class="dim" style="margin:0 0 14px">
+                  Продавець відповість особисто: погодиться, запропонує свої умови або пояснить,
+                  чому цього разу не вийде. Погоджена ціна закріплюється за вами
+                  на <?= (int)Offers::holdHours() ?> год.
+                </p>
+                <div class="offer-fields">
+                  <label class="offer-field">
+                    <span>Скільки штук</span>
+                    <input type="number" name="qty" min="1" max="<?= (int)Cart::MAX_QTY ?>" value="1" required>
+                  </label>
+                  <label class="offer-field">
+                    <span id="offerPriceLabel">Ваша ціна за штуку, грн</span>
+                    <input type="text" name="price" inputmode="decimal" id="offerPrice"
+                           placeholder="<?= $price !== null ? e(num_val(round((float)$price * 0.9))) : '' ?>" required>
+                  </label>
+                  <label class="offer-mode">
+                    <input type="checkbox" name="mode" value="total" id="offerMode">
+                    <span>рахувати за всю партію</span>
+                  </label>
+                </div>
+                <label class="offer-field" style="margin-top:12px">
+                  <span>Кілька слів (не обовʼязково)</span>
+                  <input type="text" name="note" maxlength="500"
+                         placeholder="напр.: беру щомісяця, або на подарунки колективу">
+                </label>
+                <p class="dim" style="margin:10px 0 0;font-size:13px">
+                  Коментар читає жива людина, і він важить не менше за цифру:
+                  «беру щомісяця» й «хочу дешевше» — це різні розмови.
+                </p>
+                <button class="btn btn-gold btn-sm" type="submit" style="margin-top:14px">Запропонувати ціну</button>
+              </form>
+
+              <?php /* Форми дій зі станом лежать поруч, поза блоком стану: у
+                       них свої адреси, і збирати їх у JS означало б розкидати
+                       CSRF-токен по скриптах. Показує їх той-таки JS. */ ?>
+              <div hidden>
+                <form method="post" action="<?= e(url('/bargain/accept')) ?>" id="offerAcceptForm">
+                  <?= Csrf::field() ?><input type="hidden" name="offer_id" id="offerAcceptId">
+                  <input type="hidden" name="back" value="/product/<?= e($p['slug']) ?>">
+                </form>
+                <form method="post" action="<?= e(url('/bargain/cancel')) ?>" id="offerCancelForm">
+                  <?= Csrf::field() ?><input type="hidden" name="offer_id" id="offerCancelId">
+                  <input type="hidden" name="back" value="/product/<?= e($p['slug']) ?>">
+                </form>
+                <form method="post" action="<?= e(url('/cart/add-offer')) ?>" id="offerCartForm">
+                  <?= Csrf::field() ?><input type="hidden" name="offer_id" id="offerCartId">
+                  <input type="hidden" name="back" value="/product/<?= e($p['slug']) ?>">
+                </form>
+              </div>
+              <script>
+                window.BOFU_OFFERS = <?= json_js($offer_states) ?>;
+                window.BOFU_OFFER_FIRST = <?= $variants ? (int)$variants[0]['id'] : 0 ?>;
+              </script>
+            <?php endif; ?>
+          </div>
+        <?php endif; ?>
+
         <?php /* «Разом дешевше». Стоїть тут, а не в кошику: у кошику покупець
                  уже вирішив, що бере, і пропозиція читається як спроба
                  дописати щось у чек. Поруч із товаром вона відповідає на

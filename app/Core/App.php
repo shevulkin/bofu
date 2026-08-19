@@ -168,6 +168,10 @@ class App
         // Набір кладеться однією дією: розкладати його на три кліки означало б
         // питати покупця про те, що вже вирішено складом набору
         if ($path === '/cart/add-bundle' && $method === 'POST') { Controllers\CartController::addBundle(); }
+        // Домовлена ціна кладеться окремою дією: рядок кошика з нею живе за
+        // іншими правилами, ніж звичайний, і плутати їх в одному вході
+        // означало б щоразу з'ясовувати, який саме перед нами
+        if ($path === '/cart/add-offer' && $method === 'POST') { Controllers\CartController::addOffer(); }
         if ($path === '/cart/update' && $method === 'POST') { Controllers\CartController::update(); }
         // сторінка оформлення лише читає; POST сюди приймати нема потреби, а без нього
         // стороння сторінка не може записати покупцеві промокод у сесію
@@ -188,6 +192,21 @@ class App
             RateLimit::guard('stock_watch', 30, 3600);
             Controllers\Shop::watch();
         }
+
+        // --- торг ---
+        // Адреси навмисно не /offer*: цей шлях уже зайнятий публічною офертою
+        // (правовий документ вище). Два різні «offer» на одному сайті — це не
+        // лише зіткнення маршрутів, а й зіткнення слів: «оферта» й
+        // «пропозиція ціни» звучать однаково, а означають протилежне за
+        // обовʼязковістю.
+        //
+        // Ліміт тут суворіший за решту: кожна пропозиція коштує продавцю
+        // уваги живої людини. Двадцять ходів на добу — більше, ніж потрібно
+        // будь-якому справжньому покупцю, і замало, щоб завалити чергу.
+        if ($path === '/bargain') { Controllers\OfferController::index(); }
+        if ($path === '/bargain/new' && $method === 'POST') { RateLimit::guard('offer', 20, 86400); Controllers\OfferController::propose(); }
+        if ($path === '/bargain/accept' && $method === 'POST') { Controllers\OfferController::accept(); }
+        if ($path === '/bargain/cancel' && $method === 'POST') { Controllers\OfferController::cancel(); }
 
         // --- розсилка ---
         if (preg_match('~^/unsubscribe/([a-f0-9]{32})$~', $path, $m)) { Controllers\NewsletterController::unsubscribe($m[1]); }
@@ -235,6 +254,10 @@ class App
             '/admin/products/new'       => [$A.'Products', 'create', 'products.manage'],
             '/admin/products/bulk'      => [$A.'Products', 'bulk', 'products.view'],
             '/admin/stock-requests'     => [$A.'StockRequests', 'index', 'products.view'],
+            // Торг: черга пропозицій ціни. Своя сторінка, а не вкладка в
+            // замовленнях, — це ще не замовлення, і поки триває розмова,
+            // продавати нема чого
+            '/admin/offers'             => [$A.'OffersAdmin', 'index', 'offers.manage'],
             '/admin/categories'         => [$A.'Categories', 'index', 'catalog.manage'],
             '/admin/attributes'         => [$A.'Attributes', 'index', 'catalog.manage'],
             '/admin/brands'             => [$A.'Brands', 'index', 'catalog.manage'],

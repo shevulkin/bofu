@@ -162,6 +162,10 @@
       updatePhotos(v);
       updateAvailability(v);
       updateAddButton(v);
+      // блок торгу теж належить фасовці: у кожної своя розмова й своя ціна
+      renderOffer(v.id);
+      var op = document.getElementById('offerPrice');
+      if (op && v.price) op.placeholder = String(Math.round(v.price * 0.9));
       // гасимо значення, які не поєднуються з поточним вибором
       picker.querySelectorAll('.opt').forEach(function (btn) {
         var axis = btn.dataset.axis;
@@ -299,6 +303,88 @@
       });
       apply(byId(picker.dataset.first) || variants[0]);
     }
+  }
+
+  /* Торг: блок «запропонуйте свою ціну».
+   *
+   * Розмова ведеться про конкретну фасовку, тому блок міняється разом із
+   * ціною: у банки 0,5 може бути погоджена ціна, а в ящика — жодної розмови,
+   * і показувати тут спільний стан означало б показувати чужу домовленість.
+   *
+   * Тексти станів живуть тут, а не приходять із сервера готовими: сервер уже
+   * прислав факти (чий хід, які умови, доки діє), а речення з них складається
+   * одне й те саме для всіх фасовок.
+   */
+  function renderOffer(variantId) {
+    var box = document.getElementById('offerBox');
+    if (!box || !window.BOFU_OFFERS) return;
+    var st = window.BOFU_OFFERS[variantId] || window.BOFU_OFFERS[0] || { state: 'none' };
+    var stateBox = document.getElementById('offerState');
+    var form = document.getElementById('offerForm');
+    var text = document.getElementById('offerStateText');
+    var acts = document.getElementById('offerStateActions');
+    var hidden = document.getElementById('offerVariant');
+    if (hidden) hidden.value = variantId || '';
+    if (!stateBox || !form || !text || !acts) return;
+
+    if (st.state === 'none') {
+      stateBox.hidden = true;
+      form.hidden = false;
+      return;
+    }
+    stateBox.hidden = false;
+    form.hidden = true;
+    acts.textContent = '';
+
+    if (st.state === 'wait') {
+      text.textContent = 'Ваша пропозиція в продавця: ' + st.terms + '. Відповімо якнайшвидше.';
+      acts.appendChild(offerBtn('Скасувати пропозицію', 'offerCancelForm', 'offerCancelId', st.id, 'btn-line'));
+    } else if (st.state === 'yours') {
+      text.textContent = 'Магазин пропонує свої умови: ' + st.terms + '. Хід за вами.';
+      acts.appendChild(offerBtn('Погодитись', 'offerAcceptForm', 'offerAcceptId', st.id, 'btn-gold'));
+      acts.appendChild(offerBtn('Відмовитись', 'offerCancelForm', 'offerCancelId', st.id, 'btn-line'));
+      // Своя зустрічна — це просто ще одна пропозиція; форма та сама
+      var again = document.createElement('button');
+      again.type = 'button';
+      again.className = 'btn btn-line btn-sm';
+      again.textContent = 'Запропонувати інше';
+      again.addEventListener('click', function () { stateBox.hidden = true; form.hidden = false; });
+      acts.appendChild(again);
+    } else if (st.state === 'deal') {
+      text.textContent = 'Домовились: ' + st.terms
+        + (st.until ? '. Ціна діє до ' + st.until : '') + '.';
+      acts.appendChild(offerBtn('До кошика за домовленою ціною', 'offerCartForm', 'offerCartId', st.id, 'btn-gold'));
+    }
+  }
+
+  /* Кнопка, що надсилає одну з готових форм. Форми лежать у розмітці разом із
+     CSRF-токеном — збирати їх тут означало б розкидати токен по скриптах. */
+  function offerBtn(label, formId, fieldId, offerId, cls) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'btn ' + cls + ' btn-sm';
+    b.textContent = label;
+    b.addEventListener('click', function () {
+      var f = document.getElementById(formId), i = document.getElementById(fieldId);
+      if (!f || !i) return;
+      i.value = offerId;
+      f.submit();
+    });
+    return b;
+  }
+
+  /* «Рахувати за всю партію»: людина частіше знає свій бюджет, ніж ціну за
+     штуку. Поле одне — міняється лише те, що воно означає. */
+  var offerMode = document.getElementById('offerMode');
+  if (offerMode) {
+    offerMode.addEventListener('change', function () {
+      var lbl = document.getElementById('offerPriceLabel');
+      if (lbl) lbl.textContent = offerMode.checked ? 'Ваша ціна за всю партію, грн' : 'Ваша ціна за штуку, грн';
+    });
+  }
+  // Товар без фасовок: перемикати нічого, але стан показати треба
+  if (document.getElementById('offerBox') && !window.BOFU_VARIANTS) {
+    renderOffer(window.BOFU_OFFER_FIRST || 0);
   }
 
   // додавання в кошик без перезавантаження сторінки

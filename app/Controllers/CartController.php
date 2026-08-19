@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 namespace Controllers;
 
-use View, Cart, Csrf, DB, Catalog, Bundles;
+use View, Cart, Csrf, DB, Catalog, Bundles, Offers, Auth;
 
 class CartController
 {
@@ -127,6 +127,51 @@ class CartController
         } else {
             flash('success', 'Набір «' . $bundle['title'] . '» у кошику — знижка вже врахована.');
         }
+        redirect('/cart');
+    }
+
+    /**
+     * Покласти в кошик домовлену ціну.
+     *
+     * Кількість не питаємо: вона є частиною угоди рівно так само, як число
+     * гривень. «Десять по 480» не означає «одна по 480», і дозволити тут
+     * вибір означало б продати за партійною ціною одну банку.
+     *
+     * Рядок лягає окремо від звичайного рядка того самого товару (див.
+     * Cart::key): у кошику цілком законно можуть лежати десять домовлених і
+     * ще дві за звичайною ціною.
+     */
+    public static function addOffer(): never
+    {
+        Csrf::verify();
+        $back = safe_back($_POST['back'] ?? null, '/bargain');
+        $deal = Offers::deal((int)($_POST['offer_id'] ?? 0), Auth::id());
+        if (!$deal) {
+            flash('error', 'Ця домовленість більше не діє. Можна домовитись наново або замовити за звичайною ціною.');
+            redirect($back);
+        }
+        $pid = (int)$deal['product_id'];
+        $vid = $deal['variant_id'] !== null ? (int)$deal['variant_id'] : null;
+        $qty = (int)$deal['qty'];
+
+        foreach (Cart::items() as $i) {
+            if ((int)($i['offer_id'] ?? 0) !== (int)$deal['id']) continue;
+            flash('success', 'Ця позиція вже в кошику за домовленою ціною.');
+            redirect('/cart');
+        }
+
+        // Партію кладемо цілою або не кладемо взагалі. Половина партії за
+        // партійною ціною — це вже інша угода, якої ніхто не укладав, і
+        // домовлятись про строк решти має продавець, а не кошик.
+        $limit = Cart::limit($pid, $vid);
+        if ($limit !== null && $limit < $qty) {
+            flash('error', 'Зараз на складі є лише ' . $limit . ' шт. із домовлених ' . $qty
+                . '. Домовлена ціна діє на всю партію — напишіть нам, і ми скажемо строк.');
+            redirect($back);
+        }
+
+        Cart::add($pid, $vid, $qty, (int)$deal['id']);
+        flash('success', 'Позицію додано за домовленою ціною — ' . price_fmt($deal['price']) . '/шт.');
         redirect('/cart');
     }
 

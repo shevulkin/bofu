@@ -630,6 +630,9 @@ class Products
                 'wholesale' => isset($_POST['wholesale']) ? 1 : 0,
                 'qty_scope' => ($_POST['qty_scope'] ?? '') === 'variant' ? 'variant' : 'product',
                 'max_discount' => self::percent($_POST['max_discount'] ?? ''),
+                // Торг. Окремо від опту: перше — правило для всіх, друге —
+                // жива розмова з однією людиною, і вимикають їх незалежно
+                'bargain' => isset($_POST['bargain']) ? 1 : 0,
                 'updated_at' => now(),
             ], 'id = ?', [$id]);
             self::syncBrands($id, (array)($_POST['brand_ids'] ?? []));

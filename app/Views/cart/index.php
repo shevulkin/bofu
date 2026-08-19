@@ -39,6 +39,15 @@
               <?php endif; ?>
             </td>
             <td>
+              <?php /* Домовлена ціна називає себе вголос. Без підпису рядок
+                       виглядав би як помилка в прайсі: сума в кошику не
+                       збігається ні з ціною на сторінці товару, ні з жодною
+                       знижкою, і пояснити її нічим. */ ?>
+              <?php if (!empty($r['offer_id'])): ?>
+                <?php if ($r['old'] !== null): ?><s class="dim"><?= e(price_fmt($r['old'])) ?></s><br><?php endif; ?>
+                <?= e(price_fmt($r['price'])) ?>
+                <div class="cart-tier is-on">домовлена ціна</div>
+              <?php else: ?>
               <?php if (($r['wholesale'] ?? 0) > 0 && $r['old'] !== null): ?>
                 <s class="dim"><?= e(price_fmt($r['old'])) ?></s><br>
               <?php endif; ?>
@@ -59,8 +68,16 @@
                   ще <?= (int)$next['need'] ?> шт → −<?= e(QtyDiscounts::pct((float)$next['effective'])) ?>%
                 </div>
               <?php endif; ?>
+              <?php endif; ?>
             </td>
             <td>
+              <?php /* Кількість домовленої партії не міняється: ціну назвали
+                       саме за неї. Замість кнопок — число й одне слово, чому
+                       кнопок немає; прибрати рядок цілком можна й далі. */ ?>
+              <?php if (!empty($r['offer_id'])): ?>
+                <b><?= (int)$r['qty'] ?></b>
+                <div class="cart-tier">партія за домовленістю</div>
+              <?php else: ?>
               <form method="post" action="<?= e(url('/cart/update')) ?>" style="display:inline-flex;gap:6px;align-items:center">
                 <?= Csrf::field() ?>
                 <input type="hidden" name="key" value="<?= e($r['key']) ?>">
@@ -69,6 +86,7 @@
                 <b><?= (int)$r['qty'] ?></b>
                 <button class="btn btn-line btn-xs" name="action" value="inc">+</button>
               </form>
+              <?php endif; ?>
             </td>
             <td>
               <?php /* Позицію, що ввійшла в набір, показуємо зі знятою знижкою,

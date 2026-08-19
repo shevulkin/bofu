@@ -10,8 +10,14 @@ class Cart
 
     public static function items(): array { self::normalize(); return $_SESSION['cart'] ?? []; }
 
-    private static function key(int $productId, ?int $variantId): string
-    { return $productId . ':' . ($variantId ?? 0); }
+    /**
+     * Ключ рядка. Домовлена ціна робить рядок окремим навіть для того самого
+     * товару й тієї самої фасовки: у кошику можуть цілком законно лежати
+     * десять банок за домовленою ціною і ще дві за звичайною, і зливати їх в
+     * один рядок означало б продати за домовленою всі дванадцять.
+     */
+    private static function key(int $productId, ?int $variantId, int $offerId = 0): string
+    { return $productId . ':' . ($variantId ?? 0) . ($offerId ? ':o' . $offerId : ''); }
 
     /**
      * Варіант у рядку кошика обовʼязковий, коли він є в товару:
@@ -25,22 +31,53 @@ class Cart
         return $first !== null ? (int)$first : null;
     }
 
-    /** Старі рядки без варіанта (або з вимкненим) переводимо на актуальний варіант */
+    /**
+     * Старі рядки без варіанта (або з вимкненим) переводимо на актуальний варіант.
+     *
+     * Тут же перевіряються рядки з домовленою ціною. Перевіряти їх треба
+     * щоразу, а не при додаванні: кошик живе в сесії, а сесія переживає і
+     * скасування угоди продавцем, і кінець її терміну, і зняття товару з
+     * продажу. Ціна, яку не можна підтвердити просто зараз, у кошику не
+     * лишається — але й не зникає мовчки: людина клала її свідомо й має
+     * дізнатись, чому рядка більше немає.
+     */
     private static function normalize(): void
     {
         if (self::$normalized) return;
         self::$normalized = true;
         $cart = $_SESSION['cart'] ?? [];
         if (!$cart) return;
-        $out = []; $changed = false;
+        $out = []; $changed = false; $dropped = [];
         foreach ($cart as $key => $item) {
             $pid = (int)$item['product_id'];
+            $offerId = (int)($item['offer_id'] ?? 0);
+            if ($offerId) {
+                $deal = Offers::deal($offerId, Auth::id());
+                if (!$deal) {
+                    $dropped[] = (string)DB::val('SELECT name FROM products WHERE id = ?', [$pid]);
+                    $changed = true;
+                    continue;
+                }
+                // Фасовку й кількість диктує угода, а не сесія: домовлялись про
+                // конкретні числа, і зміна будь-якого з них робить ціну чужою
+                $item['variant_id'] = $deal['variant_id'] !== null ? (int)$deal['variant_id'] : null;
+                if ((int)$item['qty'] !== (int)$deal['qty']) { $item['qty'] = (int)$deal['qty']; $changed = true; }
+                $k = self::key($pid, $item['variant_id'], $offerId);
+                if ($k !== $key) $changed = true;
+                $out[$k] = $item;
+                continue;
+            }
             $vid = self::resolveVariant($pid, isset($item['variant_id']) ? (int)$item['variant_id'] : null);
             if ($vid !== ($item['variant_id'] ?? null)) { $item['variant_id'] = $vid; $changed = true; }
             $k = self::key($pid, $vid);
             if ($k !== $key) $changed = true;
             if (isset($out[$k])) $out[$k]['qty'] += $item['qty'];
             else $out[$k] = $item;
+        }
+        if ($dropped) {
+            flash('error', 'Домовлена ціна більше не діє — прибрали з кошика: '
+                . implode(', ', array_filter($dropped))
+                . '. Товар можна замовити за звичайною ціною або домовитись наново.');
         }
         if ($changed) $_SESSION['cart'] = $out;
     }
@@ -65,10 +102,10 @@ class Cart
      * «нічого немає», менше за $qty — «стільки й лишилось». Це відповідь
      * покупцеві, тож приймати рішення про повідомлення має він, не кошик.
      */
-    public static function add(int $productId, ?int $variantId = null, int $qty = 1): int
+    public static function add(int $productId, ?int $variantId = null, int $qty = 1, int $offerId = 0): int
     {
         $variantId = self::resolveVariant($productId, $variantId);
-        $key = self::key($productId, $variantId);
+        $key = self::key($productId, $variantId, $offerId);
         $cart = self::items();
         $was = (int)($cart[$key]['qty'] ?? 0);
         $want = min(self::MAX_QTY, $was + max(1, $qty));
@@ -81,6 +118,7 @@ class Cart
 
         if ($was) $cart[$key]['qty'] = $want;
         else $cart[$key] = ['product_id' => $productId, 'variant_id' => $variantId, 'qty' => $want];
+        if ($offerId) $cart[$key]['offer_id'] = $offerId;
         $_SESSION['cart'] = $cart;
         return $want - $was;
     }
@@ -89,6 +127,12 @@ class Cart
     {
         if (!isset($_SESSION['cart'][$key])) return;
         $item = $_SESSION['cart'][$key];
+        // Кількість домовленої позиції не міняється: ціну назвали саме за цю
+        // партію. Прибрати рядок можна завжди — це вже інша дія.
+        if (!empty($item['offer_id'])) {
+            if ($qty <= 0) unset($_SESSION['cart'][$key]);
+            return;
+        }
         $limit = self::limit((int)$item['product_id'], isset($item['variant_id']) ? (int)$item['variant_id'] : null);
         $qty = min(self::MAX_QTY, $qty);
         if ($limit !== null) $qty = min($qty, $limit);
@@ -118,8 +162,12 @@ class Cart
 
         // Кількість, за якою шукається поріг. Рахуємо до цін: рядок не може
         // визначити свою знижку, поки невідомо, скільки того ж товару поруч.
+        // Домовлені штуки сюди не входять: вони вже мають свою ціну й не
+        // повинні заодно підштовхувати сусідній звичайний рядок до оптового
+        // порогу — інакше одна знижка тихо купувала б другу.
         $scoped = [];
         foreach ($items as $item) {
+            if (!empty($item['offer_id'])) continue;
             $pid = (int)$item['product_id'];
             $scoped[$pid] = ($scoped[$pid] ?? 0) + (int)$item['qty'];
         }
@@ -131,6 +179,39 @@ class Cart
             $v = $item['variant_id'] ? DB::row('SELECT * FROM product_variants WHERE id = ?', [$item['variant_id']]) : null;
             [$price, $old] = Catalog::price($p, $v, $storeId);
             $qty = (int)$item['qty'];
+            $offerId = (int)($item['offer_id'] ?? 0);
+
+            /*
+             * Домовлена ціна не рахується, вона вже названа.
+             *
+             * Продавець дивився на цю кількість, на цю людину й на свою маржу
+             * і сказав кінцеве число. Опт, акція, набір і промокод на такий
+             * рядок не діють — не через жадібність, а тому що інакше названа
+             * ціна нічого не означала б: до неї щоразу додавалося б ще
+             * скільки-небудь, і торгуватись довелось би з урахуванням цього.
+             *
+             * Стару ціну лишаємо вітринною — саме вона показує, наскільки
+             * домовились дешевше, і саме її людина бачила, коли починала торг.
+             */
+            if ($offerId) {
+                $deal = Offers::deal($offerId, Auth::id());
+                if (!$deal) continue;              // normalize уже прибрав би, але рядок міг протухнути щойно
+                $old = ($price !== null && (float)$price > (float)$deal['price']) ? (float)$price : null;
+                $price = (float)$deal['price'];
+                $qty = (int)$deal['qty'];
+                $rows[] = [
+                    'key' => $key, 'product' => $p, 'variant' => $v, 'qty' => $qty,
+                    'price' => $price, 'old' => $old, 'sum' => $price * $qty,
+                    'photo' => Catalog::photo($p, $v),
+                    'stock' => Catalog::stockByStore((int)$p['id'], $v ? (int)$v['id'] : null),
+                    'wholesale' => 0.0, 'tier_qty' => $qty, 'next_tier' => null,
+                    // Стеля знижок домовленої позиції не стосується: вона
+                    // обмежує те, що складається саме, а тут нічого не складається
+                    'cap' => 0.0,
+                    'offer_id' => $offerId, 'offer' => $deal,
+                ];
+                continue;
+            }
 
             $tierQty = Catalog::qtyScope($p) === 'variant' ? $qty : (int)$scoped[(int)$p['id']];
             $cap = Catalog::discountCap($p, $v);
@@ -194,7 +275,11 @@ class Cart
     public static function breakdown(?int $storeId = null, ?array $promoCode = null): array
     {
         $rows = self::detailed($storeId);
-        $hits = Bundles::match($rows);
+        // Домовлені позиції в наборах не беруть участі — ні як знижка, ні як
+        // складник: банка, ціну якої назвали руками, не може заодно зробити
+        // комусь «разом дешевше», а підказка «доберіть до набору» на ній
+        // читалась би як спроба переграти щойно укладену угоду.
+        $hits = Bundles::match(array_values(array_filter($rows, fn($r) => empty($r['offer_id']))));
 
         $subtotal = 0.0; $fromBundles = 0.0; $fromPromo = 0.0;
         foreach ($rows as &$r) {
@@ -206,10 +291,11 @@ class Cart
 
             // Коду лишається те, що не забрали акція, опт і набір. $sum без
             // знятого набором — щоб код не знижував удруге ті самі гривні.
-            $cut = Promo::cut(
+            // Домовлена позиція коду не бачить зовсім: її ціну назвала людина.
+            $cut = empty($r['offer_id']) ? Promo::cut(
                 max(0.0, $sum - $inSet), $promoCode,
                 Promo::ownPercent($r) + self::pctOf($r, $inSet),
-                $r['cap'] ?? null);
+                $r['cap'] ?? null) : 0.0;
 
             $r['bundle_cut'] = $inSet;
             $r['promo_cut'] = $cut;

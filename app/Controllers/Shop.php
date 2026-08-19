@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 namespace Controllers;
 
-use DB, View, Catalog, Content, Attrs, Auth, Csrf, StockWatch, JsonLd, Bundles, Images;
+use DB, View, Catalog, Content, Attrs, Auth, Csrf, StockWatch, JsonLd, Bundles, Images, Offers;
 
 class Shop
 {
@@ -247,7 +247,41 @@ class Shop
             ],
             // чи ця людина вже чекає обраний варіант — щоб не пропонувати вдруге
             'watching' => StockWatch::isWaiting((int)$p['id'], $first['id'] ?? null, Auth::id()),
+            // Торг. Стан рахуємо на кожну фасовку окремо — розмова ведеться
+            // саме про неї, і перемикач фасовки має міняти й цей блок разом із
+            // ціною, інакше покупець бачив би чужу домовленість.
+            'offer_allowed' => Offers::allowed($p, $first),
+            'offer_states' => self::offerStates($p, $variants),
         ]);
+    }
+
+    /**
+     * Стан торгу по кожній фасовці: [id фасовки або 0 => що показати].
+     *
+     * Чотири стани, і кожен вимагає від людини різного: нічого немає (можна
+     * запропонувати), чекаємо на магазин (нічого не робіть), магазин відповів
+     * (ваш хід), домовились (кладіть у кошик). Рахуємо всі одразу, бо фасовку
+     * перемикають на місці — і блок має мінятись разом із ціною, а не після
+     * перезавантаження сторінки.
+     */
+    private static function offerStates(array $p, array $variants): array
+    {
+        $threads = Offers::threadsForProduct((int)$p['id'], Auth::id());
+        $keys = $variants ? array_map(fn($v) => (int)$v['id'], $variants) : [0];
+        $out = [];
+        foreach ($keys as $k) {
+            $o = $threads[$k] ?? null;
+            if (!$o) { $out[$k] = ['state' => 'none']; continue; }
+            $out[$k] = [
+                'state' => $o['status'] === 'accepted' ? 'deal'
+                    : ((string)$o['turn'] === 'seller' ? 'wait' : 'yours'),
+                'id' => (int)$o['id'],
+                'terms' => Offers::terms($o),
+                'until' => $o['status'] === 'accepted' && !empty($o['expires_at'])
+                    ? date('d.m.Y H:i', strtotime((string)$o['expires_at'])) : '',
+            ];
+        }
+        return $out;
     }
 
     /**
