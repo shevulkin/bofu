@@ -36,7 +36,7 @@
     $waiting = $r['status'] === 'open' && (string)$r['turn'] === 'seller';
     $sum = (float)$r['price'] * (int)$r['qty'];
   ?>
-    <div class="admin-card" style="margin-bottom:16px<?= $waiting ? ';border-color:var(--gold)' : '' ?>">
+    <div class="admin-card offer-card" id="o<?= (int)$r['id'] ?>" style="margin-bottom:16px<?= $waiting ? ';border-color:var(--gold)' : '' ?>">
       <div style="display:flex;justify-content:space-between;align-items:baseline;gap:14px;flex-wrap:wrap">
         <b style="font-family:var(--serif);font-size:18px">
           <a href="<?= e(url('/admin/products/' . (int)$r['product_id'])) ?>"><?= e($r['product_name']) ?></a><?php

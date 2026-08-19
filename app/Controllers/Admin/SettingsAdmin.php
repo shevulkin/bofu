@@ -103,6 +103,9 @@ class SettingsAdmin
                 $minPct === '' ? '' : (string)max(0, min(100, (int)$minPct)));
             $hold = trim((string)($_POST['offers_hold_hours'] ?? ''));
             Settings::set('offers_hold_hours', $hold === '' ? '' : (string)max(1, (int)$hold));
+            // Обіцянка покупцю й будильник продавцю — одне число, див. Offers
+            $reply = trim((string)($_POST['offers_reply_hours'] ?? ''));
+            Settings::set('offers_reply_hours', $reply === '' ? '' : (string)max(1, min(720, (int)$reply)));
             // Магазин, якому дістаються позиції, яких немає ніде. Приймаємо лише
             // чинну активну точку: неіснуючий id мовчки відкотив би нас до
             // «першої активної», і власник вважав би, що вибір діє.

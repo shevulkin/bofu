@@ -51,6 +51,20 @@ class Offers
     public const DEFAULT_HOLD_HOURS = 48;
 
     /**
+     * За скільки годин обіцяємо відповісти.
+     *
+     * Це число робить дві роботи одночасно, і саме тому воно одне. Покупець
+     * бачить його у формі як обіцянку — «відповідаємо протягом доби», — а
+     * продавець отримує по ньому нагадування, що пропозиція чекає. Розведи їх
+     * на два налаштування, і одне з них рано чи пізно почне брехати.
+     *
+     * Доба, а не година: торг веде жива людина, у якої є ще й магазин. Обіцяне
+     * «за годину» ламається першим же вихідним, а обіцяне й дотримане «за добу»
+     * коштує дорожче за швидкість без обіцянки.
+     */
+    public const DEFAULT_REPLY_HOURS = 24;
+
+    /**
      * Підлога торгу за замовчуванням, % від вітринної ціни.
      *
      * Половина — не «наша мінімальна ціна», а межа осмисленої розмови.
@@ -108,6 +122,45 @@ class Offers
     {
         $set = (int)Settings::get('offers_hold_hours', 0);
         return $set > 0 ? $set : self::DEFAULT_HOLD_HOURS;
+    }
+
+    public static function replyHours(): int
+    {
+        $set = (int)Settings::get('offers_reply_hours', 0);
+        return $set > 0 ? $set : self::DEFAULT_REPLY_HOURS;
+    }
+
+    /**
+     * Обіцянка строку людською мовою — «протягом доби», а не «протягом 24 год».
+     *
+     * Обіцянка, сказана вголос до того, як людина натиснула кнопку, робить для
+     * довіри більше, ніж швидкість без обіцянки: мовчання після відправленої
+     * пропозиції тривожить саме тим, що незрозуміло, скільки чекати.
+     */
+    public static function replyPromise(): string
+    {
+        $h = self::replyHours();
+        return match (true) {
+            $h <= 1  => 'протягом години',
+            $h < 24  => 'протягом ' . $h . ' ' . plural($h, 'години', 'годин', 'годин'),
+            $h == 24 => 'протягом доби',
+            $h < 48  => 'протягом доби-двох',
+            default  => 'протягом ' . intdiv($h, 24) . ' '
+                        . plural(intdiv($h, 24), 'дня', 'днів', 'днів'),
+        };
+    }
+
+    /**
+     * За скільки годин до кінця попереджати покупця, що ціна спливає.
+     *
+     * Чверть строку, але не менше години й не більше доби. Попередження за
+     * фіксовані шість годин було б безглуздим при строку в чотири й запізнілим
+     * при строку в тиждень: людині потрібен не проміжок, а відчуття «часу ще
+     * трохи, але вже треба вирішувати».
+     */
+    public static function warnBeforeHours(): int
+    {
+        return max(1, min(24, intdiv(self::holdHours(), 4)));
     }
 
     // ───────────────────────────────────────────────────────────── хід покупця
@@ -183,7 +236,7 @@ class Offers
 
         DB::update('offers', [
             'qty' => $qty, 'price' => $price, 'turn' => 'seller',
-            'rounds' => (int)$open['rounds'] + 1, 'updated_at' => now(),
+            'rounds' => (int)$open['rounds'] + 1, 'updated_at' => now(), 'reminded_at' => null,
             // Кожен хід відсуває термін: розмова, у якій щойно говорили,
             // не має протермінуватись завтра лише тому, що почалась давно.
             'expires_at' => date('Y-m-d H:i:s', strtotime('+' . self::OPEN_DAYS . ' days')),
@@ -215,7 +268,7 @@ class Offers
 
         DB::update('offers', [
             'qty' => $qty, 'price' => $price, 'turn' => 'buyer',
-            'rounds' => (int)$o['rounds'] + 1, 'answered_by' => $staffId, 'updated_at' => now(),
+            'rounds' => (int)$o['rounds'] + 1, 'answered_by' => $staffId, 'updated_at' => now(), 'reminded_at' => null,
             'expires_at' => date('Y-m-d H:i:s', strtotime('+' . self::OPEN_DAYS . ' days')),
         ], 'id = ?', [$offerId]);
         self::round($offerId, 'seller', 'offer', $qty, $price, $note, $staffId);
@@ -243,7 +296,7 @@ class Offers
         if ($side === 'buyer' && (int)$o['user_id'] !== (int)$userId) return self::fail('Це не ваша пропозиція.');
 
         DB::update('offers', [
-            'status' => 'accepted', 'updated_at' => now(),
+            'status' => 'accepted', 'updated_at' => now(), 'reminded_at' => null,
             'answered_by' => $side === 'seller' ? $staffId : $o['answered_by'],
             'expires_at' => date('Y-m-d H:i:s', strtotime('+' . self::holdHours() . ' hours')),
         ], 'id = ?', [$offerId]);
@@ -455,7 +508,7 @@ class Offers
         if (!$offerId || !$userId) return null;
         $o = self::find($offerId);
         if (!$o || (int)$o['user_id'] !== $userId || $o['status'] !== 'accepted') return null;
-        if (self::lapsed($o)) return null;
+        if (self::overdue($o)) return null;
         $p = DB::row('SELECT id FROM products WHERE id = ? AND active = 1', [(int)$o['product_id']]);
         if (!$p) return null;
         if ($o['variant_id'] !== null && !DB::row('SELECT 1 FROM product_variants WHERE id = ? AND active = 1',
@@ -463,8 +516,8 @@ class Offers
         return $o;
     }
 
-    /** Термін вийшов (порожній термін вважаємо безстроковим) */
-    public static function lapsed(array $o): bool
+    /** Час рядка минув. Назва навмисно не «lapsed»: так зветься статус, і це різні речі — тут ідеться про годинник, а не про долю розмови */
+    public static function overdue(array $o): bool
     {
         return !empty($o['expires_at']) && strtotime((string)$o['expires_at']) < time();
     }
@@ -509,9 +562,108 @@ class Offers
         static $done = false;
         if ($done) return;
         $done = true;
-        DB::query("UPDATE offers SET status = 'expired', updated_at = ?
-                    WHERE status IN ('open','accepted') AND expires_at IS NOT NULL AND expires_at < ?",
+        self::closeOverdue();
+    }
+
+    /**
+     * Власне закриття, без сторожа «раз на запит».
+     *
+     * Сторож належить показу сторінок: там expireStale() смикають десять разів
+     * за запит, і десять однакових UPDATE поспіль ні до чого. Але робота, яка
+     * вміє виконатись лише раз на процес, — погана основа для команди cron,
+     * тож маршрут за розкладом ходить сюди.
+     *
+     * Два різні кінці, і плутати їх не можна. 'expired' — розмова згасла, не
+     * дійшовши до згоди. 'lapsed' — домовились, але покупець не встиг
+     * оформити. Для покупця це протилежні новини («ми так і не відповіли»
+     * проти «ваша ціна більше не діє»), а після UPDATE відрізнити їх уже
+     * нічим: попереднього статусу рядок не памʼятає.
+     */
+    private static function closeOverdue(): void
+    {
+        DB::query("UPDATE offers SET status = 'lapsed', updated_at = ?
+                    WHERE status = 'accepted' AND expires_at IS NOT NULL AND expires_at < ?",
             [now(), now()]);
+        DB::query("UPDATE offers SET status = 'expired', updated_at = ?
+                    WHERE status = 'open' AND expires_at IS NOT NULL AND expires_at < ?",
+            [now(), now()]);
+    }
+
+    /**
+     * Прохід за розкладом: нагадати тим, від кого чекають, і сказати вголос
+     * про те, що закрилось само.
+     *
+     * Це головна робота над торгом після того, як він запрацював. Найгірший
+     * його сценарій — не «незручно відповідати», а мовчанка: людина
+     * запропонувала ціну, ніхто не зайшов в адмінку, за два тижні розмова
+     * тихо згасла. Покупець не отримав нічого — тобто ми запросили до розмови
+     * й не прийшли. Одна відсутня функція коштує магазину менше, ніж один
+     * такий випадок.
+     *
+     * Чотири мовчанки, які тут закриваються:
+     *   — пропозиція чекає на нас довше за обіцяний строк;
+     *   — наші зустрічні умови чекають на покупця так само довго;
+     *   — погодженій ціні лишились години;
+     *   — розмова вже закрилась сама, і про це ніхто не сказав.
+     *
+     * Мітки тримають кожне повідомлення одноразовим: reminded_at обнуляється
+     * будь-яким ходом (після відповіді відлік починається заново), notified_at
+     * не обнуляється ніколи — закриття буває один раз.
+     *
+     * @return array{stalled:int,waiting:int,expiring:int,closed:int}
+     */
+    public static function maintain(): array
+    {
+        if (!self::enabled()) return ['stalled' => 0, 'waiting' => 0, 'expiring' => 0, 'closed' => 0];
+
+        $out = ['stalled' => 0, 'waiting' => 0, 'expiring' => 0, 'closed' => 0];
+        $late = date('Y-m-d H:i:s', time() - self::replyHours() * 3600);
+
+        // 1. Чекають на нас довше, ніж ми обіцяли
+        foreach (DB::all("SELECT * FROM offers
+                           WHERE status = 'open' AND turn = 'seller'
+                             AND reminded_at IS NULL AND updated_at < ?", [$late]) as $o) {
+            self::tellStaff($o, 'Нагадування: пропозиція чекає відповіді з '
+                . date('d.m H:i', strtotime((string)$o['updated_at'])));
+            DB::update('offers', ['reminded_at' => now()], 'id = ?', [(int)$o['id']]);
+            $out['stalled']++;
+        }
+
+        // 2. Наші умови чекають на покупця. Нагадуємо один раз і без тиску:
+        //    людина могла просто не побачити повідомлення.
+        foreach (DB::all("SELECT * FROM offers
+                           WHERE status = 'open' AND turn = 'buyer'
+                             AND reminded_at IS NULL AND updated_at < ?", [$late]) as $o) {
+            self::tellBuyer($o, 'Нагадуємо про наші умови — чекаємо на вашу відповідь', '');
+            DB::update('offers', ['reminded_at' => now()], 'id = ?', [(int)$o['id']]);
+            $out['waiting']++;
+        }
+
+        // 3. Погодженій ціні лишились години. Продаж тут уже відбувся —
+        //    лишилось не дати йому згоріти на тому, що людина забула.
+        $soon = date('Y-m-d H:i:s', time() + self::warnBeforeHours() * 3600);
+        foreach (DB::all("SELECT * FROM offers
+                           WHERE status = 'accepted' AND reminded_at IS NULL
+                             AND expires_at IS NOT NULL AND expires_at < ?", [$soon]) as $o) {
+            self::tellBuyer($o, 'Домовлена ціна скоро перестане діяти', '');
+            DB::update('offers', ['reminded_at' => now()], 'id = ?', [(int)$o['id']]);
+            $out['expiring']++;
+        }
+
+        // 4. Те, що закрилось саме. Спершу закриваємо, потім говоримо — так
+        //    сюди потрапляють і рядки, які встиг погасити ліниво сам сайт.
+        self::closeOverdue();
+        foreach (DB::all("SELECT * FROM offers
+                           WHERE status IN ('expired','lapsed') AND notified_at IS NULL") as $o) {
+            self::tellBuyer($o, $o['status'] === 'lapsed'
+                ? 'Строк домовленої ціни вийшов'
+                // Не ховаємось за словом «протерміновано»: не відповіли ми, і
+                // сказати це прямо чесніше, ніж лишити людину гадати
+                : 'Ми не встигли відповісти на вашу пропозицію, вибачте', '');
+            DB::update('offers', ['notified_at' => now()], 'id = ?', [(int)$o['id']]);
+            $out['closed']++;
+        }
+        return $out;
     }
 
     // ────────────────────────────────────────────────────────────── допоміжне
@@ -530,7 +682,10 @@ class Offers
             'accepted' => 'Ціну погоджено',
             'declined' => 'Магазин відмовив',
             'cancelled'=> 'Ви скасували',
-            'expired'  => 'Термін вийшов',
+            // Два різні кінці: у першому ми не встигли відповісти, у другому
+            // домовленість була, але не дійшла до замовлення
+            'expired'  => 'Ми не встигли відповісти',
+            'lapsed'   => 'Строк домовленої ціни вийшов',
             'ordered'  => 'Замовлено',
             default    => (string)$o['status'],
         };
@@ -594,7 +749,7 @@ class Offers
             'list' => (string)price_fmt($o['list_price'] ?? 0),
             'buyer' => trim((string)($buyer['name'] ?? '')) . ' ' . (string)($buyer['phone'] ?? ''),
             'note' => self::lastNote($o),
-            'link' => self::staffLink(),
+            'link' => self::staffLink($o),
         ]);
     }
 
@@ -608,7 +763,7 @@ class Offers
             'note' => trim($note) !== '' ? 'Коментар: ' . trim($note) : '',
             'until' => $o['status'] === 'accepted' && !empty($o['expires_at'])
                 ? 'Ціна діє до ' . date('d.m.Y H:i', strtotime((string)$o['expires_at'])) : '',
-            'url' => self::buyerLink(),
+            'url' => self::buyerLink($o),
             'shop' => cfg('app_name'),
         ]);
     }
@@ -621,16 +776,35 @@ class Offers
         return $note ? 'Коментар: ' . $note : '';
     }
 
-    /** Порожньо на локальній машині — рядок зникне сам (Notify::interpolate) */
-    private static function staffLink(): string
+    /**
+     * Посилання просто на цю розмову, а не на розділ.
+     *
+     * Різниця не косметична. Сповіщення приходить у месенджер, тобто на
+     * телефон, і людина відповідає з нього ж. Посилання на список означає, що
+     * після тапу треба знайти потрібний рядок серед десятка інших — на
+     * маленькому екрані це і є та незручність, через яку відповідь
+     * відкладають «до компʼютера», а звідти — на завтра.
+     *
+     * Вкладку добираємо за станом: якір знайдеться лише на тій сторінці, де
+     * рядок справді показаний, а показує його рівно та вкладка, до якої він
+     * зараз належить.
+     *
+     * Порожньо на локальній машині (немає публічної адреси) — рядок зникне
+     * сам, Notify::interpolate прибирає порожні підстановки.
+     */
+    private static function staffLink(array $o): string
     {
         $site = BotAuth::siteUrl();
-        return $site === '' ? '' : $site . '/admin/offers';
+        if ($site === '') return '';
+        $tab = $o['status'] === 'open'
+            ? ((string)$o['turn'] === 'seller' ? 'todo' : 'wait')
+            : (in_array($o['status'], ['accepted', 'ordered'], true) ? 'deals' : 'all');
+        return $site . '/admin/offers?tab=' . $tab . '#o' . (int)$o['id'];
     }
 
-    private static function buyerLink(): string
+    private static function buyerLink(array $o): string
     {
         $site = BotAuth::siteUrl();
-        return $site === '' ? '' : 'Відповісти: ' . $site . '/bargain';
+        return $site === '' ? '' : 'Відповісти: ' . $site . '/bargain#o' . (int)$o['id'];
     }
 }

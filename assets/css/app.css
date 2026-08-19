@@ -556,6 +556,17 @@ input:disabled,select:disabled,textarea:disabled{opacity:.45;cursor:not-allowed}
   .offer-state-actions .btn{width:100%}
 }
 
+/* Розмова, на яку привело посилання зі сповіщення.
+   Людина приходить із телефона й одразу має бачити, котра з карток та сама, —
+   інакше глибоке посилання нічим не краще за посилання на список. Підсвітка
+   гасне сама: підказка потрібна в першу секунду, далі вона просто заважає. */
+.offer-card:target{border-color:var(--gold);animation:offer-found 2.4s ease-out}
+@keyframes offer-found{
+  0%,60%{box-shadow:0 0 0 2px var(--gold)}
+  100%{box-shadow:0 0 0 2px transparent}
+}
+@media (prefers-reduced-motion:reduce){ .offer-card:target{animation:none} }
+
 /* Торг в адмінці: чотири числа, які важать лише разом */
 .offer-facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-top:16px}
 .offer-facts>div{border:1px solid var(--line);border-radius:4px;padding:10px 12px;background:var(--bg)}

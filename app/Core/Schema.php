@@ -7,7 +7,7 @@ declare(strict_types=1);
  */
 class Schema
 {
-    public const VERSION = 45;
+    public const VERSION = 46;
 
     /** Оновлення існуючої бази до поточної версії без втрати даних */
     public static function upgrade(): void
@@ -643,6 +643,31 @@ class Schema
             DB::query("UPDATE notification_rules SET recipients = ?
                         WHERE event = ? AND recipients = ?",
                 ['admins_sellers', 'offer_new', 'sellers']);
+        }
+        if ($ver < 46) {
+            /*
+             * Мовчанка — найгірше, що може статись із торгом.
+             *
+             * Людина запропонувала ціну, продавець не зайшов в адмінку, через
+             * два тижні розмова тихо протермінувалась. Покупець не отримав
+             * нічого. Це гірше, ніж якби торгу не було зовсім: ми запросили до
+             * розмови й не прийшли.
+             *
+             * Дві мітки закривають три різні мовчанки: пропозиція, що чекає
+             * довше за обіцяний строк; погоджена ціна, якій лишились години; і
+             * розмова, що вже закрилась сама. Проходить по них команда
+             * offers:remind із cron — там, де вже живуть np:track і vchasno:z.
+             *
+             * offers_reply_hours — те саме число, що показане покупцю у формі
+             * («відповідаємо протягом доби») і за яким б'є нагадування. Обіцянка
+             * й будильник мають бути одним значенням: інакше одне з них рано чи
+             * пізно почне брехати.
+             */
+            self::addColumn('offers', 'reminded_at', 'ts null');
+            self::addColumn('offers', 'notified_at', 'ts null');
+            if (Settings::get('offers_reply_hours', '') === '') {
+                Settings::set('offers_reply_hours', (string)Offers::DEFAULT_REPLY_HOURS);
+            }
         }
         Settings::set('schema_version', (string)self::VERSION);
     }
@@ -1303,6 +1328,13 @@ class Schema
                 'qty' => 'int', 'price' => 'num', 'list_price' => 'num null',
                 'turn' => "str default 'seller'", 'status' => "str default 'open'",
                 'rounds' => 'int default 0', 'answered_by' => 'int null', 'order_id' => 'int null',
+                // Два сліди того, що ми вже написали про цей рядок, і вони про
+                // різне. reminded_at — «нагадали, поки розмова жива» (продавцю,
+                // що чекають на нього; покупцю, що ціна спливає). notified_at —
+                // «сказали, що все скінчилось». Перший обнуляється кожним ходом:
+                // після відповіді нагадувати треба заново й з нуля. Другий не
+                // обнуляється ніколи — закриття буває один раз.
+                'reminded_at' => 'ts null', 'notified_at' => 'ts null',
                 'expires_at' => 'ts null', 'created_at' => 'ts', 'updated_at' => 'ts',
             ],
             // Хід розмови. Зберігаємо кожен, разом із коментарем: цифри кажуть,

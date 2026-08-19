@@ -29,7 +29,7 @@
           $sum = (float)$o['price'] * (int)$o['qty'];
           $listSum = (float)($o['list_price'] ?? 0) * (int)$o['qty'];
         ?>
-          <div class="card" style="padding:20px 22px<?= $mine ? ';border-color:var(--gold)' : '' ?>">
+          <div class="card offer-card" id="o<?= (int)$o['id'] ?>" style="padding:20px 22px<?= $mine ? ';border-color:var(--gold)' : '' ?>">
             <div style="display:flex;justify-content:space-between;align-items:baseline;gap:14px;flex-wrap:wrap">
               <b style="font-family:var(--serif);font-size:19px">
                 <a href="<?= e(url('/product/' . $o['slug'])) ?>"><?= e($o['product_name']) ?></a><?php
