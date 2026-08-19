@@ -66,7 +66,11 @@ Options -Indexes
 
 # Заборони нижче навмисно дублюють RewriteRule вище: якщо mod_rewrite вимкнений
 # або AllowOverride обмежений, конфіг із паролями БД не має віддаватися жодним шляхом.
-<FilesMatch "\.(sqlite|log|md|lock|yml|yaml|ini|sh)$">
+# pem/crt/key — ключі платіжного шлюзу (storage/keys). Приватним ключем
+# підписуються запити на списання коштів: той, хто його забере, зможе
+# створювати платежі від імені магазину. Тека вже закрита правилом вище, але
+# саме тут ціна вимкненого mod_rewrite найвища, тож розширення названі окремо.
+<FilesMatch "\.(sqlite|log|md|lock|yml|yaml|ini|sh|pem|crt|cer|key|p12|pfx)$">
   <IfModule mod_authz_core.c>
     Require all denied
   </IfModule>
