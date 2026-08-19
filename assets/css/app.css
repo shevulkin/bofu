@@ -977,6 +977,23 @@ body.help-on [data-help] *{pointer-events:none}
 .variant-row{grid-template-columns:minmax(170px,1fr) 110px 130px 150px 110px 100px auto auto}
 /* Склад набору: товар — фасовка — скільки штук */
 .bundle-row{grid-template-columns:minmax(220px,1fr) minmax(160px,240px) 110px auto}
+/* Шапка набору: назва, тип знижки, значення — в один ряд, щоб склад під ними
+   починався одразу, а не через екран полів */
+.bundle-head{display:flex;gap:14px;align-items:end;flex-wrap:wrap;margin-bottom:22px}
+/* Підзаголовок усередині картки: розділяє «поля / склад / передпоказ», не
+   розриваючи їх на окремі картки — це одна річ, яку зараз редагують */
+.bundle-sub{margin:24px 0 10px;font-size:13px;text-transform:uppercase;letter-spacing:.07em;
+  color:var(--dim);border-top:1px solid var(--line);padding-top:16px}
+.bundle-preview{max-width:520px}
+.bundle-preview-sum td{border-top:1px solid var(--line)}
+/* Видалення живе внизу картки набору, а не окремою карткою: власна картка
+   робила з нього дію такої ж ваги, як «Зберегти» */
+.bundle-danger{margin-top:22px;padding-top:16px;border-top:1px solid var(--line)}
+.bundle-danger form{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.bundle-danger .dim{font-size:13px}
+/* Рядок набору, який зараз відкрито нижче — щоб очі не шукали його заново */
+.tbl tr.row-current{background:var(--bg3)}
+.tbl tr.row-current td:first-child{box-shadow:inset 3px 0 0 var(--gold)}
 .grid-row.deleted{opacity:.45}
 .grid-row.deleted .gr-main{text-decoration:line-through}
 .variant-tags{display:flex;gap:8px;flex-wrap:wrap;padding-top:6px}
