@@ -214,10 +214,15 @@ class Promo
     public static function note(?array $promo, array $rows): string
     {
         if (!$promo) return '';
-        $skipped = 0; $applied = 0; $capped = 0; $blocked = 0; $capHit = null;
+        $skipped = 0; $applied = 0; $capped = 0; $blocked = 0; $negotiated = 0;
+        $capHit = null;
         foreach ($rows as $r) {
             $sum = (float)($r['sum'] ?? 0);
             if ($sum <= 0) continue;
+            // Позиція з домовленою ціною — не «товар зі знижкою», якому не
+            // пощастило з кодом: там ціну назвала людина, і пояснювати це
+            // словами про акції означало б збрехати про причину
+            if (!empty($r['offer_id'])) { $negotiated++; continue; }
             $own = self::ownPercent($r);
             $itemCap = $r['cap'] ?? null;
             $eff = self::extraPercent($promo, $own, $itemCap);
@@ -231,6 +236,9 @@ class Promo
             }
             $applied++;
             if ($eff < (float)$promo['percent'] - 0.001) { $capped++; $capHit ??= self::cap($promo, $itemCap); }
+        }
+        if ($negotiated && !$applied && !$skipped && !$blocked) {
+            return 'На позиції з домовленою ціною код не поширюється — ціна вже кінцева';
         }
         if ($skipped && !$applied) return 'Код не діє на товари, які вже продаються зі знижкою';
         if ($skipped) return 'На товари, що вже зі знижкою, код не поширюється';

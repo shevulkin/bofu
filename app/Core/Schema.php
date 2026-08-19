@@ -7,7 +7,7 @@ declare(strict_types=1);
  */
 class Schema
 {
-    public const VERSION = 43;
+    public const VERSION = 44;
 
     /** Оновлення існуючої бази до поточної версії без втрати даних */
     public static function upgrade(): void
@@ -590,6 +590,40 @@ class Schema
              */
             self::addColumn('product_images', 'variant_id', 'int null');
             self::createAll();   // індекс product_images.variant_id
+        }
+        if ($ver < 44) {
+            /*
+             * Торг: «запропоную свою ціну за стільки-то штук».
+             *
+             * Усі знижки досі призначав магазин: акція, промокод, опт, набір.
+             * Питання покупця — «а за стільки віддасте?» — не мало де
+             * прозвучати, і його ставили в дірект. Продавець рахував у голові,
+             * ціну правили руками в замовленні, а через місяць ніхто не міг
+             * пояснити, чому саме цей мед пішов по 480.
+             *
+             * Тепер розмова записується: пропозиція → зустрічна → погодження
+             * або відмова. Домовлена ціна стає справжньою — з нею оформлюється
+             * замовлення, і вона не складається ні з чим іншим (див. Offers).
+             *
+             * bargain — вимикач у картці, як wholesale: є позиції, де торг
+             * недоречний, і сказати це треба окремо від «торг вимкнено скрізь».
+             * За замовчуванням увімкнено: власник вирішив, що торг є, а
+             * прапорець на кожному товарі руками ніхто ставити не буде.
+             */
+            self::createAll();                                // offers + offer_rounds
+            self::addColumn('products', 'bargain', 'bool default 1');
+            foreach (['offer_new' => 'sellers', 'offer_reply' => 'customer'] as $event => $to) {
+                foreach (array_keys(Notify::CHANNELS) as $channel) {
+                    if (DB::row('SELECT id FROM notification_rules WHERE event = ? AND channel = ?', [$event, $channel])) continue;
+                    DB::insert('notification_rules', [
+                        'event' => $event, 'channel' => $channel,
+                        // viber вимкнений так само, як його заводили попередні
+                        // міграції: канал є не в кожного магазину
+                        'enabled' => $channel === 'viber' ? 0 : 1,
+                        'recipients' => $to, 'template' => Notify::DEFAULT_TEMPLATES[$event] ?? '',
+                    ]);
+                }
+            }
         }
         Settings::set('schema_version', (string)self::VERSION);
     }
@@ -1222,6 +1256,44 @@ class Schema
                 'store_id' => 'int null', 'user_id' => 'int',
                 'created_at' => 'ts', 'notified_at' => 'ts null',
             ],
+            /**
+             * Торг: одна розмова про одну позицію.
+             *
+             * Умови зберігаються поточні — qty й price після останнього ходу, —
+             * а не історія: історія лежить у offer_rounds, і рахувати за нею
+             * «чия зараз черга» на кожному показі картки товару означало б
+             * читати всю розмову заради двох чисел.
+             *
+             * turn відповідає на єдине питання, яке має і покупець, і продавець:
+             * від кого зараз чекають ходу. Статус відповідає на інше — чи
+             * розмова ще жива. Жоден із них не виводиться з іншого: 'open' із
+             * turn = 'buyer' означає «магазин уже відповів», а 'open' із
+             * turn = 'seller' — «лежить у черзі й чекає».
+             *
+             * list_price — вітринна ціна на момент ходу. Без неї за місяць не
+             * сказати, чи 480 було поступкою: ціна товару відтоді могла
+             * змінитись двічі.
+             *
+             * expires_at працює двічі й означає різне: доки розмова чекає
+             * відповіді (Offers::OPEN_DAYS) і доки діє вже погоджена ціна
+             * (offers_hold_hours). Це навмисно одне поле — питання в обох
+             * випадках те саме: коли цей рядок перестає щось значити.
+             */
+            'offers' => [
+                'id' => 'id', 'product_id' => 'int', 'variant_id' => 'int null', 'user_id' => 'int',
+                'qty' => 'int', 'price' => 'num', 'list_price' => 'num null',
+                'turn' => "str default 'seller'", 'status' => "str default 'open'",
+                'rounds' => 'int default 0', 'answered_by' => 'int null', 'order_id' => 'int null',
+                'expires_at' => 'ts null', 'created_at' => 'ts', 'updated_at' => 'ts',
+            ],
+            // Хід розмови. Зберігаємо кожен, разом із коментарем: цифри кажуть,
+            // на чому зійшлись, а коментар — чому («беру на подарунки всьому
+            // відділу»), і саме він вирішує наступного разу.
+            'offer_rounds' => [
+                'id' => 'id', 'offer_id' => 'int', 'side' => 'str', 'action' => 'str',
+                'qty' => 'int null', 'price' => 'num null', 'note' => 'text null',
+                'user_id' => 'int null', 'created_at' => 'ts',
+            ],
             'diplomas' => [
                 'id' => 'id', 'number' => 'str unique', 'student' => 'str', 'course' => 'str null',
                 'issued_at' => 'str null', 'active' => 'bool default 1',
@@ -1316,6 +1388,10 @@ class Schema
             'qty_discounts' => ['product_id', 'category_id'],
             'bundle_items' => ['bundle_id', 'product_id'],
             'stock_requests' => ['product_id', 'user_id', 'notified_at'],
+            // status і turn — те, за чим черга продавця відбирає свої рядки;
+            // user_id — за ним кабінет покупця збирає його розмови
+            'offers' => ['product_id', 'user_id', 'status', 'turn'],
+            'offer_rounds' => ['offer_id'],
         ];
         foreach ($idx as $table => $columns) {
             foreach ($columns as $col) {

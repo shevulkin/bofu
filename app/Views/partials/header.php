@@ -81,6 +81,14 @@ $navCats = Catalog::categoryTree();
         <?php else: ?>
           <a href="<?= e(url('/orders')) ?>">Мої замовлення</a>
         <?php endif; ?>
+        <?php /* Пропозиції ціни. Пункт зʼявляється лише тоді, коли розмова
+                 справді триває: у більшості людей її немає ніколи, і постійне
+                 посилання обіцяло б розділ, у якому порожньо. Зате поки хід за
+                 покупцем, воно потрібне на кожній сторінці — відповідь
+                 продавця не має чекати, доки людина згадає, де її шукати. */ ?>
+        <?php if (($myOffers = Offers::myTurnCount(Auth::id())) > 0): ?>
+          <a href="<?= e(url('/bargain')) ?>">Мої пропозиції · <?= (int)$myOffers ?></a>
+        <?php endif; ?>
         <a class="dim" href="<?= e(url('/profile')) ?>" title="Мій профіль"><?= e($auth_user['name']) ?></a>
         <form method="post" action="<?= e(url('/logout')) ?>" style="display:inline"><?= Csrf::field() ?>
           <button class="btn btn-line btn-xs" type="submit">Вийти</button>
@@ -140,6 +148,9 @@ $navCats = Catalog::categoryTree();
       <a href="<?= e(url('/admin')) ?>"><?= Auth::isAdmin() ? 'Адмінпанель' : 'Кабінет продавця' ?></a>
     <?php elseif ($auth_user): ?>
       <a href="<?= e(url('/orders')) ?>">Мої замовлення</a>
+    <?php endif; ?>
+    <?php if ($auth_user && !empty($myOffers)): ?>
+      <a href="<?= e(url('/bargain')) ?>">Мої пропозиції · <?= (int)$myOffers ?></a>
     <?php endif; ?>
   </div>
 </header>

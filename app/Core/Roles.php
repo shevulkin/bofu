@@ -36,6 +36,11 @@ class Roles
         // А це — сама каса: відкрити зміну, зняти Z-звіт, звірити товари.
         // Z-звіт закриває день усій точці, тож це вже не робота продавця.
         'fiscal.manage'       => 'Каса (ПРРО): зміна, звіти, звірка товарів',
+        // Торг — це не «правити ціну магазину», а рішення про одну угоду з
+        // однією людиною: погодитись, дати зустрічні умови, відмовити. Тому
+        // окреме право: продавцю воно потрібне (він і веде розмову), а той,
+        // хто лише виставляє ціни, у чужі переговори не втручається.
+        'offers.manage'       => 'Торг: розглядати пропозиції ціни від покупців',
         'products.view'       => 'Бачити товари',
         'products.stock'      => 'Правити залишки',
         'products.price'      => 'Правити ціни магазину',
@@ -70,6 +75,7 @@ class Roles
             // (це вирішує canManage по seller_stores, а не право)
             'caps' => ['orders.view', 'orders.view_all', 'orders.status', 'orders.assign',
                        'orders.note', 'orders.create', 'orders.ship', 'orders.fiscal',
+                       'offers.manage',
                        'products.view', 'products.stock', 'products.price'],
             'assignable' => true,
         ],

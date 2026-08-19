@@ -322,6 +322,14 @@ class OrderFlow
                     . '. Передайте позицію магазину, де товар є, або довиробіть її.');
             }
 
+            // Домовлена ціна витрачається фактом продажу, а не тим, якою
+            // кнопкою його оформили: сюди приходять і сайт, і каса. У історію
+            // пишемо одразу — без цього рядка сума позиції не сходиться ні з
+            // прайсом, ні з жодною знижкою, і пояснити її нічим.
+            foreach (Offers::consume($rows, $parentId) as $note) {
+                self::log($parentId, null, 'note', $note);
+            }
+
             self::recalcTotals($parentId);
             $names = [];
             foreach (self::children($parentId) as $c) $names[] = ($c['store_name'] ?? 'Магазин') . ' — ' . $c['number'];
