@@ -49,15 +49,19 @@
 <div class="admin-card" style="margin-top:18px">
   <h2 class="h-serif">Їхній кабінет → звірка</h2>
   <p class="dim" style="margin:-6px 0 12px">
-    У кабінеті «Вчасно.Каси»: <b>Товари → Дії → Експорт</b>. Завантажте отриманий файл сюди —
-    ми зіставимо його з нашим каталогом. Колонки шукаємо за підписами, тож порядок їхніх
-    стовпців значення не має.
+    У кабінеті «Вчасно.Каси»: <b>Товари → Дії → Експорт</b>. Збережіть вивантаження у форматі
+    <b>CSV</b> і завантажте сюди — ми зіставимо його з нашим каталогом. Колонки шукаємо за
+    підписами, тож порядок їхніх стовпців значення не має.
   </p>
   <form method="post" enctype="multipart/form-data" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
     <?= Csrf::field() ?>
     <input type="hidden" name="_action" value="upload">
     <input type="hidden" name="store_id" value="<?= (int)$store_id ?>">
-    <input type="file" name="file" accept=".xlsx,.csv,.xls" required>
+    <span class="file-field">
+      <input type="file" name="file" accept=".csv">
+      <button class="btn btn-line btn-xs" type="button" data-file-btn>Обрати файл</button>
+      <span class="file-name" data-empty="Файл не обрано">Файл не обрано</span>
+    </span>
     <button class="btn btn-gold btn-sm" type="submit">Звірити</button>
   </form>
   <?php if ($has_file): ?>

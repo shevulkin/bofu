@@ -92,7 +92,11 @@
         <?php else: ?>
           <p class="dim" style="margin:0 0 8px">Лого немає</p>
         <?php endif; ?>
-        <input type="file" name="logo" accept="image/*">
+        <span class="file-field">
+          <input type="file" name="logo" accept="image/*">
+          <button class="btn btn-line btn-xs" type="button" data-file-btn>Обрати лого</button>
+          <span class="file-name" data-empty="Файл не обрано">Файл не обрано</span>
+        </span>
       </div>
     </div>
 

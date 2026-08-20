@@ -1005,6 +1005,49 @@ body.help-on [data-help] *{pointer-events:none}
 
 /* Медіа-бібліотека: підписи «де використовується» довгі, тож комірки фіксуємо
    сіткою — інакше flex розтягує їх по найдовшому рядку й сітка розповзається. */
+/* ───────────────────────────────────────────── завантаження файлів ───
+
+   Системне поле <input type="file"> застилізувати неможливо — браузер малює
+   його сам, і на темному тлі з золотом воно лишається сірим прямокутником із
+   чужого інтерфейсу. Тому скрізь однаково: саме поле ховаємо (воно лишається
+   механізмом), а показуємо своє.
+
+   Два різні випадки, і плутати їх не можна:
+
+   .dropzone  — там, де завантаження є САМОЮ дією сторінки (медіа-бібліотека,
+                вікно вибору фото). Файл кладуть перетягуванням, і він іде
+                на сервер одразу.
+   .file-field — там, де файл лише одне з полів більшої форми (лого бренду,
+                партнер, звірка товарів). Тут нічого не відправляється саме
+                по собі: людина обирає файл і зберігає форму цілком. */
+
+.dropzone{position:relative;display:block;width:100%;padding:26px 20px;text-align:center;
+  border:1.5px dashed var(--line2);border-radius:8px;background:var(--bg2);
+  color:var(--muted);cursor:pointer;transition:border-color .15s,background .15s,color .15s}
+.dropzone:hover{border-color:var(--gold);color:var(--text)}
+/* Перетягування — стан, який має бути видно однозначно: людина в цю мить не
+   дивиться на курсор, вона дивиться, чи «візьме» */
+.dropzone.is-over{border-style:solid;border-color:var(--gold);background:var(--bg3);color:var(--text)}
+.dropzone.is-busy{cursor:progress;border-color:var(--gold);border-style:solid}
+.dropzone input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.dropzone-title{display:block;font-weight:600;color:var(--text);letter-spacing:.01em}
+.dropzone-hint{display:block;margin-top:5px;font-size:12.5px;color:var(--dim)}
+.dropzone-note{display:block;margin-top:9px;font-size:12.5px;min-height:1.2em}
+.dropzone-note.is-bad{color:#ff9b9b}
+.dropzone-note.is-ok{color:var(--gold)}
+/* Компактний вигляд — у вікні вибору фото, де над зоною ще й сітка */
+.dropzone.is-slim{padding:16px 18px}
+
+/* Комірка, яка ще вантажиться: показуємо її одразу, щоб було видно, що
+   почалось, — але приглушеною, щоб не сплутати з готовою */
+.img-cell.is-uploading{opacity:.45}
+.img-cell.is-uploading img{filter:grayscale(1)}
+
+.file-field{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.file-field input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.file-field .file-name{color:var(--dim);font-size:13px;overflow:hidden;text-overflow:ellipsis;max-width:260px;white-space:nowrap}
+.file-field .file-name.has-file{color:var(--text)}
+
 .media-lib{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));
   gap:18px;align-items:start}
 .media-lib .img-cell{width:auto;text-align:left}

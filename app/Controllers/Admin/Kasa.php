@@ -241,7 +241,7 @@ class Kasa
         $f = $_FILES['file'] ?? null;
         $back = '/admin/vchasno/goods' . ($storeId ? '?store=' . $storeId : '');
         if (!$f || ($f['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
-            flash('error', 'Файл не завантажився. Оберіть вивантаження товарів із кабінету ПРРО (xlsx або csv).');
+            flash('error', 'Файл не обрано або не завантажився. Потрібне вивантаження товарів із кабінету ПРРО у форматі CSV.');
             redirect($back);
         }
         if ((int)$f['size'] > 8 * 1024 * 1024) {
