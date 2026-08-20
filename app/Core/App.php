@@ -98,57 +98,93 @@ class App
         exit("Метод не підтримується.\n");
     }
 
-    /** Перший запуск: створює таблиці й демо-дані автоматично */
+    /**
+     * База готова до роботи.
+     *
+     * ДВІ РІЗНІ ПОВЕДІНКИ, і різниця між ними — не зручність, а ціна помилки.
+     *
+     * Локально порожня база означає «щойно клонував проєкт»: створити таблиці
+     * й засіяти демо-дані — саме те, чого людина чекає, і вона це побачить.
+     *
+     * На бойовому сервері та сама порожня база означає щось інше: невдале
+     * відновлення з копії, помилку в назві бази в config.local.php, або те, що
+     * сайт відкрили раніше, ніж виконали міграцію. У жодному з цих випадків
+     * правильна відповідь не «створити все заново» — а саме її система й
+     * давала: на місці магазину тихо зʼявлялись демо-товари й демо-користувачі,
+     * а справжні дані лишались там, де були, — тобто ніде їх не шукали.
+     * Ця історія вже траплялась, і саме через неї існує команда `cli.php wipe`.
+     *
+     * Тому на production ми зупиняємось і кажемо про це. Схему створює людина
+     * однією командою — `php bin/cli.php migrate`, — і робить це свідомо.
+     *
+     * Оновлення схеми (Schema::upgrade) виконується лише коли версія справді
+     * стара. Раніше воно запускалось на КОЖЕН запит: зайва робота на кожне
+     * відкриття сторінки й, гірше, вікно посеред розгортання, у яке половина
+     * залитого коду могла почати міграцію.
+     */
     private static function dbReady(): bool
     {
         try {
             DB::val('SELECT COUNT(*) FROM settings');
-            Schema::upgrade();
+            if ((int)Settings::get('schema_version', '1') < Schema::VERSION) Schema::upgrade();
             return true;
         } catch (Throwable $e) {
+            if (cfg('env') === 'production') {
+                self::dbDown(new RuntimeException(
+                    'База порожня або недоступна. Якщо це новий сервер — виконайте '
+                    . 'php bin/cli.php migrate. Якщо ні — НЕ створюйте схему поверх: '
+                    . 'спершу зʼясуйте, куди поділись дані.'));
+                return false;
+            }
             try {
                 Schema::createAll();
                 Seeder::run();
                 DB::val('SELECT COUNT(*) FROM settings');
                 return true;
             } catch (Throwable $e2) {
-                http_response_code(503);
-                header('Content-Type: text/html; charset=utf-8');
-                // Пошуковик має зрозуміти, що це тимчасово, і не викидати сторінки з індексу
-                header('Retry-After: 300');
-
-                /*
-                 * Дві різні сторінки для двох різних людей.
-                 *
-                 * Розробнику потрібна причина й команда. Покупцю — ні: він не
-                 * запускатиме docker, а слова «C:\xampp\htdocs\bofu» на чужому
-                 * сайті лише розкажуть стороннім, як влаштована наша машина.
-                 * Тому підказки видно рівно там, де debug увімкнений, тобто
-                 * локально, — а на бойовому сервері лишається одна фраза без
-                 * жодної технічної деталі.
-                 */
-                $body = cfg('debug')
-                    ? '<h1 style="color:#f0b429">База даних недоступна</h1>'
-                      . '<p>Запустіть базу даних командою:</p>'
-                      . '<p><code style="background:#241d15;padding:8px 14px;border-radius:4px">docker compose up -d</code></p>'
-                      . '<p style="color:#9a8a6b;font-size:13px">у папці проєкту (' . htmlspecialchars(BOFU_ROOT) . '),'
-                      . ' зачекайте ~20 секунд і оновіть сторінку.<br>'
-                      // текст помилки PDO містить хост і користувача БД — лише в debug
-                      . htmlspecialchars($e2->getMessage()) . '</p>'
-                    : '<h1 style="color:#f0b429">Сайт тимчасово недоступний</h1>'
-                      . '<p style="color:#9a8a6b">Ми вже про це знаємо. Спробуйте, будь ласка, за кілька хвилин.</p>';
-
-                echo '<!DOCTYPE html><html lang="uk"><head><meta charset="utf-8">'
-                   . '<meta name="viewport" content="width=device-width, initial-scale=1">'
-                   . '<title>Сайт тимчасово недоступний</title></head>'
-                   . '<body style="font-family:sans-serif;background:#141110;color:#f6ecd9;display:flex;'
-                   . 'align-items:center;justify-content:center;min-height:100vh;text-align:center;margin:0">'
-                   . '<div style="padding:20px">' . $body . '</div></body></html>';
-                @file_put_contents(BOFU_ROOT . '/storage/logs/app-error.log',
-                    '[' . date('Y-m-d H:i:s') . '] DB: ' . $e2->getMessage() . "\n", FILE_APPEND);
+                self::dbDown($e2);
                 return false;
             }
         }
+    }
+
+    /**
+     * Сторінка «сайт тимчасово недоступний».
+     *
+     * Дві різні сторінки для двох різних людей.
+     *
+     * Розробнику потрібна причина й команда. Покупцю — ні: він не запускатиме
+     * docker, а слова «C:\xampp\htdocs\bofu» на чужому сайті лише розкажуть
+     * стороннім, як влаштована наша машина. Тому підказки видно рівно там, де
+     * debug увімкнений, тобто локально, — а на бойовому сервері лишається одна
+     * фраза без жодної технічної деталі.
+     */
+    private static function dbDown(Throwable $e): void
+    {
+        http_response_code(503);
+        header('Content-Type: text/html; charset=utf-8');
+        // Пошуковик має зрозуміти, що це тимчасово, і не викидати сторінки з індексу
+        header('Retry-After: 300');
+
+        $body = cfg('debug')
+            ? '<h1 style="color:#f0b429">База даних недоступна</h1>'
+              . '<p>Запустіть базу даних командою:</p>'
+              . '<p><code style="background:#241d15;padding:8px 14px;border-radius:4px">docker compose up -d</code></p>'
+              . '<p style="color:#9a8a6b;font-size:13px">у папці проєкту (' . htmlspecialchars(BOFU_ROOT) . '),'
+              . ' зачекайте ~20 секунд і оновіть сторінку.<br>'
+              // текст помилки PDO містить хост і користувача БД — лише в debug
+              . htmlspecialchars($e->getMessage()) . '</p>'
+            : '<h1 style="color:#f0b429">Сайт тимчасово недоступний</h1>'
+              . '<p style="color:#9a8a6b">Ми вже про це знаємо. Спробуйте, будь ласка, за кілька хвилин.</p>';
+
+        echo '<!DOCTYPE html><html lang="uk"><head><meta charset="utf-8">'
+           . '<meta name="viewport" content="width=device-width, initial-scale=1">'
+           . '<title>Сайт тимчасово недоступний</title></head>'
+           . '<body style="font-family:sans-serif;background:#141110;color:#f6ecd9;display:flex;'
+           . 'align-items:center;justify-content:center;min-height:100vh;text-align:center;margin:0">'
+           . '<div style="padding:20px">' . $body . '</div></body></html>';
+        @file_put_contents(BOFU_ROOT . '/storage/logs/app-error.log',
+            '[' . date('Y-m-d H:i:s') . '] DB: ' . $e->getMessage() . "\n", FILE_APPEND);
     }
 
     private static function route(string $method, string $path): void
@@ -162,12 +198,22 @@ class App
         // --- аутентифікація ---
         if ($path === '/auth/google') { Controllers\AuthController::google(); }
         if ($path === '/auth/google/callback') { Controllers\AuthController::googleCallback(); }
-        if ($path === '/auth/demo' && $method === 'POST') { Controllers\AuthController::demo(); }
+        /*
+         * Входів навмисно менше, ніж каналів звʼязку.
+         *
+         * Демо-вхід прибрано: він давав адмін-права одним POST без пароля, а
+         * стримував його один прапорець у конфігурації. Для локальної роботи
+         * лишається `php bin/cli.php grant-admin`.
+         *
+         * Вхід через Viber прибрано теж, і причина не в реалізації, а в самому
+         * Viber: він не має чим довести, що надісланий номер належить
+         * співрозмовнику (у Telegram для цього є contact.user_id). Viber
+         * лишається каналом сповіщень і доставки коду — там, де ми ПИШЕМО в
+         * уже підтверджений чат, підробити нічого не можна.
+         */
         // створення токенів входу — найдешевша для бота дія, тому з лімітом
         if ($path === '/auth/tg/start') { RateLimit::guard('login_start', 20, 3600, null, true); Controllers\AuthController::tgStart(); }
         if ($path === '/auth/tg/status') { Controllers\AuthController::tgStatus(); }
-        if ($path === '/auth/viber/start') { RateLimit::guard('login_start', 20, 3600, null, true); Controllers\AuthController::viberStart(); }
-        if ($path === '/auth/viber/status') { Controllers\AuthController::viberStatus(); }
         if ($path === '/auth/phone/start' && $method === 'POST') { RateLimit::guard('phone_start', 10, 3600, null, true); Controllers\AuthController::phoneStart(); }
         if ($path === '/auth/phone/verify' && $method === 'POST') { RateLimit::guard('phone_verify', 20, 3600, null, true); Controllers\AuthController::phoneVerify(); }
         if ($path === '/profile') { Controllers\Profile::index(); }

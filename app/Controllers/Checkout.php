@@ -51,7 +51,8 @@ class Checkout
             'stores' => $stores, 'missing' => $missing,
             // Карта самовивозу: питання «яка точка до мене ближча» списком назв
             // не вирішується, а саме його й ставлять, обираючи самовивіз
-            'map_key' => Geo::key(), 'map_points' => Geo::points($stores),
+            // Посилання на маршрут до обраної точки самовивозу; карти немає
+            'map_points' => Geo::points($stores),
             'promo' => self::promo(),
             'addresses' => $addresses,
             'sel' => $addresses[0] ?? null,   // основна (Addresses::forUser сортує її першою)

@@ -1466,7 +1466,7 @@ class Schema
             ],
             'auth_tokens' => [
                 'id' => 'id', 'user_id' => 'int null',
-                'purpose' => 'str', // tg_link|tg_login|viber_link|viber_login|phone_code
+                'purpose' => 'str', // tg_link|tg_login|viber_link|phone_code
                 'token' => 'str unique', 'code' => 'str null', 'phone' => 'str null',
                 'chat_id' => 'str null', 'confirmed_user_id' => 'int null',
                 'ip' => 'str null', 'agent' => 'str null',  // звідки почався вхід — показуємо в боті

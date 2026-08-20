@@ -22,10 +22,17 @@ class Security
      * дозвіл виконати чужий код у наших відвідувачів, тож він має зʼявлятись
      * разом із функцією, якій потрібен, і зникати разом із нею.
      */
-    private const MAPS = 'https://maps.googleapis.com https://maps.gstatic.com';
-    private const MAPS_IMG = 'https://maps.googleapis.com https://maps.gstatic.com '
-        . 'https://khms0.googleapis.com https://khms1.googleapis.com https://*.ggpht.com';
-    /** Превʼю відео на головній і в «Соцмережах» — саме цей домен будує YouTube::latest() */
+    /**
+     * Превʼю відео на головній і в «Соцмережах» — саме цей домен будує YouTube::latest().
+     *
+     * Єдиний чужий домен, що лишився в політиці, і лише для картинок. Карти
+     * Google звідси прибрані разом із самою картою: заради неї доводилось
+     * пускати чужий скрипт (script-src), чужі картинки з пʼяти доменів і — що
+     * найгірше — чужий домен у connect-src, тобто готовий канал, куди вставлений
+     * скрипт міг би відіслати вкрадене. Замість карти на сторінках стоять
+     * посилання «прокласти маршрут», які на телефоні відкривають рідний
+     * застосунок, а на комп'ютері — ту саму карту в новій вкладці.
+     */
     private const YT_IMG = 'https://i.ytimg.com';
 
     public static function headers(): void
@@ -87,6 +94,12 @@ class Security
      *   object-src   — прибирає цілий клас старих векторів через плагіни;
      *   connect-src  — навіть виконаний скрипт не має куди відіслати вкрадене.
      *
+     * Останнє стало правдою лише після того, як зі сторінок прибрали карту
+     * Google. Заради неї в політиці стояли чужі домени одразу в трьох
+     * директивах, і найдорожчою була саме connect-src: доки в ній є чужий
+     * домен, речення «немає куди відіслати» — неправда. Тепер жодного чужого
+     * домену немає ніде, крім картинок превʼю з YouTube.
+     *
      * Шлях до строгої політики описаний у README: нонси на кожен <script> і
      * перенесення onclick у обробники. Це помітний обсяг правок у шаблонах,
      * і робити його наосліп перед переїздом на бойовий сервер небезпечніше,
@@ -97,12 +110,14 @@ class Security
         $self = "'self'";
         return implode('; ', [
             "default-src $self",
-            "script-src $self 'unsafe-inline' " . self::MAPS,
+            "script-src $self 'unsafe-inline'",
             "style-src $self 'unsafe-inline'",
             // data: — вбудовані іконки в CSS; blob: — кадр із камери під час сканування
-            "img-src $self data: blob: " . self::MAPS_IMG . ' ' . self::YT_IMG,
+            "img-src $self data: blob: " . self::YT_IMG,
             "font-src $self",
-            "connect-src $self " . self::MAPS,
+            // Жодного чужого домену: навіть виконаний скрипт не має куди
+            // відіслати вкрадене
+            "connect-src $self",
             "media-src $self blob:",          // потік із камери
             "worker-src $self blob:",         // service worker (PWA) і декодер коду
             "frame-src 'none'",

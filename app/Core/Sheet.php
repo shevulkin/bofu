@@ -26,11 +26,38 @@ class Sheet
      *
      * @return array<int, array<int, string>> рядки клітинок
      */
+    /**
+     * Прочитати таблицю. Приймаємо лише CSV.
+     *
+     * XLSX ми ЧИТАТИ перестали, хоч і далі складаємо (writeXlsx) — кабінет
+     * «Вчасно.Каси» чекає саме Excel. Розбирати ж чужий xlsx означало власний
+     * розпакувальник ZIP і `gzinflate()` над завантаженим файлом: вісім
+     * дозволених мегабайт стиснутого архіву розгортаються в гігабайти, і сайт
+     * лягає від одного натискання «Завантажити».
+     *
+     * Обійти це можна було б лімітом на розгорнутий розмір, але тоді в проєкті
+     * лишався б саморобний парсер бінарного формату заради дії, яку роблять раз
+     * на квартал. Кабінет уміє зберігати вивантаження і в CSV — це той самий
+     * файл, тільки без парсера.
+     */
     public static function read(string $path): array
     {
         $raw = (string)@file_get_contents($path);
         if ($raw === '') return [];
-        return str_starts_with($raw, "PK\x03\x04") ? self::readXlsx($raw) : self::readCsv($raw);
+        // Порожній масив тут означає «не змогли прочитати»; людське пояснення
+        // дає VchasnoGoods::parse, який знає, про який саме файл ідеться
+        if (str_starts_with($raw, "PK\x03\x04")) return [];
+        return self::readCsv($raw);
+    }
+
+    /** Чи це книга Excel — щоб сказати про це людськими словами, а не «файл порожній» */
+    public static function isXlsx(string $path): bool
+    {
+        $fh = @fopen($path, 'rb');
+        if (!$fh) return false;
+        $head = (string)fread($fh, 4);
+        fclose($fh);
+        return $head === "PK\x03\x04";
     }
 
     // ─────────────────────────────────────────────────────────────────── CSV
@@ -115,93 +142,6 @@ class Sheet
     }
 
     // ────────────────────────────────────────────────────────────────── XLSX
-
-    /**
-     * Аркуш із книги.
-     *
-     * Беремо перший — у вивантаженнях кабінету він один, а вгадувати «потрібний»
-     * серед кількох ми однаково не вміємо. Значення читаємо як текст: артикул
-     * «007» і штрихкод на 13 цифр не мають перетворитись на числа.
-     */
-    private static function readXlsx(string $raw): array
-    {
-        $sheet = self::zipRead($raw, 'xl/worksheets/sheet1.xml');
-        if ($sheet === null) {
-            // Аркуш може називатись інакше — шукаємо перший, що схожий
-            foreach (self::zipList($raw) as $name) {
-                if (preg_match('~^xl/worksheets/[^/]+\.xml$~', $name)) {
-                    $sheet = self::zipRead($raw, $name);
-                    break;
-                }
-            }
-        }
-        if ($sheet === null) return [];
-
-        $shared = self::sharedStrings((string)self::zipRead($raw, 'xl/sharedStrings.xml'));
-
-        $rows = [];
-        if (!preg_match_all('~<row[^>]*>(.*?)</row>~s', $sheet, $rm)) return [];
-        foreach ($rm[1] as $rowXml) {
-            $cells = [];
-            if (preg_match_all('~<c\b([^>]*)(?:/>|>(.*?)</c>)~s', $rowXml, $cm, PREG_SET_ORDER)) {
-                foreach ($cm as $c) {
-                    $attrs = $c[1];
-                    $body = $c[2] ?? '';
-                    // Колонка береться з посилання (A1, B1…), а не з порядку:
-                    // порожні клітинки Excel просто не пише, і без цього
-                    // «штрихкод» з’їхав би в колонку «ціна».
-                    $idx = preg_match('~r="([A-Z]+)~', $attrs, $rr) ? self::colIndex($rr[1]) : count($cells);
-                    $type = preg_match('~t="([^"]+)"~', $attrs, $tt) ? $tt[1] : 'n';
-
-                    $val = '';
-                    if ($type === 'inlineStr') {
-                        $val = self::textOf($body);
-                    } elseif (preg_match('~<v>(.*?)</v>~s', $body, $vm)) {
-                        $val = $vm[1];
-                        if ($type === 's') $val = $shared[(int)$val] ?? '';
-                    } else {
-                        $val = self::textOf($body);
-                    }
-                    $cells[$idx] = trim(self::unxml($val));
-                }
-            }
-            if (!$cells) { $rows[] = []; continue; }
-            // Дірки заповнюємо порожнім: далі рядок читають за номерами колонок
-            $rows[] = array_map(fn($i) => $cells[$i] ?? '', range(0, max(array_keys($cells))));
-        }
-        return $rows;
-    }
-
-    /** Спільні рядки книги: Excel виносить повторювані тексти в окремий файл */
-    private static function sharedStrings(string $xml): array
-    {
-        if ($xml === '') return [];
-        $out = [];
-        if (preg_match_all('~<si>(.*?)</si>~s', $xml, $m)) {
-            foreach ($m[1] as $si) $out[] = self::unxml(self::textOf($si));
-        }
-        return $out;
-    }
-
-    /** Текст усіх <t> усередині вузла: рядок із форматуванням Excel ріже на шматки */
-    private static function textOf(string $xml): string
-    {
-        if (!preg_match_all('~<t[^>]*>(.*?)</t>~s', $xml, $m)) return '';
-        return implode('', $m[1]);
-    }
-
-    private static function unxml(string $s): string
-    {
-        return html_entity_decode($s, ENT_QUOTES | ENT_XML1, 'UTF-8');
-    }
-
-    /** «AB» → 27 (нумерація з нуля) */
-    private static function colIndex(string $letters): int
-    {
-        $n = 0;
-        foreach (str_split(strtoupper($letters)) as $ch) $n = $n * 26 + (ord($ch) - 64);
-        return max(0, $n - 1);
-    }
 
     private static function colName(int $index): string
     {
@@ -314,55 +254,5 @@ class Sheet
         }
         return $local . $central
              . "PK\x05\x06" . pack('vvvvVVv', 0, 0, $count, $count, strlen($central), strlen($local), 0);
-    }
-
-    /** Назви всіх файлів усередині — читаємо з локальних заголовків */
-    private static function zipList(string $zip): array
-    {
-        $names = [];
-        $pos = 0;
-        while (($pos = strpos($zip, "PK\x03\x04", $pos)) !== false) {
-            $h = unpack('vver/vflag/vmethod/vtime/vdate/Vcrc/Vsize/Vraw/vnamelen/vextralen', substr($zip, $pos + 4, 26));
-            if (!$h) break;
-            $names[] = substr($zip, $pos + 30, $h['namelen']);
-            $pos += 30 + $h['namelen'] + $h['extralen'] + $h['size'];
-            // Розмір у локальному заголовку може бути нулем (потоковий запис) —
-            // тоді далі йти наосліп не можна, і ми задовольняємось переліком
-            if ($h['size'] === 0 && $h['raw'] > 0) break;
-        }
-        return $names;
-    }
-
-    private static function zipRead(string $zip, string $wanted): ?string
-    {
-        if (class_exists('ZipArchive')) {
-            $tmp = tempnam(sys_get_temp_dir(), 'xlsx');
-            file_put_contents($tmp, $zip);
-            $z = new ZipArchive();
-            if ($z->open($tmp) === true) {
-                $out = $z->getFromName($wanted);
-                $z->close();
-                @unlink($tmp);
-                return $out === false ? null : $out;
-            }
-            @unlink($tmp);
-        }
-
-        $pos = 0;
-        while (($pos = strpos($zip, "PK\x03\x04", $pos)) !== false) {
-            $h = unpack('vver/vflag/vmethod/vtime/vdate/Vcrc/Vsize/Vraw/vnamelen/vextralen', substr($zip, $pos + 4, 26));
-            if (!$h) return null;
-            $name = substr($zip, $pos + 30, $h['namelen']);
-            $start = $pos + 30 + $h['namelen'] + $h['extralen'];
-            if ($name === $wanted) {
-                $data = substr($zip, $start, $h['size']);
-                if ($h['method'] === 0) return $data;
-                $out = @gzinflate($data);
-                return $out === false ? null : $out;
-            }
-            if ($h['size'] === 0 && $h['raw'] > 0) return null;   // потоковий запис — далі не пройдемо
-            $pos = $start + $h['size'];
-        }
-        return null;
     }
 }

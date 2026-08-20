@@ -37,6 +37,7 @@ class AuthLog
         'user_enabled'     => 'акаунт увімкнено',
         'settings_changed' => 'змінено налаштування',
         'secret_changed'   => 'змінено ключ інтеграції',
+        'messenger_linked' => 'підключено месенджер',
     ];
 
     /**

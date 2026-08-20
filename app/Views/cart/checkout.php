@@ -116,16 +116,16 @@
             </select>
             <p class="dim" id="pickupNote" style="margin:8px 0 0;white-space:pre-line"></p>
           </div>
-          <?php /* Карта відповідає на те, чого список назв не каже: яка точка
-                   ближча. Клік по мітці обирає магазин, вибір у списку — веде
-                   карту до нього, тож обидва шляхи ведуть до одного поля.
-                   Немає ключа чи координат — блок просто не виводиться, і
-                   оформлення працює далі як працювало. */ ?>
-          <?php if ($map_key && $map_points): ?>
-            <div class="field">
-              <div class="store-map" id="pickupMap"></div>
-              <p class="dim" style="margin:8px 0 0;font-size:12.5px">Клацніть на мітку, щоб обрати цю точку.</p>
-            </div>
+          <?php /* Замість карти — посилання на маршрут до обраної точки.
+                   Карта відповідала на питання «яка ближча», але коштувала
+                   чужого скрипта на сторінці оформлення, тобто саме там, де
+                   людина вводить телефон і адресу. Посилання відповідає на те
+                   саме питання, а на телефоні навіть краще: відкриється рідна
+                   карта з навігацією. Адресу точки видно тут же, у списку. */ ?>
+          <?php if ($map_points): ?>
+            <p class="dim" style="margin:-6px 0 14px">
+              <a id="pickupRoute" href="#" target="_blank" rel="noopener" style="display:none">Прокласти маршрут до цієї точки →</a>
+            </p>
           <?php endif; ?>
         </div>
 
@@ -304,8 +304,6 @@
   </div>
 </section>
 <?php if ($np_enabled) echo View::partial('partials/np_autocomplete'); ?>
-<?php /* без defer: наш скрипт нижче звертається до BofuMap одразу */ ?>
-<?php if ($map_key && $map_points): ?><script src="<?= e(asset_v('js/map.js')) ?>"></script><?php endif; ?>
 <script>
 (function(){
   var np = document.getElementById('npFields'), pk = document.getElementById('pickupFields'), ot = document.getElementById('otherFields');
@@ -581,22 +579,22 @@
     });
   }
 
-  // Карта й список — два входи в те саме поле, тож ведуть одне одного: клік по
-  // мітці обирає магазин у списку, вибір у списку веде карту до точки. Інакше
-  // людина обрала б мітку й не зрозуміла, чи вибір узагалі зарахувався.
-  var mapHost = document.getElementById('pickupMap');
-  if (mapHost && store && window.BofuMap) {
-    var ctl = window.BofuMap.render(mapHost, {
-      key: <?= json_js($map_key) ?>,
-      points: <?= json_js($map_points) ?>,
-      onPick: function (id) {
-        store.value = String(id);
-        // change програмній зміні value браузер не шле — а примітку про
-        // відсутні позиції має оновити саме він
-        store.dispatchEvent(new Event('change'));
-      }
-    });
-    if (ctl) store.addEventListener('change', function () { ctl.select(parseInt(store.value, 10) || 0); });
+  // Посилання на маршрут веде до тієї точки, яку обрано в списку. Показуємо
+  // лише коли в точки справді є координати — мертве посилання гірше за його
+  // відсутність.
+  var routeLink = document.getElementById('pickupRoute');
+  if (routeLink && store) {
+    var routes = {};
+    <?php foreach ($map_points as $p): ?>
+      routes[<?= (int)$p['id'] ?>] = <?= json_js($p['route']) ?>;
+    <?php endforeach; ?>
+    var syncRoute = function () {
+      var url = routes[parseInt(store.value, 10) || 0] || '';
+      routeLink.style.display = url ? '' : 'none';
+      if (url) routeLink.href = url;
+    };
+    store.addEventListener('change', syncRoute);
+    syncRoute();
   }
 })();
 </script>

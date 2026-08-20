@@ -13,9 +13,13 @@
       <?php if (Telegram::configured()): ?>
         <button class="btn btn-line" id="tgLoginBtn" type="button">Увійти через Telegram</button>
       <?php endif; ?>
-      <?php if (Viber::configured() && Viber::uri()): ?>
-        <button class="btn btn-line" id="viberLoginBtn" type="button">Увійти через Viber</button>
-      <?php endif; ?>
+      <?php /* Входу через Viber тут немає навмисно, і це не забута кнопка.
+               Viber не має чим довести, що надісланий номер належить саме
+               співрозмовнику: у контакті немає поля, з яким це можна звірити
+               (у Telegram воно є — див. Telegram::onContact). Тому Viber
+               лишається каналом сповіщень і доставки коду, а не способом
+               увійти: код приходить у ВЖЕ підключений месенджер, тобто туди,
+               куди сторонній не дістане. */ ?>
       <?php if (Telegram::configured() || Viber::configured()): ?>
         <button class="btn btn-line" id="phoneLoginBtn" type="button">Увійти за номером телефону</button>
       <?php endif; ?>
@@ -30,17 +34,11 @@
       <p class="dim" style="margin-top:8px">Код прийде у ваш Telegram або Viber, привʼязаний до акаунта.</p>
     </div>
 
-    <?php if (cfg('demo_login')): ?>
-      <p class="dim" style="margin-top:14px">Демо-режим: оберіть, під яким акаунтом увійти.</p>
-      <div class="stack">
-        <?php foreach (['customer' => 'Увійти як покупець', 'seller' => 'Увійти як продавець', 'admin' => 'Увійти як адміністратор'] as $role => $label): ?>
-        <form method="post" action="<?= e(url('/auth/demo')) ?>"><?= Csrf::field() ?>
-          <input type="hidden" name="role" value="<?= $role ?>">
-          <button class="btn btn-line" style="width:100%" type="submit"><?= $label ?></button>
-        </form>
-        <?php endforeach; ?>
-      </div>
-    <?php endif; ?>
+    <?php /* Демо-входу тут більше немає. Він видавав адмін-права одним POST без
+             пароля, а стримував його один прапорець у config.local.php — тобто
+             випадково скопійований на сервер рядок віддавав магазин чужому, і
+             ніщо про це не попереджало. Для локальної розробки те саме дає
+             `php bin/cli.php grant-admin`, і воно не живе в бойовому коді. */ ?>
     <div class="stack"><button class="btn btn-line btn-sm" id="authClose" type="button">Скасувати</button></div>
   </div>
 </div>
@@ -69,8 +67,6 @@
   }
   var tg = document.getElementById('tgLoginBtn');
   if (tg) tg.addEventListener('click', function(){ startLogin('/auth/tg/start', '/auth/tg/status', 'У боті натисніть Start, а тоді «Поділитися номером» — сайт увійде автоматично…'); });
-  var vb = document.getElementById('viberLoginBtn');
-  if (vb) vb.addEventListener('click', function(){ startLogin('/auth/viber/start', '/auth/viber/status', 'У боті натисніть «Поділитися номером» — сайт увійде автоматично…'); });
 
   var pb = document.getElementById('phoneLoginBtn');
   if (pb) pb.addEventListener('click', function(){

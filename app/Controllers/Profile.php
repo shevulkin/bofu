@@ -21,8 +21,9 @@ class Profile
         $url = trim((string)($_POST['dm_url'] ?? ''));
         DB::update('users', [
             'fiscal_route' => isset(FiscalProvider::ROUTES[$route]) ? $route : null,
-            // Лише http/https: у це поле рано чи пізно вставлять щось стороннє
-            'dm_url' => preg_match('~^https?://~i', $url) ? mb_substr(rtrim($url, '/'), 0, 200) : null,
+            // Лише localhost: Device Manager стоїть на цьому ж комп'ютері й
+            // слухає тільки його (див. FiscalProvider::normalizeDmUrl)
+            'dm_url' => FiscalProvider::normalizeDmUrl($url),
             'dm_device' => mb_substr(trim((string)($_POST['dm_device'] ?? '')), 0, 100) ?: null,
         ], 'id = ?', [(int)$u['id']]);
         flash('success', $route === '' ? 'Працюєте касою своєї точки.' : 'Налаштування каси збережено.');
