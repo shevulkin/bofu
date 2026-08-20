@@ -25,7 +25,7 @@ $broken = array_values(array_filter($rows, fn($r) => $r['status'] === 'error'));
             <?= e($sale['fiscal_number'] ?: '— ще без номера') ?></b>
           <?php if ($sale['qr']): ?>
             <a class="dim" style="font-size:12.5px" target="_blank" rel="noopener"
-               href="<?= e($sale['qr']) ?>">електронний чек →</a>
+               href="<?= e(safe_url($sale['qr'])) ?>">електронний чек →</a>
           <?php endif; ?>
         </div>
         <div class="dim" style="font-size:12.5px;margin-top:4px">

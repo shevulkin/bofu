@@ -9,7 +9,7 @@
         <div class="card-desc" style="font-size:15.5px;margin-top:8px"<?= edit_mark('course_1', 'body') ?>><?= e(Content::get('course_1')) ?></div>
         <div class="card-foot" style="margin-top:22px">
           <span class="price" style="font-size:20px">За запитом</span>
-          <a class="btn btn-gold" href="<?= e(Content::title('course_1_link', '#')) ?>" target="_blank" rel="noopener"<?= edit_mark('course_1_link') ?>>Записатись</a>
+          <a class="btn btn-gold" href="<?= e(safe_url(Content::title('course_1_link', '#'))) ?>" target="_blank" rel="noopener"<?= edit_mark('course_1_link') ?>>Записатись</a>
         </div>
       </div>
     </div>
