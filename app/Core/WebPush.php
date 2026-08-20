@@ -130,7 +130,10 @@ class WebPush
         $header = self::b64(json_encode(['typ' => 'JWT', 'alg' => 'ES256']));
         $claims = self::b64(json_encode([
             'aud' => $aud, 'exp' => time() + 43200,
-            'sub' => 'mailto:' . Settings::get('mail_from', 'admin@localhost'),
+            // Контакт для push-сервісу: та сама адреса, з якої йдуть листи. Окремого
+            // 'admin@localhost' тут більше немає — на нього все одно ніхто не
+            // читає, а Google цим полем повідомляє, що з нашими пушами не так.
+            'sub' => 'mailto:' . Notify::mailFrom(),
         ]));
         $unsigned = $header . '.' . $claims;
         $d = self::b64d($privB64);

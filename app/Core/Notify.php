@@ -549,22 +549,136 @@ class Notify
         Telegram::send((string)$chat, $text);
     }
 
+    /**
+     * Події, які має слати «скринька входу», а не загальна скринька магазину.
+     *
+     * Лист із кодом мусить дійти завжди — на ньому тримається вхід в акаунт.
+     * Розсилки й листи про замовлення дійти можуть і не завжди: людина натисне
+     * «Спам» на листі про акцію, і репутація адреси просяде. Якщо адреса одна,
+     * просяде вона й для кодів — і людина просто не зможе увійти. Тому коди
+     * ходять окремою адресою: скарга на одну не топить другу.
+     *
+     * Це не безкоштовно: власник має завести дві скриньки. Тому друга —
+     * необовʼязкова: не заповнена, коди підуть загальною (див. mailFrom).
+     */
+    private const AUTH_EVENTS = ['auth_code'];
+
+    /**
+     * Локальні частини типових адрес — на випадок, коли в налаштуваннях порожньо.
+     *
+     * Свідомо НЕ noreply@. По-перше, на листи про замовлення люди відповідають
+     * («а можна на завтра?»), і відповідь у noreply зникає безслідно — власник
+     * навіть не дізнається, що йому писали. По-друге, частина фільтрів дивиться
+     * на noreply/no-reply скоса, а нам сюди складати коди входу.
+     */
+    public const DEFAULT_USER = 'shop';
+    public const DEFAULT_AUTH_USER = 'login';
+
+    /**
+     * Домен, з якого будуються типові адреси відправника.
+     *
+     * Спершу — явно вписана адреса сайту (bot_site_url): у крон-задачах
+     * HTTP_HOST відсутній узагалі, і без неї нічні листи йшли б від
+     * «shop@localhost». www. прибираємо: скриньки заводять на домені, а не на
+     * піддомені сайту.
+     */
+    public static function mailHost(): string
+    {
+        $host = (string)parse_url((string)Settings::get('bot_site_url', ''), PHP_URL_HOST);
+        if ($host === '') $host = (string)($_SERVER['HTTP_HOST'] ?? '');
+        $host = strtolower(preg_replace('~:\d+$~', '', trim($host)) ?? '');
+        $host = preg_replace('~^www\.~', '', $host) ?? '';
+        return $host !== '' ? $host : 'localhost';
+    }
+
+    /**
+     * Адреса у полі From для цієї події.
+     *
+     * Перенос рядка в адресі вирізається не для краси: заголовки листа
+     * розділяються саме ним, і адреса «a@b\r\nBcc: …» з адмінки перетворила б
+     * кожне сповіщення на розсилку кудись іще.
+     */
+    public static function mailFrom(string $event = ''): string
+    {
+        $auth = in_array($event, self::AUTH_EVENTS, true);
+        foreach ($auth ? ['mail_from_auth', 'mail_from'] : ['mail_from'] as $key) {
+            $addr = self::cleanAddress((string)Settings::get($key, ''));
+            if ($addr !== '') return $addr;
+        }
+        return ($auth ? self::DEFAULT_AUTH_USER : self::DEFAULT_USER) . '@' . self::mailHost();
+    }
+
+    /**
+     * Куди піде відповідь, якщо людина натисне «Відповісти». '' — заголовка не буде.
+     *
+     * Сенс має рівно тоді, коли відрізняється від From: лист із кодом приходить
+     * зі скриньки входу, читати яку нікому, а відповідь має потрапити туди, де
+     * її побачить продавець.
+     */
+    public static function mailReplyTo(): string
+    {
+        $addr = self::cleanAddress((string)Settings::get('mail_reply_to', ''));
+        return $addr !== '' ? $addr : self::cleanAddress((string)Settings::get('mail_from', ''));
+    }
+
+    /** Адреса, придатна для заголовка листа, або '' */
+    public static function cleanAddress(string $raw): string
+    {
+        $addr = trim(str_replace(["\r", "\n", "\0"], '', $raw));
+        return filter_var($addr, FILTER_VALIDATE_EMAIL) ? $addr : '';
+    }
+
+    /**
+     * Кирилиця в заголовку листа інакше приїжджає крякозяброю в частині
+     * поштових програм — тому base64 і позначка кодування.
+     */
+    private static function mimeWord(string $text): string
+    {
+        $text = trim(str_replace(["\r", "\n", "\0"], '', $text));
+        return $text === '' ? '' : '=?UTF-8?B?' . base64_encode($text) . '?=';
+    }
+
     public static function email(array $user, string $text, array $vars, string $event = ''): void
     {
         if (empty($user['email'])) return;
         $to = filter_var((string)$user['email'], FILTER_VALIDATE_EMAIL);
         if (!$to) return;
-        // адреса відправника задається в адмінці — перенос рядка в ній дав би змогу
-        // дописати власні заголовки листа
-        $from = (string)Settings::get('mail_from', 'noreply@' . ($_SERVER['HTTP_HOST'] ?? 'localhost'));
-        $from = str_replace(["\r", "\n"], '', $from);
-        if (!filter_var($from, FILTER_VALIDATE_EMAIL)) $from = 'noreply@' . ($_SERVER['HTTP_HOST'] ?? 'localhost');
-        // Тема кодується base64 не для краси: кирилиця в заголовку листа
-        // інакше приїжджає крякозяброю в частині поштових програм
-        $subject = '=?UTF-8?B?' . base64_encode(self::subject($event, $vars)) . '?=';
-        $headers = "MIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n" .
-                   "From: " . $from . "\r\n";
-        @mail($to, $subject, $text, $headers);
+
+        $from  = self::mailFrom($event);
+        $reply = self::mailReplyTo();
+        // Імʼя відправника поруч з адресою: у списку листів видно «Beekeeper of
+        // Ukraine», а не «login@…». Це той самий рядок, за яким людина відрізняє
+        // лист магазину від спаму, — і єдиний, який видно до відкриття.
+        $name  = self::mimeWord(cfg('app_name'));
+        $headers = "MIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n"
+                 . 'From: ' . ($name !== '' ? $name . ' <' . $from . '>' : $from) . "\r\n";
+        if ($reply !== '' && strcasecmp($reply, $from) !== 0) {
+            $headers .= 'Reply-To: ' . ($name !== '' ? $name . ' <' . $reply . '>' : $reply) . "\r\n";
+        }
+        $subject = self::mimeWord(self::subject($event, $vars));
+
+        /*
+         * Пʼятий аргумент mail() — це відправник КОНВЕРТА (Return-Path), і він
+         * інший, ніж From у заголовку. За замовчуванням туди стає користувач
+         * веб-сервера (www-data@сервер), і перевірка SPF робиться саме за ним:
+         * домен не збігається з нашим — лист летить у «Спам» ще до того, як
+         * хтось прочитає тему.
+         *
+         * Частина хостингів підміняти конверт забороняє, і тоді mail() просто
+         * повертає false — лист не піде взагалі. Для коду входу це означало б
+         * «увійти неможливо», тож при невдачі повторюємо без конверта: гірша
+         * доставка краща за її відсутність.
+         */
+        $envelope = preg_match('~^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+$~', $from) === 1;
+        $sent = $envelope
+            ? @mail($to, $subject, $text, $headers, '-f' . $from)
+            : @mail($to, $subject, $text, $headers);
+        if (!$sent && $envelope) $sent = @mail($to, $subject, $text, $headers);
+
+        // Мовчазна невдача тут виглядає як «код не приходить», і причини не
+        // видно ніде. В лог іде подія й прикрита адреса: журнал читає людина,
+        // і він потрапляє в кожен дамп.
+        if (!$sent) self::log('email fail (' . ($event ?: 'без події') . ') → ' . EmailAuth::maskEmail($to));
     }
 
     public static function push(array $user, string $text): void
