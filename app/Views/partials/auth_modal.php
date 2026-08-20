@@ -124,7 +124,10 @@
     fd.append('_csrf', csrf); fd.append('phone', document.getElementById('phoneInput').value);
     fetch(base + '/auth/phone/start', {method:'POST', body: fd}).then(r=>r.json()).then(function(d){
       if (!d.ok) { show(d.error || 'Помилка'); return; }
-      show('Код надіслано у ' + d.via + '. Введіть його нижче.');
+      // Сервер сам каже, у який месенджер і на який номер пішов код: у людини
+      // може бути підключений і Telegram, і Viber, і «перевірте месенджер»
+      // означало б відкрити обидва
+      show((d.where || ('Код надіслано у ' + d.via + '.')) + ' Введіть його нижче.');
       document.getElementById('codeField').style.display = 'block';
       document.getElementById('codeVerifyBtn').style.display = 'inline-flex';
       sendBtn.style.display = 'none';

@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 namespace Controllers;
 
-use DB, Auth, GoogleAuth, Csrf, Notify, AuthTokens, AuthLog, EmailAuth, Telegram, Viber;
+use DB, Auth, GoogleAuth, Csrf, Notify, AuthTokens, AuthLog, EmailAuth, LoginMethods, Telegram, Viber;
 
 class AuthController
 {
@@ -20,7 +20,16 @@ class AuthController
     {
         $profile = GoogleAuth::configured() ? GoogleAuth::handleCallback() : null;
         if (!$profile) { flash('error', 'Не вдалося увійти через Google.'); redirect('/'); }
-        $isNew = !DB::row('SELECT 1 FROM users WHERE google_id = ? OR email = ?', [$profile['sub'], $profile['email']]);
+        $existing = DB::row('SELECT * FROM users WHERE google_id = ? OR email = ?', [$profile['sub'], $profile['email']]);
+        $isNew = !$existing;
+        // Заборона діє на СЕРВЕРІ, а не приховуванням кнопки: адреса /auth/google
+        // відома, і відкрити її може будь-хто. Нового акаунта це не стосується —
+        // забороняти вхід у те, чого ще немає, нема чого.
+        if ($existing && !LoginMethods::permits($existing, 'google')) {
+            AuthLog::write((int)$existing['id'], 'login_blocked', 'Google');
+            flash('error', LoginMethods::denial('google'));
+            redirect('/');
+        }
         Auth::loginWithGoogle($profile);
         if ($isNew) Notify::fire('user_new', ['name' => $profile['name'] ?? '', 'email' => $profile['email']]);
         flash('success', 'Вітаємо, ' . ($profile['name'] ?? $profile['email']) . '!');
@@ -50,6 +59,14 @@ class AuthController
         $row = DB::row('SELECT * FROM auth_tokens WHERE token = ? AND purpose = ? AND expires_at > ?',
             [$token, $purpose, now()]);
         if ($row && $row['confirmed_user_id']) {
+            $user = DB::row('SELECT * FROM users WHERE id = ? AND active = 1', [(int)$row['confirmed_user_id']]);
+            // Бот уже підтвердив особу — але дозвіл входити САМЕ ЦИМ способом
+            // перевіряємо тут, бо саме тут відбувається вхід
+            if ($user && !LoginMethods::permits($user, 'telegram')) {
+                AuthLog::write((int)$user['id'], 'login_blocked', 'Telegram');
+                unset($_SESSION['login_token']);
+                json_response(['ok' => false, 'error' => LoginMethods::denial('telegram')]);
+            }
             Auth::login((int)$row['confirmed_user_id']);
             unset($_SESSION['login_token']);
             json_response(['ok' => true, 'logged_in' => true]);
@@ -86,6 +103,16 @@ class AuthController
 
         $res = EmailAuth::verify((string)$st['token'], (string)($_POST['code'] ?? ''));
         if (!$res['ok']) json_response(['ok' => false, 'error' => $res['error'] ?? 'Невірний код']);
+
+        // Перевіряємо після коду, а не до нього: інакше форма стала б способом
+        // дізнатися, які способи входу ввімкнені в чужому акаунті
+        $user = DB::row('SELECT * FROM users WHERE id = ?', [(int)$res['user_id']]);
+        if ($user && !LoginMethods::permits($user, 'email')) {
+            AuthLog::write((int)$user['id'], 'login_blocked', 'Код на пошту');
+            unset($_SESSION['email_login']);
+            json_response(['ok' => false, 'error' => LoginMethods::denial('email')]);
+        }
+
         unset($_SESSION['email_login']);
         Auth::login((int)$res['user_id']);
         json_response(['ok' => true, 'logged_in' => true]);
@@ -124,20 +151,48 @@ class AuthController
                 . 'поділитися номером, і акаунт зʼявиться вже з підтвердженим номером. '
                 . 'Або увійдіть за поштою: код прийде листом.']);
         }
-        if (empty($user['tg_chat_id']) && empty($user['viber_id'])) {
+        /*
+         * Куди слати код — вирішує те, що людина сама підключила.
+         *
+         * Месенджер стає «підключеним» не вписуванням номера, а тим, що людина
+         * відкрила бота зі свого профілю й підтвердила: у базі зʼявляється
+         * chat_id саме того чату. Тому надіслати код туди — безпечно: цей чат
+         * уже доведено її власним входом.
+         *
+         * Порядок і сам вибір лежать у LoginMethods::codeChannel(), поруч із
+         * перевіркою готовності способів, — інакше «куди можна надіслати» і
+         * «куди справді шлемо» розійшлися б на першій же правці.
+         */
+        $ch = LoginMethods::codeChannel($user);
+        if ($ch === null) {
             json_response(['ok' => false, 'error' =>
                 'До цього акаунта не підключений жоден месенджер, тож надіслати код нікуди. '
-                . 'Увійдіть через Google або Telegram, а тоді підключіть месенджер у профілі.']);
+                . 'Увійдіть через Google або поштою, а тоді підключіть Telegram чи Viber у профілі.']);
         }
+        // Спосіб міг бути вимкнений самою людиною в профілі. Кажемо про це
+        // прямо: інакше вона вирішить, що зламався вхід, а не що вона його
+        // колись сама й закрила.
+        if (!LoginMethods::permits($user, 'phone')) {
+            AuthLog::write((int)$user['id'], 'login_blocked', 'Код на телефон');
+            json_response(['ok' => false, 'error' => LoginMethods::denial('phone')]);
+        }
+
         $c = AuthTokens::createPhoneCode($phone);
         if ($c === false) json_response(['ok' => false, 'error' => 'Забагато спроб. Спробуйте за годину.']);
-        $text = 'Код входу на сайт Beekeeper of Ukraine: ' . $c['code'] . ' (діє 5 хвилин)';
-        $via = '';
-        if (!empty($user['tg_chat_id']) && Telegram::configured()) { Telegram::send((string)$user['tg_chat_id'], $text); $via = 'Telegram'; }
-        elseif (!empty($user['viber_id']) && Viber::configured()) { Viber::send($user['viber_id'], $text); $via = 'Viber'; }
-        if (!$via) json_response(['ok' => false, 'error' => 'Канали надсилання недоступні. Зверніться до адміністратора.']);
+        $text = 'Код входу на сайт ' . cfg('app_name') . ': ' . $c['code'] . ' (діє 5 хвилин)';
+
+        if ($ch['channel'] === 'telegram') Telegram::send($ch['to'], $text);
+        else Viber::send($ch['to'], $text);
+
         $_SESSION['phone_login'] = ['token' => $c['token'], 'phone' => $phone, 'tries' => 0];
-        json_response(['ok' => true, 'via' => $via]);
+        // via — назва каналу для повідомлення «код надіслано у …»; where — те
+        // саме людськими словами, разом із замаскованим номером, щоб людина
+        // бачила, у який саме акаунт месенджера дивитись
+        json_response([
+            'ok' => true,
+            'via' => $ch['label'],
+            'where' => 'Код надіслано у ' . $ch['label'] . ' на номер ' . self::maskPhone($phone) . '.',
+        ]);
     }
 
     public static function phoneVerify(): never

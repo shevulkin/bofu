@@ -52,6 +52,19 @@ class Profile
             if (($_POST['_action'] ?? '') === 'kasa') {
                 self::kasa($u);
             }
+            /*
+             * Способи входу — окремою формою, як і сповіщення.
+             *
+             * Свідомо НЕ разом із телефоном та імʼям: зміна способів входу
+             * закриває двері, і робити її побічним ефектом збереження контактів
+             * означало б, що людина одного дня не увійде, не зрозумівши чому.
+             */
+            if (($_POST['_action'] ?? '') === 'login_methods') {
+                $err = \LoginMethods::save($u, array_keys((array)($_POST['lm'] ?? [])));
+                flash($err === '' ? 'success' : 'error',
+                    $err === '' ? 'Способи входу збережено' : $err);
+                redirect('/profile');
+            }
             // normPhoneAny, а не normPhone: закордонний покупець оформлює замовлення
             // з номером +49… (Checkout), і гейт у App.php такий номер пропускає —
             // а профіль його не приймав. Виходило, що людина не могла зберегти
@@ -121,6 +134,10 @@ class Profile
             'viber_uri' => Viber::configured() ? Viber::uri() : '',
             'notify_options' => Notify::channelsFor($fresh),
             'notify_channels' => Notify::CHANNELS,
+            // Способи входу: стан кожного плюс скільки їх узагалі налаштовано —
+            // за одним способом вибирати нема з чого, і блок не показується
+            'login_methods' => \LoginMethods::forUser($fresh),
+            'login_ready_count' => \LoginMethods::readyCount($fresh),
             'page_title' => 'Мій профіль — ' . cfg('app_name'),
         ]);
     }
