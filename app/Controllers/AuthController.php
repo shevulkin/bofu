@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 namespace Controllers;
 
-use DB, Auth, GoogleAuth, Csrf, Notify, AuthTokens, Telegram, Viber;
+use DB, Auth, GoogleAuth, Csrf, Notify, AuthTokens, AuthLog, Telegram, Viber;
 
 class AuthController
 {
@@ -118,7 +118,12 @@ class AuthController
         if ($st['tries'] >= 5) { unset($_SESSION['phone_login']); json_response(['ok' => false, 'error' => 'Забагато спроб']); }
         $_SESSION['phone_login']['tries']++;
         $row = DB::row("SELECT * FROM auth_tokens WHERE token = ? AND purpose = 'phone_code' AND used = 0 AND expires_at > ?", [$st['token'], now()]);
-        if (!$row || !hash_equals($row['code'], $code)) json_response(['ok' => false, 'error' => 'Невірний код']);
+        if (!$row || !hash_equals($row['code'], $code)) {
+            // Номер у журналі маскуємо: серія невдалих спроб має бути видною,
+            // а сам журнал не має перетворюватись на список телефонів покупців
+            AuthLog::write(null, 'login_failed', 'невірний код для номера ' . self::maskPhone((string)$st['phone']));
+            json_response(['ok' => false, 'error' => 'Невірний код']);
+        }
         $user = DB::row('SELECT * FROM users WHERE phone = ? AND active = 1', [$row['phone']]);
         if (!$user) json_response(['ok' => false, 'error' => 'Акаунт не знайдено']);
         DB::update('auth_tokens', ['used' => 1], 'id = ?', [$row['id']]);
@@ -127,9 +132,19 @@ class AuthController
         json_response(['ok' => true, 'logged_in' => true]);
     }
 
+    /** +380671234567 → +38067…4567: досить, щоб упізнати свій номер, і замало, щоб зібрати чужі */
+    private static function maskPhone(string $phone): string
+    {
+        $len = strlen($phone);
+        return $len <= 8 ? '…' : substr($phone, 0, 6) . '…' . substr($phone, -4);
+    }
+
     public static function logout(): never
     {
         Csrf::verify();
+        // Пишемо ДО logout(): після нього сесії вже немає, і хто саме вийшов —
+        // теж невідомо
+        AuthLog::write(Auth::id(), 'logout');
         Auth::logout();
         redirect('/');
     }

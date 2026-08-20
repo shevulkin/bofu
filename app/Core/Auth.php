@@ -25,8 +25,17 @@ class Auth
             // не приймати ідентифікатор сесії, якого ми не видавали (фіксація сесії)
             ini_set('session.use_strict_mode', '1');
             ini_set('session.use_only_cookies', '1');
-            $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
-                || ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https';
+            /*
+             * Той самий спосіб визначення, що й у заголовках, — Security::https().
+             *
+             * Раніше тут заголовок X-Forwarded-Proto брався на віру завжди, і
+             * це розходилось із рештою сайту. Наслідок був не теоретичний: на
+             * сайті без проксі будь-хто міг надіслати цей заголовок, кука
+             * отримувала прапорець Secure — і браузер переставав слати її по
+             * http. Тобто чужим заголовком можна було вимкнути людині кошик і
+             * вхід, а виглядало б це як «сайт зламався сам по собі».
+             */
+            $https = Security::https();
             session_set_cookie_params([
                 'httponly' => true,
                 'samesite' => 'Lax',
@@ -35,7 +44,58 @@ class Auth
                 'path' => base_url('/'),
             ]);
             session_start();
+            self::expireStale();
         }
+    }
+
+    /**
+     * Скільки сесія живе без дії і скільки взагалі.
+     *
+     * Дві межі, бо вони про різне. Перерва (idle) закриває забутий кабінет:
+     * продавець відійшов від каси, а комп'ютер у торговому залі. Загальний
+     * строк (absolute) обмежує вкрадену куку: навіть якщо нею користуються
+     * щохвилини, вона не працює вічно.
+     *
+     * Цифри — для магазину, а не для банку: 8 годин перерви це довша за зміну
+     * пауза, 30 днів загалом — місяць, після якого варто увійти наново.
+     * Покупця це майже не зачіпає: кошик у нього переживає перезаход, бо
+     * лежить у тій самій сесії лише доки вона жива, а замовлення знаходяться
+     * за посиланням із токеном.
+     */
+    private const IDLE_SECONDS = 8 * 3600;
+    private const ABSOLUTE_SECONDS = 30 * 86400;
+
+    /**
+     * Закрити сесію, якщо її строк вийшов.
+     *
+     * Перевіряємо лише для тих, хто увійшов: у гостя в сесії лежить кошик, і
+     * викидати його через вісім годин немає жодних підстав — ніяких прав ця
+     * сесія не дає.
+     */
+    private static function expireStale(): void
+    {
+        if (empty($_SESSION['user_id'])) return;
+
+        $now = time();
+        $started = (int)($_SESSION['auth_started'] ?? 0);
+        $seen = (int)($_SESSION['auth_seen'] ?? 0);
+
+        // Сесії, що жили до появи міток, не викидаємо заднім числом —
+        // просто починаємо рахувати їх від цієї миті
+        if ($started === 0) { $_SESSION['auth_started'] = $now; $_SESSION['auth_seen'] = $now; return; }
+
+        $idle = $seen > 0 && ($now - $seen) > self::IDLE_SECONDS;
+        $old  = ($now - $started) > self::ABSOLUTE_SECONDS;
+        if ($idle || $old) {
+            $uid = (int)$_SESSION['user_id'];
+            self::logout();
+            AuthLog::write($uid, 'session_expired', $idle ? 'перерва в роботі' : 'вичерпано загальний строк');
+            flash('error', $idle
+                ? 'Сесію закрито через перерву в роботі. Увійдіть, будь ласка, ще раз.'
+                : 'Строк цього входу вичерпано. Увійдіть, будь ласка, ще раз.');
+            return;
+        }
+        $_SESSION['auth_seen'] = $now;
     }
 
     public static function user(): ?array
@@ -247,7 +307,12 @@ class Auth
     {
         session_regenerate_id(true);
         $_SESSION['user_id'] = $userId;
+        // Годинник сесії заводиться саме тут, а не при першому запиті: строк
+        // рахується від входу, а не від того, коли людина вперше відкрила сайт
+        $_SESSION['auth_started'] = time();
+        $_SESSION['auth_seen'] = time();
         self::stopSimulating();
+        AuthLog::write($userId, 'login');
     }
 
     public static function logout(): void

@@ -84,20 +84,10 @@
   }
   function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 
-  // Налаштування: показати сховане значення ключа. Тримати їх відкритими на
-  // екрані не варто, але й звірити збережений токен із кабінетом сервісу
-  // якось треба — інакше єдиний спосіб переконатись у ньому це перезаписати.
-  Array.prototype.forEach.call(document.querySelectorAll('[data-eye]'), function (btn) {
-    btn.addEventListener('click', function () {
-      var input = btn.parentNode.querySelector('input');
-      if (!input) return;
-      var show = input.type === 'password';
-      input.type = show ? 'text' : 'password';
-      btn.classList.toggle('is-on', show);
-      btn.title = show ? 'Сховати значення' : 'Показати значення';
-      btn.setAttribute('aria-label', btn.title);
-    });
-  });
+  // Кнопки «показати значення» більше немає, і повернути її нема куди:
+  // збережені ключі в HTML сторінки не потрапляють узагалі, тож показувати в
+  // полі просто нічого. Звірити збережений ключ із кабінетом сервісу дає
+  // підпис біля назви поля — довжина й чотири останні символи.
 
   // Налаштування: головний вимикач сповіщень гасить канальні. Стан галок не
   // чіпаємо — вимкнули головний, увімкнули назад, і все на місці (сервер їх

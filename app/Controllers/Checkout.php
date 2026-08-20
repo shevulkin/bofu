@@ -212,7 +212,7 @@ class Checkout
         }
 
         $totals = Cart::total($storeId, $promo);
-        $number = 'BOFU-' . date('ymd') . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 4));
+        $number = OrderFlow::newNumber();
         // Адреса сторінки підтвердження: номер короткий і передбачуваний, тому
         // посилання йде за окремим випадковим токеном
         $token = bin2hex(random_bytes(16));

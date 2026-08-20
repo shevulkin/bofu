@@ -31,6 +31,8 @@ class App
         if ($clean === '/pay/notify' && $method === 'POST') { Controllers\PayController::notify(); }
         if ($clean === '/pay/return') { Controllers\PayController::back(); }
 
+        self::checkMethod($method);
+
         Auth::start();
 
         // Сайт закрито від пошуковиків: заголовок діє й там, де немає HTML (sitemap, JSON, файли)
@@ -62,6 +64,38 @@ class App
             http_response_code(500);
             echo View::render('errors/500', [], 'layouts/main');
         }
+    }
+
+    /**
+     * Методи, якими з сайтом узагалі можна розмовляти.
+     *
+     * Маршрути описані парами «шлях + метод» лише там, де метод важливий; для
+     * решти умова виглядає як `if ($path === '/shop')` — тобто GET і DELETE для
+     * неї одне й те саме, і `DELETE /` віддавав головну з кодом 200.
+     *
+     * Даних це не міняло: усе, що змінює стан, живе в POST і вимагає
+     * CSRF-токена. Але сторінка, яку віддають на будь-який метод, — це
+     * поверхня, якої не має бути: сканери й проміжні кеші поводяться з такими
+     * відповідями по-різному, а кожен новий маршрут, дописаний «поруч» без
+     * перевірки методу, успадковує це мовчки.
+     *
+     * HEAD не відкидаємо: це той самий GET без тіла, і саме ним ходять
+     * перевірки доступності сайту. OPTIONS відповідає переліком і на цьому
+     * зупиняється — так менше приводів вигадувати, що ще ми вміємо.
+     */
+    private const METHODS = ['GET', 'HEAD', 'POST'];
+
+    private static function checkMethod(string $method): void
+    {
+        if (in_array($method, self::METHODS, true)) return;
+
+        $allow = implode(', ', array_merge(self::METHODS, ['OPTIONS']));
+        header('Allow: ' . $allow);
+        if ($method === 'OPTIONS') { http_response_code(204); exit; }
+
+        http_response_code(405);
+        header('Content-Type: text/plain; charset=utf-8');
+        exit("Метод не підтримується.\n");
     }
 
     /** Перший запуск: створює таблиці й демо-дані автоматично */

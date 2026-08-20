@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 namespace Controllers\Admin;
 
-use View, Auth, Settings, WebPush, BotAuth, IntegrationCheck, RateLimit, Catalog, OrderFlow, Acquiring;
+use View, Auth, AuthLog, Settings, WebPush, BotAuth, IntegrationCheck, RateLimit, Catalog, OrderFlow, Acquiring;
 
 class SettingsAdmin
 {
@@ -26,6 +26,61 @@ class SettingsAdmin
         'google_client_secret' => 'Google OAuth: Client Secret',
         'bot_site_url' => 'Адреса сайту для кнопки в боті (напр. https://bofu.ua)',
     ];
+
+    /**
+     * Ключі, які НЕ повертаються у форму.
+     *
+     * Раніше кожне таке поле рендерилось як `value="<справжній ключ>"` —
+     * крапками його ховав лише type=password, тобто ключ лежав у розмітці
+     * сторінки цілком. Прочитати його там може будь-яке розширення браузера, і
+     * будь-яка вставка скрипта на цю сторінку вивозить усі ключі одразу.
+     *
+     * Приватний ключ платіжного шлюзу так ніколи й не робив (див. поле acq_key
+     * у вигляді): порожнє поле означає «не міняти», а прибрати збережене можна
+     * окремою галкою. Ці два місця розійшлися — тепер правило одне на всіх.
+     *
+     * Чого тут НЕМАЄ і чому:
+     *
+     *   google_maps_key — він і так їде в HTML кожної сторінки з картою,
+     *     інакше карта не завантажиться. Ховати його в налаштуваннях означало б
+     *     створювати враження таємниці там, де її немає; захищає його лише
+     *     обмеження за доменом у консолі Google.
+     *   google_client_id — публічний за побудовою OAuth, його видно в адресі
+     *     кнопки «Увійти через Google».
+     */
+    private const SECRET_KEYS = [
+        'telegram_bot_token',
+        'viber_bot_token',
+        'np_api_key',
+        'vchasno_token',
+        'google_client_secret',
+    ];
+
+    public static function isSecret(string $key): bool
+    {
+        return in_array($key, self::SECRET_KEYS, true);
+    }
+
+    /**
+     * Відбиток збереженого ключа: «46 символів, …4f2a».
+     *
+     * Потрібен рівно для того, заради чого раніше показували значення: звірити
+     * збережене з тим, що в кабінеті сервісу. Чотирьох останніх символів для
+     * цього досить — переплутані ключі відрізняються в них майже завжди, — а
+     * відновити ключ із відбитка неможливо.
+     *
+     * Короткі значення показуємо самим лише фактом: у ключі з десяти символів
+     * чотири — це вже майже половина.
+     */
+    public static function secretHint(string $key): string
+    {
+        $v = trim((string)Settings::get($key, ''));
+        if ($v === '') return '';
+        $len = mb_strlen($v);
+        return $len < 12
+            ? 'збережено'
+            : 'збережено · ' . $len . ' символів, закінчується на …' . mb_substr($v, -4);
+    }
 
     /**
      * Відправник для накладних Нової Пошти.
@@ -184,7 +239,37 @@ class SettingsAdmin
 
             $oldViber = Settings::get('viber_bot_token', '');
             foreach (self::TEXT_KEYS as $key => $label) {
-                if (isset($_POST['text'][$key])) Settings::set($key, trim($_POST['text'][$key]));
+                if (!isset($_POST['text'][$key])) continue;
+                $val = trim((string)$_POST['text'][$key]);
+
+                if (self::isSecret($key)) {
+                    /*
+                     * Секрети зберігаються за іншим правилом, ніж решта полів.
+                     *
+                     * Форма їх не показує, тож порожнє поле означає «не чіпав»,
+                     * а не «зітри». Інакше правка сусіднього рядка мовчки
+                     * вимикала б Telegram чи Нову Пошту — і зʼясувалось би це
+                     * на першому замовленні, яке нікуди не поїхало.
+                     *
+                     * Прибрати збережений ключ можна, але лише окремою галкою:
+                     * вимкнення інтеграції має бути свідомою дією, а не
+                     * побічним ефектом збереження форми.
+                     */
+                    $clear = !empty($_POST['secret_clear'][$key]);
+                    $had = trim((string)Settings::get($key, '')) !== '';
+                    if ($clear) {
+                        Settings::set($key, '');
+                        if ($had) AuthLog::write(Auth::id(), 'secret_changed', 'прибрано: ' . $label);
+                    } elseif ($val !== '') {
+                        Settings::set($key, $val);
+                        // У журнал іде назва поля, а не значення: журнал читає
+                        // людина, і він потрапляє в кожен дамп бази
+                        AuthLog::write(Auth::id(), 'secret_changed', ($had ? 'замінено: ' : 'задано: ') . $label);
+                    }
+                    continue;
+                }
+
+                Settings::set($key, $val);
             }
             // Тексти бота: порожнє поле = повернути типовий текст, а не показати
             // людині порожнє повідомлення. Тому зберігаємо '' і підставляємо
@@ -207,6 +292,7 @@ class SettingsAdmin
                 if (($res['status'] ?? -1) === 0) flash('success', 'Viber webhook зареєстровано' . ($uri ? ', бот: ' . $uri : ''));
                 else flash('error', 'Viber: webhook не зареєстровано (локально це нормально — запрацює на хостингу). ' . ($res['status_message'] ?? ''));
             }
+            AuthLog::write(Auth::id(), 'settings_changed');
             flash('success', 'Налаштування збережено');
             redirect('/admin/settings');
         }
