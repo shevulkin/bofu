@@ -7,7 +7,7 @@ declare(strict_types=1);
  */
 class Schema
 {
-    public const VERSION = 49;
+    public const VERSION = 50;
 
     /** Оновлення існуючої бази до поточної версії без втрати даних */
     public static function upgrade(): void
@@ -708,6 +708,18 @@ class Schema
              * Заднім числом журнал не заповнюється: те, що не записали, не
              * відновити. Тому таблиця починається з дня оновлення, і це
              * нормально — важливо, щоб вона почалась.
+             */
+            self::createAll();
+        }
+        if ($ver < 50) {
+            /*
+             * Вибір способів входу (див. LoginMethods).
+             *
+             * Таблиця створюється порожньою, і це не недогляд: порожньо означає
+             * «вибору не робили», тобто дозволені всі налаштовані способи.
+             * Заповнити її заднім числом було б найгіршим варіантом оновлення —
+             * частина людей увійшла б наступного дня в закриті двері, не
+             * розуміючи чому.
              */
             self::createAll();
         }
@@ -1498,6 +1510,20 @@ class Schema
                 'id' => 'id', 'user_id' => 'int', 'event' => 'str', 'channel' => 'str',
                 'enabled' => 'bool default 1',
             ],
+            /*
+             * Способи, якими дозволено входити в акаунт (див. LoginMethods).
+             *
+             * Присутність рядка = дозволено. Жодного рядка = вибору не робили,
+             * і тоді дозволені всі налаштовані способи — інакше оновлення схеми
+             * зачинило б двері всім одразу.
+             *
+             * Окрема таблиця, а не стовпець-перелік у users: способів кілька,
+             * вони додаються, і питання «хто дозволив собі вхід поштою» має
+             * лишатись звичайним запитом, а не розбором рядка.
+             */
+            'user_login_methods' => [
+                'id' => 'id', 'user_id' => 'int', 'method' => 'str', 'created_at' => 'ts',
+            ],
             'notification_rules' => [
                 'id' => 'id', 'event' => 'str', 'channel' => 'str', // telegram|push|email
                 'enabled' => 'bool default 1',
@@ -1591,6 +1617,7 @@ class Schema
             'seller_stores' => ['user_id', 'store_id'],
             'user_roles' => ['user_id', 'role'],
             'user_notify_prefs' => ['user_id'],
+            'user_login_methods' => ['user_id'],
             'user_addresses' => ['user_id'],
             'promo_uses' => ['promo_id', 'user_id', 'phone'],
             'qty_discounts' => ['product_id', 'category_id'],

@@ -169,6 +169,47 @@
       </form>
     <?php endif; ?>
 
+    <?php /*
+      Способи входу.
+      Показуємо, лише коли налаштовано більше одного: там, де спосіб один,
+      вибирати нема з чого, а єдина доступна дія — замкнути себе назовні.
+    */ ?>
+    <?php if ($login_ready_count > 1): ?>
+      <form class="admin-card" method="post" action="<?= e(url('/profile')) ?>">
+        <?= Csrf::field() ?><input type="hidden" name="_action" value="login_methods">
+        <h2 class="h-serif" style="font-size:20px">Способи входу в акаунт</h2>
+        <p class="dim" style="margin-bottom:16px">
+          Пароля тут немає: кожен спосіб нижче — окремий вхід, і будь-який із них пускає в акаунт.
+          Тому зайвий краще вимкнути: якщо ви заходите лише через Telegram, вхід поштою вам не
+          потрібен, а скринька — найдовше живе й найчастіше витікає.
+          Вимкнений спосіб перестає працювати одразу, навіть якщо хтось знає ваш номер чи пошту.
+        </p>
+        <?php foreach ($login_methods as $m => $st): ?>
+          <div class="notify-row">
+            <label class="checkbox<?= $st['ready'] ? '' : ' is-off' ?>"
+                   <?= $st['ready'] ? '' : 'title="' . e($st['hint']) . '"' ?>>
+              <?php /* Ненастроєний спосіб не можна ані обрати, ані надіслати:
+                       disabled прибирає поле з форми, а сервер однаково
+                       перевіряє готовність ще раз (LoginMethods::save). */ ?>
+              <input type="checkbox" name="lm[<?= e($m) ?>]" value="1"
+                     <?= $st['on'] ? ' checked' : '' ?><?= $st['ready'] ? '' : ' disabled' ?>>
+              <span><b><?= e($st['label']) ?></b>
+                <?php if ($st['ready']): ?>
+                  <span class="dim">— <?= e($st['about']) ?></span>
+                <?php else: ?>
+                  <span class="dim">— <?= e($st['hint']) ?></span>
+                <?php endif; ?>
+              </span>
+            </label>
+          </div>
+        <?php endforeach; ?>
+        <p class="dim" style="margin:14px 0 0;font-size:12.5px">
+          Хоча б один спосіб має лишитись увімкненим — інакше в акаунт не буде як зайти.
+        </p>
+        <button class="btn btn-gold" type="submit" style="margin-top:16px">💾 Зберегти способи входу</button>
+      </form>
+    <?php endif; ?>
+
     <?php if ($can_fiscal): ?>
       <form class="admin-card" method="post" action="<?= e(url('/profile')) ?>">
         <?= Csrf::field() ?><input type="hidden" name="_action" value="kasa">
