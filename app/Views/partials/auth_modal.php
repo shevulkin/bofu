@@ -90,6 +90,8 @@
   var eb = document.getElementById('emailLoginBtn');
   if (eb) eb.addEventListener('click', function(){
     var box = document.getElementById('emailLoginBox');
+    var pBox = document.getElementById('phoneLoginBox');
+    if (pBox) pBox.style.display = 'none';
     box.style.display = box.style.display === 'none' ? 'block' : 'none';
   });
   var emailSend = document.getElementById('emailSendBtn');
@@ -116,6 +118,8 @@
   var pb = document.getElementById('phoneLoginBtn');
   if (pb) pb.addEventListener('click', function(){
     var box = document.getElementById('phoneLoginBox');
+    var eBox = document.getElementById('emailLoginBox');
+    if (eBox) eBox.style.display = 'none';
     box.style.display = box.style.display === 'none' ? 'block' : 'none';
   });
   var sendBtn = document.getElementById('phoneSendBtn');
