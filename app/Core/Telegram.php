@@ -218,7 +218,9 @@ class Telegram
         $phone = AuthTokens::normPhoneAny((string)($contact['phone_number'] ?? ''));
         if (!$phone) { self::send($chatId, BotAuth::text('bot_bad_phone')); self::askPhone($chatId); return; }
 
-        $uid = BotAuth::resolveUser('tg_chat_id', $chatId, $phone, $name);
+        // Номер доведений: перевірка вище звірила, що контакт належить самому
+        // співрозмовнику, а не переслано з адресної книги
+        $uid = BotAuth::resolveUser('tg_chat_id', $chatId, $phone, $name, true);
         if (!$uid) { self::send($chatId, BotAuth::text('bot_expired')); return; }  // акаунт вимкнено
         self::confirm((int)$row['id'], $uid, $chatId, $name, $phone);
     }

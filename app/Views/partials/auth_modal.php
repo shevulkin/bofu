@@ -23,6 +23,25 @@
       <?php if (Telegram::configured() || Viber::configured()): ?>
         <button class="btn btn-line" id="phoneLoginBtn" type="button">Увійти за номером телефону</button>
       <?php endif; ?>
+      <?php /* Вхід поштою показуємо завжди — і навмисно без жодної умови
+               «якщо налаштовано». Це єдиний шлях, який не вимагає ні акаунта
+               Google, ні Telegram: людина з телефоном і будь-якою поштою
+               (ukr.net, meta.ua, робоча) заводить кабінет сама. Саме через
+               його відсутність такий покупець лишався вічним гостем —
+               міг купити, але не міг мати історії замовлень. */ ?>
+      <button class="btn btn-line" id="emailLoginBtn" type="button">Увійти за поштою</button>
+    </div>
+
+    <div id="emailLoginBox" style="display:none;margin-top:14px">
+      <div class="field"><label>Пошта</label><input type="email" id="emailInput" placeholder="you@ukr.net" autocomplete="email"></div>
+      <div class="field" id="emailCodeField" style="display:none"><label>Код з листа</label><input type="text" id="emailCodeInput" placeholder="123456" inputmode="numeric" autocomplete="one-time-code"></div>
+      <button class="btn btn-gold btn-sm" id="emailSendBtn" type="button">Отримати код</button>
+      <button class="btn btn-gold btn-sm" id="emailVerifyBtn" type="button" style="display:none">Увійти</button>
+      <?php /* Про теку «Спам» сказано наперед, а не після скарги: лист іде
+               звичайним mail() з хостингу, і поки на домені не налаштовані
+               SPF і DKIM, частина поштових служб кладе його саме туди. */ ?>
+      <p class="dim" style="margin-top:8px">Надішлемо код одним листом. Якщо його немає за хвилину —
+        подивіться в теці «Спам»: код видно прямо в темі листа.</p>
     </div>
     <div id="loginHint" class="dim" style="margin-top:12px;display:none"></div>
 
@@ -67,6 +86,32 @@
   }
   var tg = document.getElementById('tgLoginBtn');
   if (tg) tg.addEventListener('click', function(){ startLogin('/auth/tg/start', '/auth/tg/status', 'У боті натисніть Start, а тоді «Поділитися номером» — сайт увійде автоматично…'); });
+
+  var eb = document.getElementById('emailLoginBtn');
+  if (eb) eb.addEventListener('click', function(){
+    var box = document.getElementById('emailLoginBox');
+    box.style.display = box.style.display === 'none' ? 'block' : 'none';
+  });
+  var emailSend = document.getElementById('emailSendBtn');
+  if (emailSend) emailSend.addEventListener('click', function(){
+    var fd = new FormData();
+    fd.append('_csrf', csrf); fd.append('email', document.getElementById('emailInput').value);
+    fetch(base + '/auth/email/start', {method:'POST', body: fd}).then(r=>r.json()).then(function(d){
+      if (!d.ok) { show(d.error || 'Помилка'); return; }
+      show('Код надіслано. Введіть його нижче — і не забувайте про теку «Спам».');
+      document.getElementById('emailCodeField').style.display = 'block';
+      document.getElementById('emailVerifyBtn').style.display = 'inline-flex';
+      emailSend.style.display = 'none';
+    });
+  });
+  var emailVer = document.getElementById('emailVerifyBtn');
+  if (emailVer) emailVer.addEventListener('click', function(){
+    var fd = new FormData();
+    fd.append('_csrf', csrf); fd.append('code', document.getElementById('emailCodeInput').value);
+    fetch(base + '/auth/email/verify', {method:'POST', body: fd}).then(r=>r.json()).then(function(d){
+      if (d.logged_in) location.reload(); else show(d.error || 'Невірний код');
+    });
+  });
 
   var pb = document.getElementById('phoneLoginBtn');
   if (pb) pb.addEventListener('click', function(){

@@ -34,6 +34,58 @@ class Customers
     }
 
     /**
+     * Чи має цей запис право отримувати замовлення, оформлені на його номер.
+     *
+     * Два випадки, і обидва — про те, що номером не можна заволодіти з
+     * клавіатури:
+     *
+     *  1. Номер підтверджений (phone_verified_at) — контактом із Telegram, який
+     *     месенджер засвідчив сам.
+     *  2. Запис завів продавець у точці: технічна адреса @offline.local і
+     *     жодного каналу входу. У такий акаунт НІХТО не може увійти — код
+     *     поштою на .local не піде (EmailAuth::normEmail), месенджера немає,
+     *     Google немає. Це записник продавця, а не чийсь кабінет, і чіпляти до
+     *     нього продажі безпечно: побачить їх лише той, хто доведе номер і тим
+     *     самим цей запис успадкує (BotAuth::resolveUser склеює за номером).
+     *
+     * Усе інше — акаунт, у який хтось входить, із номером, вписаним руками.
+     * Такому номеру віри немає: вписати можна чужий, і саме так витікали б
+     * замовлення разом з адресою й сумами.
+     */
+    public static function ownsPhone(array $user): bool
+    {
+        if (!empty($user['phone_verified_at'])) return true;
+        return empty($user['google_id'])
+            && empty($user['tg_chat_id'])
+            && empty($user['viber_id'])
+            && empty($user['email_verified_at'])
+            && str_ends_with(mb_strtolower((string)$user['email']), '@offline.local');
+    }
+
+    /**
+     * Забрати собі власні замовлення, оформлені до підтвердження номера.
+     *
+     * Гість оформлює замовлення без входу — воно лишається з user_id = NULL і
+     * доступне лише за посиланням із токеном. Коли та сама людина згодом
+     * доводить свій номер, ці замовлення мають опинитись у її кабінеті: інакше
+     * «історія замовлень» починається з нуля саме в постійного покупця.
+     *
+     * Робиться це ЛИШЕ за доведеним номером і лише над анонімними записами:
+     * чуже замовлення, яке вже комусь належить, не перечіпляється ніколи.
+     *
+     * @param string $phone нормалізований номер (як його зберігає Checkout)
+     * @return int скільки замовлень причепилось
+     */
+    public static function claimOrders(int $userId, string $phone): int
+    {
+        if ($phone === '') return 0;
+        $rows = DB::all('SELECT id FROM orders WHERE user_id IS NULL AND phone = ?', [$phone]);
+        if (!$rows) return 0;
+        DB::query('UPDATE orders SET user_id = ? WHERE user_id IS NULL AND phone = ?', [$userId, $phone]);
+        return count($rows);
+    }
+
+    /**
      * Скільки замовлень у цієї людини — щоб продавець упізнав постійного покупця
      * ще до того, як почне продаж.
      */
@@ -56,6 +108,7 @@ class Customers
 
         $user = DB::row('SELECT * FROM users WHERE phone = ? ORDER BY id LIMIT 1', [$phone]);
         if ($user) {
+            if (!self::ownsPhone($user)) return null;
             // Імʼя з трубки не затирає введене самим покупцем: він міг назватись
             // у профілі як йому треба, а продавець записав зі слуху.
             if (trim((string)$user['name']) === '' && $name !== '') {

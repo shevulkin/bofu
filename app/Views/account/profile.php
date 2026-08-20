@@ -3,7 +3,10 @@
     <div class="kicker">Кабінет</div>
     <h2>Мій профіль</h2>
     <?php if (empty($u['phone'])): ?>
-      <div class="flash" style="padding:0;margin-top:16px"><div class="flash-error">Для користування сайтом потрібен номер телефону — вкажіть його нижче.</div></div>
+      <div class="flash" style="padding:0;margin-top:16px"><div class="flash-error"><?= empty($u['email_verified_at'])
+        ? 'Для користування сайтом потрібен номер телефону — вкажіть його нижче.'
+        : 'Вкажіть номер телефону — без нього ми не подзвонимо про замовлення. Сайтом можна користуватись і так: '
+          . 'ми напишемо на вашу пошту.' ?></div></div>
     <?php endif; ?>
 
     <?php /* Замовлення — те, по що в кабінет приходять найчастіше, тож кнопка
@@ -15,9 +18,28 @@
     <form class="admin-card" method="post" action="<?= e(url('/profile')) ?>" style="margin-top:22px">
       <?= Csrf::field() ?>
       <div class="field"><label>Імʼя та прізвище</label><input type="text" name="name" value="<?= e($u['name']) ?>" required></div>
-      <div class="field"><label>Телефон *</label><input type="tel" name="phone" value="<?= e($u['phone']) ?>" placeholder="067 123 45 67" required></div>
+      <?php /* Обовʼязковість поля залежить від того, чи є інший спосіб звʼязку.
+               Хто увійшов поштою, може не мати змоги зайняти свій номер (його
+               вже міг записати продавець у точці) — тоді required перетворював
+               би профіль на глухий кут: зберегти не можна нічого, зокрема імʼя. */ ?>
+      <div class="field"><label>Телефон<?= empty($u['email_verified_at']) ? ' *' : '' ?></label>
+        <input type="tel" name="phone" value="<?= e($u['phone']) ?>" placeholder="067 123 45 67"<?= empty($u['email_verified_at']) ? ' required' : '' ?>>
+        <?php /* Стан номера показуємо словами, бо від нього залежить видима річ:
+                 чи потрапить у кабінет замовлення, яке продавець оформив по
+                 телефону. Мовчазна різниця між «вписаний» і «підтверджений»
+                 читалась би як несправність сайту. */ ?>
+        <?php if (!empty($u['phone'])): ?>
+          <?php if (!empty($u['phone_verified_at'])): ?>
+            <p class="dim" style="margin:6px 0 0">✓ Номер підтверджений — замовлення, оформлені на нього по телефону, потрапляють сюди.</p>
+          <?php else: ?>
+            <p class="dim" style="margin:6px 0 0">Номер не підтверджений. Він годиться для звʼязку, але замовлення,
+              оформлені продавцем на цей номер, у кабінет не потраплять.
+              <?php if (!empty($tg_ready)): ?>Щоб підтвердити — увійдіть через Telegram: бот попросить поділитися номером.<?php endif; ?></p>
+          <?php endif; ?>
+        <?php endif; ?>
+      </div>
       <div class="field"><label>Email</label><input type="text" value="<?= e($mail_email ?: '—') ?>" disabled>
-        <?php if (!$mail_email): ?><p class="dim" style="margin:6px 0 0">Email підтягнеться автоматично, якщо увійти через Google.</p><?php endif; ?>
+        <?php if (!$mail_email): ?><p class="dim" style="margin:6px 0 0">Email підтягнеться автоматично, якщо увійти через Google або за поштою.</p><?php endif; ?>
       </div>
       <?php if ($mail_email): ?>
         <label class="checkbox" style="align-items:flex-start;margin-bottom:18px">

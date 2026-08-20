@@ -375,13 +375,18 @@ class Auth
                 'google_id' => $profile['sub'],
                 'name' => $profile['name'] ?? $user['name'],
                 'avatar' => $profile['picture'] ?? $user['avatar'],
+                // Google віддає лише підтверджені адреси, тож скринька доведена.
+                // Номер — ні: його Google не знає, і вписаний у профілі номер
+                // так і лишається неперевіреним (див. users.phone_verified_at).
+                'email_verified_at' => $user['email_verified_at'] ?? null ?: now(),
             ], 'id = ?', [$user['id']]);
             $id = (int)$user['id'];
         } else {
             $id = DB::insert('users', [
                 'google_id' => $profile['sub'], 'email' => $profile['email'],
                 'name' => $profile['name'] ?? $profile['email'], 'avatar' => $profile['picture'] ?? null,
-                'role' => Roles::CUSTOMER, 'active' => 1, 'created_at' => now(),
+                'role' => Roles::CUSTOMER, 'active' => 1,
+                'email_verified_at' => now(), 'created_at' => now(),
             ]);
         }
         self::login($id);
