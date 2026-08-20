@@ -1277,8 +1277,9 @@ body.help-on [data-help] *{pointer-events:none}
 /* Непридатний номер видно на самому полі: рядок під ним пояснює, а рамка каже,
    де саме виправляти */
 .pos-check input.is-bad{border-color:var(--danger2)}
-/* Хто покупець цього чека. Три стани мають читатись, не вчитуючись: знайдений,
-   новий (акаунт зʼявиться) і анонім — це різні наслідки, а не відтінки одного. */
+/* Хто покупець цього чека. Стани мають читатись, не вчитуючись: знайдений,
+   новий (акаунт зʼявиться), анонім і «номер зайнятий непідтвердженим акаунтом» —
+   це різні наслідки, а не відтінки одного. */
 .pos-who{display:flex;gap:9px;align-items:flex-start;margin-top:12px;padding:9px 11px;
   border-radius:4px;font-size:13px;line-height:1.4;background:var(--bg3);
   border-left:3px solid var(--line2);color:var(--muted)}
@@ -1291,6 +1292,10 @@ body.help-on [data-help] *{pointer-events:none}
 .pos-who.is-new .pos-who-icon{background:var(--gold)}
 .pos-who.is-bad{border-left-color:var(--danger2);color:var(--danger2)}
 .pos-who.is-bad .pos-who-icon{background:var(--danger2)}
+/* Не помилка (продаж відбудеться), але й не «все гаразд»: замовлення лишиться
+   без кабінету, і продавець має це побачити, а не прочитати згодом у скарзі */
+.pos-who.is-taken{border-left-color:var(--gold);color:var(--text)}
+.pos-who.is-taken .pos-who-icon{background:var(--gold)}
 /* Поле штрихкоду з кнопкою камери й самим кодом малюнком: сторінку кодів
    друкують і ріжуть на етикетки, тож код має бути видно поруч із полем */
 /* Поля тут — головне, з чим працюють, тож вони мають виглядати полями: у

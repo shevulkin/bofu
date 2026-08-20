@@ -7,7 +7,7 @@ declare(strict_types=1);
  */
 class Schema
 {
-    public const VERSION = 48;
+    public const VERSION = 49;
 
     /** Оновлення існуючої бази до поточної версії без втрати даних */
     public static function upgrade(): void
@@ -711,6 +711,33 @@ class Schema
              */
             self::createAll();
         }
+        if ($ver < 49) {
+            /*
+             * Підтверджені контакти: пошта (вхід за кодом) і номер (Telegram).
+             *
+             * Заднім числом не проставляємо НІЧОГО, і це навмисно.
+             *
+             * Спокуса є: позначити доведеними номери всіх, у кого привʼязаний
+             * Telegram, — контакт же приходив із месенджера. Але звірка
+             * contact.user_id проти from.id зʼявилась лише в 0722edf, а до неї
+             * переслати чужий контакт було можна. Тобто серед старих записів
+             * теоретично є рівно ті, заради яких усе це й робиться. Позначити
+             * їх доведеними означало б закрити двері й лишити ключ у замку.
+             *
+             * Втрати від суворості немає: бот просить контакт при КОЖНОМУ вході
+             * (див. README, «Вхід через месенджер»), тож номер стає доведеним
+             * сам собою, першим же входом. Пошта — так само, першим входом за
+             * кодом. Вхід через Google теж проставляє пошту: Google віддає
+             * лише підтверджені адреси.
+             *
+             * Замовлення, оформлені до підтвердження, не губляться —
+             * Customers::claimOrders() чіпляє їх у ту ж мить, коли номер стає
+             * доведеним.
+             */
+            self::addColumn('users', 'email_verified_at', 'ts null');
+            self::addColumn('users', 'phone_verified_at', 'ts null');
+            self::addColumn('auth_tokens', 'email', 'str null');
+        }
         Settings::set('schema_version', (string)self::VERSION);
     }
 
@@ -849,6 +876,22 @@ class Schema
                 'role' => "str default 'customer'", // admin|seller|editor|customer
                 'active' => 'bool default 1', 'tg_chat_id' => 'str null',
                 'viber_id' => 'str null', 'phone' => 'str null',
+                /*
+                 * Чим доведено, що контакт належить власнику акаунта.
+                 *
+                 * Пошта доводиться одноразовим кодом у листі (EmailAuth), номер —
+                 * контактом із Telegram (там є contact.user_id, яким це можна
+                 * звірити). Вписаний руками номер не доводить нічого: він лишається
+                 * контактом для дзвінка, але не робить акаунт власником номера.
+                 *
+                 * Різниця не теоретична. Замовлення, які продавець оформлює по
+                 * телефону, знаходять покупця саме за номером (Customers::resolve).
+                 * Доки «номер у профілі» = «мій номер», будь-хто, хто увійшов,
+                 * міг вписати чужий номер і почати збирати чужі замовлення разом
+                 * з адресою й сумами. Саме через цю дірку прибрано вхід через
+                 * Viber (66a8175) — але через профіль вона лишалась відкритою.
+                 */
+                'email_verified_at' => 'ts null', 'phone_verified_at' => 'ts null',
                 // Власна каса продавця: Device Manager на його ПК чи телефоні
                 // зі своїм ключем. Порожньо — працює касою своєї точки.
                 'fiscal_route' => 'str null',
@@ -1466,8 +1509,9 @@ class Schema
             ],
             'auth_tokens' => [
                 'id' => 'id', 'user_id' => 'int null',
-                'purpose' => 'str', // tg_link|tg_login|viber_link|phone_code
+                'purpose' => 'str', // tg_link|tg_login|viber_link|phone_code|email_code
                 'token' => 'str unique', 'code' => 'str null', 'phone' => 'str null',
+                'email' => 'str null',                      // адреса, на яку пішов код входу
                 'chat_id' => 'str null', 'confirmed_user_id' => 'int null',
                 'ip' => 'str null', 'agent' => 'str null',  // звідки почався вхід — показуємо в боті
                 'expires_at' => 'str', 'used' => 'bool default 0', 'created_at' => 'ts',

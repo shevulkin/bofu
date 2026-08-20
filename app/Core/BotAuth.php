@@ -127,9 +127,15 @@ class BotAuth
      * прийшов через бота.
      *
      * @param string $idField 'tg_chat_id' | 'viber_id'
+     * @param bool   $phoneVerified чи довів месенджер, що номер належить саме
+     *        співрозмовнику. Окремий параметр, а не «раз прийшло з бота — значить
+     *        доведено»: у Telegram доказ є (contact.user_id проти from.id), у
+     *        Viber його немає взагалі — саме тому вхід через Viber і прибрано
+     *        (66a8175). Наступний месенджер, який тут зʼявиться, муситиме сказати
+     *        це вголос, а не успадкувати чужу довіру мовчки.
      * @return int id акаунта
      */
-    public static function resolveUser(string $idField, string $extId, string $phone, string $name): int
+    public static function resolveUser(string $idField, string $extId, string $phone, string $name, bool $phoneVerified = false): int
     {
         if (!in_array($idField, ['tg_chat_id', 'viber_id'], true)) {
             throw new InvalidArgumentException('Невідоме поле месенджера: ' . $idField);
@@ -140,11 +146,13 @@ class BotAuth
         if ($user) {
             if (!$user['active']) return 0;               // вимкнений акаунт входу не дає
             $upd = [$idField => $extId, 'phone' => $phone];
+            if ($phoneVerified) $upd['phone_verified_at'] = now();
             // Імʼя з месенджера не затирає вже введене: людина могла назватись
             // у профілі як їй треба, а в Telegram у неї нік із емодзі.
             if (trim((string)$user['name']) === '' && $name !== '') $upd['name'] = $name;
             DB::update('users', $upd, 'id = ?', [(int)$user['id']]);
             self::detachFrom($idField, $extId, (int)$user['id']);
+            if ($phoneVerified) Customers::claimOrders((int)$user['id'], $phone);
             return (int)$user['id'];
         }
 
@@ -153,10 +161,13 @@ class BotAuth
             'email' => substr(md5($extId), 0, 12) . $suffix,
             'name' => $name !== '' ? $name : 'Покупець',
             'role' => 'customer', 'active' => 1,
-            $idField => $extId, 'phone' => $phone, 'created_at' => now(),
+            $idField => $extId, 'phone' => $phone,
+            'phone_verified_at' => $phoneVerified ? now() : null,
+            'created_at' => now(),
         ]);
         Notify::fire('user_new', ['name' => $name, 'email' => $idField === 'tg_chat_id' ? 'Telegram' : 'Viber']);
         self::detachFrom($idField, $extId, $uid);
+        if ($phoneVerified) Customers::claimOrders($uid, $phone);
         return $uid;
     }
 

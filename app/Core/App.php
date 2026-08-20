@@ -42,10 +42,23 @@ class App
         View::share('auth_user', Auth::user());
         View::share('cart_count', Cart::count());
 
-        // Обовʼязковий телефон: доки не вказаний коректний номер — лише профіль.
-        // Перевіряємо саме валідність, а не «непорожність», інакше сміття на кшталт '1' пройде гейт.
+        /*
+         * Як із покупцем звʼязатись: доки нема ані номера, ані підтвердженої
+         * пошти — лише профіль. Номер перевіряємо саме на валідність, а не на
+         * «непорожність», інакше сміття на кшталт '1' пройде гейт.
+         *
+         * Раніше тут вимагався саме телефон, і для тих, хто входить поштою, це
+         * ставало глухим кутом: номер міг виявитись зайнятим (наприклад,
+         * записом, який продавець завів на цю людину в точці), а віддати його
+         * не можна — пошта не доводить володіння номером. Виходило, що людина
+         * увійшла й лишилась замкненою в профілі назавжди.
+         *
+         * Сенс гейта від цього не змінився: підтверджена скринька — теж спосіб
+         * дістати покупця. А номер отримувача в замовленні питається окремо, у
+         * формі оформлення, і там він обовʼязковий, як і був.
+         */
         $u = Auth::user();
-        if ($u && AuthTokens::normPhoneAny((string)($u['phone'] ?? '')) === null) {
+        if ($u && AuthTokens::normPhoneAny((string)($u['phone'] ?? '')) === null && empty($u['email_verified_at'])) {
             $p = rtrim(request_path(), '/') ?: '/';
             $allowed = ['/profile', '/profile/tg/link', '/profile/tg/check', '/profile/viber/link', '/profile/viber/check', '/logout', '/sw.js', '/manifest.webmanifest'];
             // відписка від розсилки має працювати завжди — це вимога закону про згоду
@@ -214,6 +227,16 @@ class App
         // створення токенів входу — найдешевша для бота дія, тому з лімітом
         if ($path === '/auth/tg/start') { RateLimit::guard('login_start', 20, 3600, null, true); Controllers\AuthController::tgStart(); }
         if ($path === '/auth/tg/status') { Controllers\AuthController::tgStatus(); }
+        /*
+         * Вхід поштою за одноразовим кодом — для тих, у кого немає ані Google,
+         * ані Telegram. Ліміт удвічі суворіший за телефонний і рахується по IP:
+         * кожен код — це лист, надісланий на вказану адресу, тож без стелі
+         * форма стає безкоштовною поштовою гарматою по чужих скриньках.
+         * Друга стеля, на саму адресу, стоїть усередині (EmailAuth::PER_HOUR) —
+         * інакше зміна IP знімала б обмеження з конкретної жертви.
+         */
+        if ($path === '/auth/email/start' && $method === 'POST') { RateLimit::guard('email_start', 5, 3600, null, true); Controllers\AuthController::emailStart(); }
+        if ($path === '/auth/email/verify' && $method === 'POST') { RateLimit::guard('email_verify', 20, 3600, null, true); Controllers\AuthController::emailVerify(); }
         if ($path === '/auth/phone/start' && $method === 'POST') { RateLimit::guard('phone_start', 10, 3600, null, true); Controllers\AuthController::phoneStart(); }
         if ($path === '/auth/phone/verify' && $method === 'POST') { RateLimit::guard('phone_verify', 20, 3600, null, true); Controllers\AuthController::phoneVerify(); }
         if ($path === '/profile') { Controllers\Profile::index(); }

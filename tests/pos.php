@@ -170,10 +170,14 @@ final class PosTest
     {
         $this->group('відомий номер — знайдений акаунт');
         $phone = $this->freePhone();
+        // phone_verified_at — не деталь фікстури, а умова. Замовлення з каси
+        // отримує лише той, хто номер ДОВІВ (контактом із Telegram) або кого
+        // завів сам продавець. Акаунт, у якому номер просто вписали руками,
+        // чужих продажів не бачить — див. Customers::ownsPhone і tests/emailauth.php.
         $existing = DB::insert('users', [
             'email' => 'pos-test-' . bin2hex(random_bytes(3)) . '@example.com',
             'name' => 'Ганна Коваль', 'role' => 'customer', 'active' => 1,
-            'phone' => $phone, 'created_at' => now(),
+            'phone' => $phone, 'phone_verified_at' => now(), 'created_at' => now(),
         ]);
         $this->userIds[] = $existing;
         $before = (int)DB::val('SELECT COUNT(*) FROM users');
@@ -191,7 +195,7 @@ final class PosTest
         $blank = DB::insert('users', [
             'email' => 'pos-test-' . bin2hex(random_bytes(3)) . '@example.com',
             'name' => '', 'role' => 'customer', 'active' => 1,
-            'phone' => $phone, 'created_at' => now(),
+            'phone' => $phone, 'phone_verified_at' => now(), 'created_at' => now(),
         ]);
         $this->userIds[] = $blank;
         Customers::resolve($phone, 'Олена');

@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 namespace Controllers;
 
-use DB, Auth, GoogleAuth, Csrf, Notify, AuthTokens, AuthLog, Telegram, Viber;
+use DB, Auth, GoogleAuth, Csrf, Notify, AuthTokens, AuthLog, EmailAuth, Telegram, Viber;
 
 class AuthController
 {
@@ -57,6 +57,40 @@ class AuthController
         json_response(['ok' => true, 'logged_in' => false]);
     }
 
+    /**
+     * Вхід поштою, крок 1: надіслати одноразовий код.
+     *
+     * Відповідь однакова і для наявної адреси, і для незнайомої: цей вхід
+     * заразом і реєстрація, тож розрізняти нема чого — а відмінність у
+     * відповідях перетворила б форму на спосіб перевіряти чужі адреси.
+     */
+    public static function emailStart(): never
+    {
+        Csrf::verify();
+        $res = EmailAuth::sendCode($_POST['email'] ?? '');
+        if (!$res['ok']) json_response(['ok' => false, 'error' => $res['error'] ?? 'Помилка']);
+        // Токен живе в сесії, а не в формі: інакше його видно в розмітці, і
+        // код можна було б звіряти з чужим листом у тому ж браузері.
+        if (!empty($res['token'])) $_SESSION['email_login'] = ['token' => $res['token'], 'tries' => 0];
+        json_response(['ok' => true]);
+    }
+
+    /** Вхід поштою, крок 2: звірити код */
+    public static function emailVerify(): never
+    {
+        Csrf::verify();
+        $st = $_SESSION['email_login'] ?? null;
+        if (!$st) json_response(['ok' => false, 'error' => 'Сесія входу застаріла. Попросіть, будь ласка, новий код.']);
+        if ($st['tries'] >= 5) { unset($_SESSION['email_login']); json_response(['ok' => false, 'error' => 'Забагато спроб']); }
+        $_SESSION['email_login']['tries']++;
+
+        $res = EmailAuth::verify((string)$st['token'], (string)($_POST['code'] ?? ''));
+        if (!$res['ok']) json_response(['ok' => false, 'error' => $res['error'] ?? 'Невірний код']);
+        unset($_SESSION['email_login']);
+        Auth::login((int)$res['user_id']);
+        json_response(['ok' => true, 'logged_in' => true]);
+    }
+
     /** Вхід за телефоном: надіслати код у месенджер */
     public static function phoneStart(): never
     {
@@ -88,7 +122,7 @@ class AuthController
             json_response(['ok' => false, 'error' =>
                 'На цей номер ще немає акаунта. Створіть його через Telegram — бот попросить '
                 . 'поділитися номером, і акаунт зʼявиться вже з підтвердженим номером. '
-                . 'Або скористайтесь входом через Google.']);
+                . 'Або увійдіть за поштою: код прийде листом.']);
         }
         if (empty($user['tg_chat_id']) && empty($user['viber_id'])) {
             json_response(['ok' => false, 'error' =>

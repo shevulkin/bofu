@@ -56,20 +56,49 @@ class Profile
             // з номером +49… (Checkout), і гейт у App.php такий номер пропускає —
             // а профіль його не приймав. Виходило, що людина не могла зберегти
             // власний, уже записаний у неї номер.
-            $phone = AuthTokens::normPhoneAny($_POST['phone'] ?? '');
+            $raw = trim((string)($_POST['phone'] ?? ''));
+            $phone = AuthTokens::normPhoneAny($raw);
+            $name = trim($_POST['name'] ?? $u['name']) ?: $u['name'];
+
+            // Порожнє поле — не помилка для того, хто увійшов поштою: скринька
+            // вже підтверджена, і зв'язок із покупцем є. Інакше він не зміг би
+            // навіть імʼя собі виправити, поки не вигадає номер.
+            if ($raw === '' && !empty($u['email_verified_at'])) {
+                DB::update('users', ['name' => $name], 'id = ?', [$u['id']]);
+                self::saveSubscription($u, $name);
+                flash('success', 'Профіль збережено');
+                redirect('/profile');
+            }
+
             if (!$phone) {
                 flash('error', 'Вкажіть коректний номер телефону — український як 067 123 45 67 або міжнародний із кодом країни через +');
-            } else {
-                $busy = DB::row('SELECT id FROM users WHERE phone = ? AND id != ?', [$phone, $u['id']]);
-                if ($busy) flash('error', 'Цей номер вже привʼязано до іншого акаунта');
-                else {
-                    $name = trim($_POST['name'] ?? $u['name']) ?: $u['name'];
-                    DB::update('users', ['phone' => $phone, 'name' => $name], 'id = ?', [$u['id']]);
-                    $email = Newsletter::normEmail((string)$u['email']);
-                    if ($email) Newsletter::apply(!empty($_POST['newsletter']), $email, $name, (int)$u['id'], 'profile');
-                    flash('success', 'Профіль збережено');
-                }
+                redirect('/profile');
             }
+
+            $busy = DB::row('SELECT * FROM users WHERE phone = ? AND id != ?', [$phone, $u['id']]);
+            if ($busy) {
+                // Пояснюємо, що робити далі. «Вже привʼязано до іншого акаунта»
+                // читалось як «ваш номер у когось украли», хоча найчастіша
+                // причина мирна: покупця з цим номером завів продавець у точці,
+                // або людина колись заходила через Telegram іншим шляхом.
+                flash('error', 'Цей номер уже записаний в іншому акаунті. Якщо він ваш — увійдіть через '
+                    . 'Telegram: бот попросить поділитися номером, і обидва записи склеяться в один.');
+                redirect('/profile');
+            }
+
+            /*
+             * Зміна номера скидає підтвердження — і це головне тут.
+             *
+             * Підтвердження стосується конкретного номера, а не акаунта: людина,
+             * яка колись довела свій номер через Telegram, вписавши сюди чужий,
+             * інакше отримала б його «вже підтвердженим» — тобто рівно ту дірку,
+             * яку phone_verified_at і закриває.
+             */
+            $upd = ['phone' => $phone, 'name' => $name];
+            if ($phone !== (string)($u['phone'] ?? '')) $upd['phone_verified_at'] = null;
+            DB::update('users', $upd, 'id = ?', [$u['id']]);
+            self::saveSubscription($u, $name);
+            flash('success', 'Профіль збережено');
             redirect('/profile');
         }
 
@@ -94,6 +123,13 @@ class Profile
             'notify_channels' => Notify::CHANNELS,
             'page_title' => 'Мій профіль — ' . cfg('app_name'),
         ]);
+    }
+
+    /** Галка розсилки живе поруч із профілем, але стосується лише справжньої скриньки */
+    private static function saveSubscription(array $u, string $name): void
+    {
+        $email = Newsletter::normEmail((string)$u['email']);
+        if ($email) Newsletter::apply(!empty($_POST['newsletter']), $email, $name, (int)$u['id'], 'profile');
     }
 
     /**
