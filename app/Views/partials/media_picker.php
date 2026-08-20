@@ -1,10 +1,14 @@
 <div class="modal-back" id="mediaPicker" style="z-index:120">
   <div class="modal" style="max-width:760px;max-height:84vh;overflow:auto">
     <h3>Вибрати фото</h3>
-    <div style="display:flex;gap:10px;align-items:center;margin:14px 0">
-      <input type="file" id="mpUpload" accept="image/*">
-      <button class="btn btn-line btn-sm" id="mpUploadBtn" type="button">Завантажити з ПК</button>
-      <span class="dim" id="mpHint"></span>
+    <?php /* Той самий компонент, що й у медіа-бібліотеці: завантаження туди ж,
+             у ту саму бібліотеку, тож і поводитись має однаково. Компактний
+             вигляд — бо під зоною одразу йде сітка вибору. */ ?>
+    <div class="dropzone is-slim" id="mpDrop" style="margin:14px 0">
+      <input type="file" accept="image/*" multiple>
+      <span class="dropzone-title">Перетягніть фото сюди</span>
+      <span class="dropzone-hint">або клацніть, щоб обрати на компʼютері</span>
+      <span class="dropzone-note"></span>
     </div>
     <div class="img-grid" id="mpGrid" style="min-height:120px"></div>
     <div class="stack"><button class="btn btn-line btn-sm" id="mpClose" type="button">Закрити</button></div>
@@ -47,17 +51,25 @@ window.MediaPicker = (function(){
   function close(){ modal.classList.remove('open'); }
   document.getElementById('mpClose').addEventListener('click', close);
   modal.addEventListener('click', function(e){ if (e.target === modal) close(); });
-  document.getElementById('mpUploadBtn').addEventListener('click', function(){
-    var f = document.getElementById('mpUpload').files[0];
-    if (!f) { document.getElementById('mpHint').textContent = 'Оберіть файл'; return; }
-    var fd = new FormData();
-    fd.append('_csrf', csrf); fd.append('_action', 'upload'); fd.append('image', f); fd.append('format', 'json');
-    document.getElementById('mpHint').textContent = 'Завантаження…';
-    fetch(base + '/admin/media', {method:'POST', body:fd}).then(r=>r.json()).then(function(d){
-      document.getElementById('mpHint').textContent = d.ok ? ('Додано ' + d.width + '×' + d.height) : 'Помилка';
-      load();
+  /*
+   * Завантаження — спільним компонентом (BofuDrop), а не власним обробником.
+   *
+   * Раніше тут лежала своя копія: системне поле, кнопка поруч і свій fetch.
+   * Копія розходиться — у бібліотеці завантаження вже вміло кілька файлів і
+   * перетягування, а тут лишалось по одному й тільки кліком.
+   *
+   * Сітку перечитуємо з сервера ОДИН раз, коли все завантажилось, а не після
+   * кожного файлу: інакше десять фото дали б десять перемальовувань, і
+   * обране під курсором стрибало б із-під пальця.
+   */
+  if (window.BofuDrop) {
+    BofuDrop.attach(document.getElementById('mpDrop'), {
+      url: base + '/admin/media',
+      csrf: csrf,
+      field: 'image',
+      onAll: function (done) { if (done) load(); }
     });
-  });
+  }
   return { open: open };
 })();
 </script>
