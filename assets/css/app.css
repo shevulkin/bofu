@@ -1699,3 +1699,36 @@ body.ce-on [data-ce].ce-just-saved{outline:2px solid var(--ok);outline-offset:3p
   .lb-nav{width:44px;height:44px;font-size:30px}
   .lb-fig img{max-height:70vh}
 }
+
+/* Password visibility toggle styling */
+.password-toggle-wrapper {
+  position: relative;
+  display: block;
+  width: 100%;
+}
+.password-toggle-wrapper input[type="password"],
+.password-toggle-wrapper input[type="text"] {
+  padding-right: 40px !important;
+}
+.password-toggle-btn {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: var(--dim);
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  line-height: 1;
+  transition: color 0.15s;
+  z-index: 2;
+}
+.password-toggle-btn:hover {
+  color: var(--gold);
+}
+
