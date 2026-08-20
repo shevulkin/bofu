@@ -1,7 +1,13 @@
 <?php
 declare(strict_types=1);
 
-/** Viber Bot API: сповіщення + підключення/вхід через webhook (працює на публічному HTTPS) */
+/**
+ * Viber Bot API: сповіщення й підключення до акаунта.
+ *
+ * ВХОДУ через Viber тут немає навмисно — див. пояснення в handleEvent().
+ * Коротко: Viber не має чим довести, що надісланий номер належить
+ * співрозмовнику, тож ним можна лише ПИСАТИ у вже підтверджений чат.
+ */
 class Viber
 {
     /** Підміна токена для перевірки налаштувань — див. Telegram::useToken() */
@@ -40,51 +46,6 @@ class Viber
         ];
         if ($keyboard !== null) $p['keyboard'] = $keyboard;
         self::api('send_message', $p);
-    }
-
-    /**
-     * «Це справді ви?» перед входом у вже привʼязаний акаунт — навіщо, див.
-     * Telegram::askConfirm(). Viber не має окремих callback-ів: натиснута кнопка
-     * приходить звичайним повідомленням, текст якого — її ActionBody.
-     */
-    private static function askConfirm(string $viberId, array $row): void
-    {
-        $token = (string)$row['token'];
-        self::send($viberId, BotAuth::text('bot_confirm_login', BotAuth::loginFrom($row) + ['messenger' => 'Viber']), [
-            'Type' => 'keyboard', 'DefaultHeight' => false,
-            'Buttons' => [
-                ['ActionType' => 'reply', 'ActionBody' => 'ok:' . $token, 'Columns' => 3,
-                 'Text' => BotAuth::text('bot_confirm_btn'), 'TextSize' => 'regular'],
-                ['ActionType' => 'reply', 'ActionBody' => 'no:' . $token, 'Columns' => 3,
-                 'Text' => BotAuth::text('bot_decline_btn'), 'TextSize' => 'regular'],
-            ],
-        ]);
-    }
-
-    /** Кнопка «поділитися номером» — у Viber це окремий тип дії */
-    private static function askPhone(string $viberId): void
-    {
-        self::send($viberId, BotAuth::text('bot_ask_phone'), [
-            'Type' => 'keyboard', 'DefaultHeight' => false,
-            'Buttons' => [[
-                'ActionType' => 'share-phone', 'ActionBody' => 'phone',
-                'Text' => BotAuth::text('bot_ask_phone_btn'), 'TextSize' => 'regular',
-            ]],
-        ]);
-    }
-
-    /** Підсумок: текст плюс кнопка-посилання назад на сайт */
-    private static function sayDone(string $viberId, string $name, string $phone): void
-    {
-        $url = BotAuth::siteUrl();
-        $kb = $url === '' ? null : [
-            'Type' => 'keyboard', 'DefaultHeight' => false,
-            'Buttons' => [[
-                'ActionType' => 'open-url', 'ActionBody' => $url,
-                'Text' => BotAuth::text('bot_done_btn'), 'TextSize' => 'regular',
-            ]],
-        ];
-        self::send($viberId, BotAuth::text('bot_done', ['name' => $name, 'phone' => $phone]), $kb);
     }
 
     /**
@@ -127,128 +88,45 @@ class Viber
         return hash_equals(hash_hmac('sha256', $body, self::token()), $signature);
     }
 
-    /** Обробка події webhook: привʼязка viber_id за context-токеном або отриманий контакт */
+    /** Обробка події webhook: привʼязка viber_id до акаунта за context-токеном */
     public static function handleEvent(array $ev): void
     {
         $type = $ev['event'] ?? '';
         $viberId = $ev['user']['id'] ?? $ev['sender']['id'] ?? null;
-        $name = $ev['user']['name'] ?? $ev['sender']['name'] ?? '';
         if (!$viberId) return;
 
-        // Контакт приходить окремим повідомленням, уже без context — тому
-        // незавершений вхід шукаємо за самим viber_id.
-        if ($type === 'message' && ($ev['message']['type'] ?? '') === 'contact') {
-            self::onContact((string)$viberId, $ev['message']['contact'] ?? [], (string)$name);
-            return;
-        }
-
+        /*
+         * Viber тут ЛИШЕ ПІДКЛЮЧАЄТЬСЯ до наявного акаунта — увійти ним не можна.
+         *
+         * Причина не в реалізації, а в самому Viber: у повідомленні з контактом
+         * немає поля, яким можна довести, що номер належить співрозмовнику. У
+         * Telegram таке поле є (contact.user_id звіряється з from.id), і саме
+         * тому вхід через Telegram лишився.
+         *
+         * Раніше вхід тут був, і коштував дорого: почати вхід на сайті,
+         * відкрити бота, надіслати картку жертви з адресної книги — і сайт
+         * впускав у чужий акаунт, ще й привʼязував viber_id зловмисника до
+         * нього назавжди разом зі сповіщеннями.
+         *
+         * Тому обробка контактів прибрана цілком, а не полагоджена: полагодити
+         * її нічим. Лишилась одна гілка — viber_link, і вона безпечна за
+         * побудовою: токен видає сторінка профілю, тобто людина вже увійшла на
+         * сайт іншим способом, і Viber тут лише каже, у який чат писати.
+         *
+         * Код входу за номером Viber і далі доставляє (Notify, phoneStart) —
+         * там ми ПИШЕМО в уже підтверджений чат, і підробити нічого не можна.
+         */
         $token = trim((string)($ev['context'] ?? ($type === 'message' ? ($ev['message']['text'] ?? '') : '')));
         if ($token === '') return;
 
-        // Відповідь на кнопки «це я» / «це не я» — теж звичайне повідомлення
-        if (preg_match('~^(ok|no):(\w+)$~', $token, $m)) { self::onConfirm((string)$viberId, $m[1], $m[2]); return; }
+        $row = DB::row("SELECT * FROM auth_tokens WHERE token = ? AND purpose = 'viber_link' AND used = 0 AND expires_at > ?",
+            [$token, now()]);
+        if (!$row || !$row['user_id']) return;
 
-        $row = DB::row('SELECT * FROM auth_tokens WHERE token = ? AND used = 0 AND expires_at > ?', [$token, now()]);
-        if (!$row) return;
-
-        if ($row['purpose'] === 'viber_link' && $row['user_id']) {
-            // акаунт уже є, номер у ньому теж — питати вдруге немає за що
-            DB::update('users', ['viber_id' => $viberId], 'id = ?', [$row['user_id']]);
-            DB::update('auth_tokens', ['used' => 1, 'chat_id' => $viberId], 'id = ?', [$row['id']]);
-            self::send($viberId, BotAuth::text('bot_linked', ['messenger' => 'Viber']));
-        } elseif ($row['purpose'] === 'viber_login') {
-            DB::update('auth_tokens', ['chat_id' => $viberId], 'id = ?', [$row['id']]);
-            // привʼязаний id підтверджує вхід кнопкою, решта — надсилає контакт;
-            // пояснення в BotAuth::linkedUser і Telegram::processUpdates()
-            if (BotAuth::linkedUser('viber_id', (string)$viberId)) {
-                self::askConfirm((string)$viberId, $row);
-            } else {
-                self::askPhone((string)$viberId);
-            }
-        }
-    }
-
-    /** Натиснуто «це я» / «це не я» — звірку токена з чатом див. Telegram::onCallback() */
-    private static function onConfirm(string $viberId, string $answer, string $token): void
-    {
-        $row = DB::row('SELECT * FROM auth_tokens WHERE token = ? AND purpose = ? AND chat_id = ? AND used = 0 AND expires_at > ?',
-            [$token, 'viber_login', $viberId, now()]);
-        if (!$row) { self::send($viberId, BotAuth::text('bot_expired')); return; }
-
-        if ($answer === 'no') {
-            DB::update('auth_tokens', ['used' => 1], 'id = ?', [(int)$row['id']]);
-            self::send($viberId, BotAuth::text('bot_declined'));
-            return;
-        }
-
-        $known = BotAuth::linkedUser('viber_id', $viberId);
-        if (!$known) { self::askPhone($viberId); return; }
-        self::confirm((int)$row['id'], (int)$known['id'], $viberId,
-            (string)$known['name'], (string)$known['phone']);
-    }
-
-    /**
-     * Надійшов контакт із номером.
-     *
-     * РАНІШЕ ТУТ БУЛА ПОМИЛКА, і коментар на її місці стверджував протилежне:
-     * мовляв, перевірки «свій контакт», як у Telegram, не треба, бо share-phone
-     * віддає номер самого співрозмовника. Перше вірно, друге — ні: кнопка
-     * справді віддає власний номер, але обробник приймав БУДЬ-ЯКЕ повідомлення
-     * типу «contact», а надіслати картку з адресної книги користувач може й без
-     * кнопки. Виходив повний перехід чужого акаунта:
-     *
-     *   1. зловмисник починає вхід через Viber на сайті;
-     *   2. відкриває бота — токен запамʼятовує його viber_id;
-     *   3. замість кнопки надсилає контакт жертви з адресної книги;
-     *   4. номер знаходить акаунт жертви, і сайт впускає зловмисника в нього —
-     *      ще й привʼязує viber_id назавжди, забравши й сповіщення.
-     *
-     * У Telegram цього немає: там у контакті є `user_id`, і він звіряється з
-     * `from.id`. У Viber такого поля немає взагалі, тобто ДОВЕСТИ володіння
-     * номером цим повідомленням неможливо в принципі.
-     *
-     * Тому правило тут інше й навмисно грубе: контакт годиться, щоб ЗАВЕСТИ
-     * акаунт, і не годиться, щоб УВІЙТИ в наявний.
-     *
-     *   • номер нікому не належить → створюємо акаунт і впускаємо. Перехоплювати
-     *     нема чого: акаунт зʼявився цієї ж миті;
-     *   • номер належить акаунту, до якого цей самий viber_id уже привʼязаний →
-     *     впускаємо. Привʼязку ставив або підтверджений вхід, або сторінка
-     *     профілю, куди ще треба було увійти;
-     *   • номер належить чужому акаунту → НЕ впускаємо. Кажемо, як увійти
-     *     інакше: код на номер приходить у вже привʼязаний месенджер, тобто
-     *     туди, куди зловмисник не дістане.
-     *
-     * Ціна рішення чесна: покупець, який колись замовляв гостем на цей номер і
-     * вперше заходить через Viber, отримає відмову. Але саме цей сценарій і був
-     * діркою — «увійти, знаючи чужий номер» не має працювати ні для кого.
-     */
-    private static function onContact(string $viberId, array $contact, string $name): void
-    {
-        $row = BotAuth::pendingLogin('viber_login', $viberId);
-        if (!$row) return;
-
-        $phone = AuthTokens::normPhoneAny((string)($contact['phone_number'] ?? ''));
-        if (!$phone) { self::send($viberId, BotAuth::text('bot_bad_phone')); self::askPhone($viberId); return; }
-
-        $owner = DB::row('SELECT * FROM users WHERE phone = ? ORDER BY id LIMIT 1', [$phone]);
-        if ($owner && (string)($owner['viber_id'] ?? '') !== $viberId) {
-            \AuthLog::write((int)$owner['id'], 'login_failed',
-                'Viber: контакт із номером наявного акаунта — вхід не надано');
-            self::send($viberId, BotAuth::text('bot_viber_known_phone'));
-            return;
-        }
-
-        $uid = BotAuth::resolveUser('viber_id', $viberId, $phone, $name);
-        if (!$uid) { self::send($viberId, BotAuth::text('bot_expired')); return; }
-        self::confirm((int)$row['id'], $uid, $viberId, $name, $phone);
-    }
-
-    private static function confirm(int $tokenId, int $uid, string $viberId, string $name, string $phone): void
-    {
-        DB::update('auth_tokens',
-            ['used' => 1, 'chat_id' => $viberId, 'confirmed_user_id' => $uid, 'phone' => $phone],
-            'id = ?', [$tokenId]);
-        self::sayDone($viberId, $name, $phone);
+        // акаунт уже є, номер у ньому теж — питати вдруге немає за що
+        DB::update('users', ['viber_id' => $viberId], 'id = ?', [$row['user_id']]);
+        DB::update('auth_tokens', ['used' => 1, 'chat_id' => $viberId], 'id = ?', [$row['id']]);
+        \AuthLog::write((int)$row['user_id'], 'messenger_linked', 'Viber підключено до акаунта');
+        self::send($viberId, BotAuth::text('bot_linked', ['messenger' => 'Viber']));
     }
 }

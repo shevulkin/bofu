@@ -57,6 +57,14 @@ class VchasnoGoods
      */
     public static function parse(string $path): array
     {
+        // Книгу Excel не читаємо навмисно (див. Sheet::read) — і кажемо це
+        // словами, які підказують наступний крок, а не «файл не читається»
+        if (Sheet::isXlsx($path)) {
+            return ['goods' => [], 'columns' => [], 'error' =>
+                'Це файл Excel (xlsx), а ми читаємо CSV. У кабінеті «Вчасно.Каси» під час '
+                . 'вивантаження оберіть формат CSV — або відкрийте цей файл у Excel і збережіть '
+                . 'як «CSV (розділювач — крапка з комою)».'];
+        }
         $rows = Sheet::read($path);
         if (!$rows) return ['goods' => [], 'columns' => [], 'error' => 'Файл порожній або не читається.'];
 

@@ -94,7 +94,8 @@ class Home
         $stores = Catalog::stores();
         View::show('home/stores', [
             'stores' => $stores,
-            'map_key' => \Geo::key(),
+            // Карти на сторінці немає — лишились посилання «прокласти маршрут»
+            // у кожній картці. Координати потрібні саме для них.
             'map_points' => \Geo::points($stores),
             'page_title' => 'Де нас знайти — ' . cfg('app_name'),
             'meta_description' => 'Адреси, телефони й графік роботи наших магазинів продуктів бджільництва. Самовивіз замовлень із будь-якої точки.',

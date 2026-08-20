@@ -62,11 +62,9 @@ class Stores
         $stores = DB::all('SELECT * FROM stores ORDER BY sort, id');
         View::show('admin/stores', [
             'stores' => $stores,
-            'maps_key' => Geo::key(),
-            // Звідки починати, коли в точки координат ще немає. Сусідня точка —
-            // майже завжди ближче до правди, ніж центр країни: філії відкривають
-            // там, де вже працюють. Немає жодної — показуємо Україну цілком.
-            'map_start' => self::mapStart($stores),
+            // Карти-вибиралки тут більше немає: заради неї сторінка вантажила
+            // чужий скрипт, а координати й так вставляють копіюванням із Google
+            // Maps — Geo::parse() приймає і пару чисел, і саме посилання.
             'page_title' => 'Магазини — адмінка',
         ], 'layouts/admin');
     }
@@ -117,9 +115,9 @@ class Stores
             // «ніяк»: інакше кожну нову точку довелося б налаштовувати цілком,
             // аби вона просто працювала як усі.
             'fiscal_route' => isset(\FiscalProvider::ROUTES[$route]) ? $route : null,
-            // Адресу приймаємо лише http/https: у поле «адреса каси» рано чи
-            // пізно вставлять щось із кабінету, і javascript: там ні до чого
-            'dm_url' => preg_match('~^https?://~i', $url) ? mb_substr(rtrim($url, '/'), 0, 200) : null,
+            // Лише localhost: Device Manager стоїть на комп'ютері точки й
+            // слухає тільки його (див. FiscalProvider::normalizeDmUrl)
+            'dm_url' => \FiscalProvider::normalizeDmUrl($url),
             'dm_device' => mb_substr(trim((string)($s['dm_device'] ?? '')), 0, 100) ?: null,
             // Підпис під автоматичними операціями цієї точки. Чистимо тим самим
             // фільтром, що й чеки: ПРРО має вузьку абетку, і зайвий символ
@@ -131,15 +129,6 @@ class Stores
             // на живому чеку, посеред черги.
             'vchasno_taxgrp' => isset(\Vchasno::TAX_GROUPS[$tax]) ? $tax : null,
         ];
-    }
-
-    /** @return array{lat:float,lng:float,zoom:int} */
-    private static function mapStart(array $stores): array
-    {
-        foreach ($stores as $s) {
-            if (Geo::has($s)) return ['lat' => (float)$s['lat'], 'lng' => (float)$s['lng'], 'zoom' => 12];
-        }
-        return ['lat' => 49.0, 'lng' => 31.5, 'zoom' => 6];
     }
 
     /**

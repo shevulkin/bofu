@@ -27,18 +27,6 @@ class AuthController
         redirect('/');
     }
 
-    /** Демо-вхід (лише коли demo_login=true у config) */
-    public static function demo(): never
-    {
-        Csrf::verify();
-        if (!cfg('demo_login')) redirect('/');
-        $role = $_POST['role'] ?? 'customer';
-        if (!in_array($role, ['admin', 'seller', 'customer'], true)) $role = 'customer';
-        $user = DB::row('SELECT * FROM users WHERE role = ? ORDER BY id LIMIT 1', [$role]);
-        if ($user) { Auth::login((int)$user['id']); flash('success', 'Демо-вхід: ' . $user['name']); }
-        redirect($role === 'customer' ? '/' : '/admin');
-    }
-
     /** Крок 1 входу через Telegram: токен + посилання на бота */
     public static function tgStart(): never
     {
@@ -55,21 +43,6 @@ class AuthController
         if (!$token) json_response(['ok' => false], 400);
         Telegram::processUpdates();
         self::loginIfConfirmed($token, 'tg_login');
-    }
-
-    public static function viberStart(): never
-    {
-        if (!Viber::configured()) json_response(['ok' => false, 'error' => 'Viber-бот ще не налаштований'], 400);
-        $t = AuthTokens::create('viber_login');
-        $_SESSION['login_token'] = $t['token'];
-        json_response(['ok' => true, 'url' => 'viber://pa?chatURI=' . rawurlencode(Viber::uri()) . '&context=' . $t['token']]);
-    }
-
-    public static function viberStatus(): never
-    {
-        $token = $_SESSION['login_token'] ?? '';
-        if (!$token) json_response(['ok' => false], 400);
-        self::loginIfConfirmed($token, 'viber_login');
     }
 
     private static function loginIfConfirmed(string $token, string $purpose): never
@@ -95,8 +68,32 @@ class AuthController
         $phone = AuthTokens::normPhoneAny($_POST['phone'] ?? '');
         if (!$phone) json_response(['ok' => false, 'error' => 'Некоректний номер']);
         $user = DB::row('SELECT * FROM users WHERE phone = ? AND active = 1', [$phone]);
-        if (!$user || (empty($user['tg_chat_id']) && empty($user['viber_id']))) {
-            json_response(['ok' => false, 'error' => 'Цей номер не привʼязаний до акаунта з месенджером. Увійдіть через Google або Telegram.']);
+        /*
+         * Код можна надіслати лише в чат, який уже підтверджений.
+         *
+         * Це не наша вигадка й не те, що можна «докрутити»: ані Telegram, ані
+         * Viber не дають боту написати за номером телефону. Бот відповідає лише
+         * тому, хто перший написав йому сам. Тому «зареєструватися за номером,
+         * підтвердивши в месенджері» працює тільки в один бік — від месенджера
+         * до сайту, і саме так зроблено вхід через Telegram: людина натискає в
+         * боті «поділитися номером», а Telegram сам засвідчує, що номер її
+         * (contact.user_id проти from.id).
+         *
+         * Тому тут не «помилка», а вказівка на робочий шлях. Telegram названий
+         * першим навмисно: він і створює акаунт, і робить це з підтвердженим
+         * номером — тобто рівно те, чого людина хотіла, натиснувши «увійти за
+         * номером».
+         */
+        if (!$user) {
+            json_response(['ok' => false, 'error' =>
+                'На цей номер ще немає акаунта. Створіть його через Telegram — бот попросить '
+                . 'поділитися номером, і акаунт зʼявиться вже з підтвердженим номером. '
+                . 'Або скористайтесь входом через Google.']);
+        }
+        if (empty($user['tg_chat_id']) && empty($user['viber_id'])) {
+            json_response(['ok' => false, 'error' =>
+                'До цього акаунта не підключений жоден месенджер, тож надіслати код нікуди. '
+                . 'Увійдіть через Google або Telegram, а тоді підключіть месенджер у профілі.']);
         }
         $c = AuthTokens::createPhoneCode($phone);
         if ($c === false) json_response(['ok' => false, 'error' => 'Забагато спроб. Спробуйте за годину.']);
