@@ -55,7 +55,7 @@ class IntegrationCheck
             self::vchasno(trim((string)($v['vchasno_token'] ?? ''))),
             self::acquiring((array)($v['acq'] ?? [])),
             self::google($v),
-            self::email(trim((string)($v['mail_from'] ?? ''))),
+            self::email($v),
             self::botSite(trim((string)($v['bot_site_url'] ?? ''))),
             self::push(),
         ]));
@@ -321,15 +321,69 @@ class IntegrationCheck
             $env === 'test' ? 'Тестовий шлюз справжніх грошей не приймає — перемкніть на робоче, коли перевірите.' : $note);
     }
 
-    private static function email(string $from): array
+    /**
+     * Пошта. Перевіряє не «чи доходять листи» (тестовий лист пішов би живій
+     * людині), а те, що видно без відправки: чи адреси взагалі адреси, з якого
+     * домену вони й куди піде відповідь.
+     *
+     * Головне, заради чого це написано, — попередження про чужий домен. Вписати
+     * тут власний gmail здається найпростішим рішенням, а насправді це найгірше:
+     * gmail.com каже приймачам «листи від нас ідуть лише з наших серверів», наш
+     * хостинг ним не є, і лист із кодом входу відхиляють ще до теки «Спам».
+     */
+    private static function email(array $v): array
     {
-        if ($from === '') return self::row('Email', 'off', 'Адресу відправника не вказано — листи підуть від адреси хостингу');
-        if (!filter_var($from, FILTER_VALIDATE_EMAIL)) return self::row('Email', 'bad', '«' . $from . '» не схоже на адресу');
-        return self::row('Email', 'ok', 'Відправник: ' . $from,
-            'Що листи справді доходять, це не доводить — тестового листа не шлемо, бо він пішов би живій людині. '
-            . 'Перевірте оформленням замовлення на власну адресу.');
-    }
+        $host = Notify::mailHost();
+        $fields = [
+            'mail_from'      => 'Відправник',
+            'mail_from_auth' => 'Коди входу',
+            'mail_reply_to'  => 'Відповіді',
+        ];
+        $vals = [];
+        foreach ($fields as $key => $label) {
+            $raw = trim((string)($v[$key] ?? ''));
+            if ($raw !== '' && Notify::cleanAddress($raw) === '') {
+                return self::row('Email', 'bad', '«' . $raw . '» не схоже на адресу (' . mb_strtolower($label) . ')');
+            }
+            $vals[$key] = Notify::cleanAddress($raw);
+        }
 
+        // Те, що справді стане у From, — з тими самими замовчуваннями, що й у листі
+        $from = $vals['mail_from'] !== '' ? $vals['mail_from'] : Notify::DEFAULT_USER . '@' . $host;
+        $auth = $vals['mail_from_auth'] !== '' ? $vals['mail_from_auth']
+              : ($vals['mail_from'] !== '' ? $vals['mail_from'] : Notify::DEFAULT_AUTH_USER . '@' . $host);
+        $reply = $vals['mail_reply_to'] !== '' ? $vals['mail_reply_to'] : $vals['mail_from'];
+
+        $text = 'Листи: ' . $from . ', коди входу: ' . $auth
+              . ($reply !== '' && strcasecmp($reply, $from) !== 0 ? ', відповіді: ' . $reply : '');
+
+        // Попередження тримаємо окремо від пояснення в кінці: інакше «є що
+        // сказати» й «щось не так» злиплися б в одне, і жовтий знак горів би завжди
+        $warn = [];
+        if ($vals['mail_from'] === '') {
+            $warn[] = 'Адресу не вказано — беремо ' . $from . '. Якщо такої скриньки немає, відповіді покупців і '
+                     . 'повідомлення про недоставлені листи зникнуть безслідно.';
+        }
+        $replyLives = $reply !== '' && strcasecmp($reply, $from) !== 0;
+        foreach (array_unique(['листів' => $from, 'кодів входу' => $auth]) as $what => $addr) {
+            $dom = strtolower(substr(strrchr($addr, '@') ?: '', 1));
+            if ($dom !== '' && $host !== 'localhost' && $dom !== $host && !str_ends_with($dom, '.' . $host)) {
+                $warn[] = 'Адреса ' . $what . ' — на чужому домені (' . $dom . '). Поштові служби перевіряють, '
+                         . 'чи має цей сервер право слати від імені ' . $dom . ', і майже завжди відповідь «ні»: '
+                         . 'листи підуть у «Спам» або будуть відхилені. Заведіть скриньку на ' . $host . '.';
+            }
+            // noreply з живим Reply-To — нормально: відповідь усе одно дійде
+            if (!$replyLives && preg_match('~^(noreply|no-reply|donotreply)@~i', $addr)) {
+                $warn[] = 'Адреса ' . $what . ' — noreply. Покупці відповідають на листи про замовлення, '
+                         . 'і ці відповіді зникають. Або жива скринька у From, або заповніть Reply-To.';
+            }
+        }
+        $always = 'Що листи справді доходять, це не доводить — тестового листа не шлемо, бо він пішов би живій людині. '
+                 . 'Перевірте оформленням замовлення на власну адресу й входом за кодом. '
+                 . 'І пропишіть у DNS домену SPF, DKIM і DMARC: без них частина листів осідає у «Спамі» незалежно від адреси.';
+
+        return self::row('Email', $warn ? 'warn' : 'ok', $text, trim(implode(' ', $warn) . ' ' . $always));
+    }
     private static function botSite(string $url): array
     {
         $eff = $url !== '' ? rtrim($url, '/') : BotAuth::siteUrl();

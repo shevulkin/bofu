@@ -255,7 +255,7 @@ class Seeder
             // новий сайт стартує закритим від пошуковиків — щоб недороблена вітрина
             // не потрапила у видачу. В адмінці про це висить помітне нагадування.
             'seo_noindex' => '1',
-            'telegram_bot_token' => '', 'np_api_key' => '', 'mail_from' => '',
+            'telegram_bot_token' => '', 'np_api_key' => '', 'mail_from' => '', 'mail_from_auth' => '', 'mail_reply_to' => '',
             'google_client_id' => '', 'google_client_secret' => '',
             'seo_title' => 'Beekeeper of Ukraine — мед, продукти бджільництва, курси',
             'seo_description' => 'Мед з власної пасіки, продукти бджільництва, авторські курси та перевірка дипломів. Виробник Назарій Білько.',
