@@ -458,6 +458,12 @@ window.BofuDrop = (function () {
 
       btn.addEventListener('click', function (e) {
         e.preventDefault();
+        
+        // Populate the field with saved value if it is empty and has a saved value
+        if (input.value === '' && input.dataset.saved) {
+          input.value = input.dataset.saved;
+        }
+
         if (input.type === 'password') {
           input.type = 'text';
           btn.setAttribute('aria-label', 'Приховати пароль');

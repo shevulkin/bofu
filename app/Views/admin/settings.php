@@ -220,6 +220,7 @@
                      чотири останні символи. Цього досить, щоб побачити, що ключ
                      не той, і замало, щоб ним скористатись. */ ?>
             <input type="password" name="text[<?= e($key) ?>]" value=""
+                   data-saved="<?= e(Settings::get($key, '')) ?>"
                    autocomplete="off" spellcheck="false"
                    placeholder="<?= $hint !== '' ? 'Залиште порожнім, щоб не змінювати' : 'Вставте ключ із кабінету сервісу' ?>">
             <?php if ($hint !== ''): ?>

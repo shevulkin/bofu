@@ -258,11 +258,12 @@ class SettingsAdmin
                      * побічним ефектом збереження форми.
                      */
                     $clear = !empty($_POST['secret_clear'][$key]);
-                    $had = trim((string)Settings::get($key, '')) !== '';
+                    $old = trim((string)Settings::get($key, ''));
+                    $had = $old !== '';
                     if ($clear) {
                         Settings::set($key, '');
                         if ($had) AuthLog::write(Auth::id(), 'secret_changed', 'прибрано: ' . $label);
-                    } elseif ($val !== '') {
+                    } elseif ($val !== '' && $val !== $old) {
                         Settings::set($key, $val);
                         // У журнал іде назва поля, а не значення: журнал читає
                         // людина, і він потрапляє в кожен дамп бази
