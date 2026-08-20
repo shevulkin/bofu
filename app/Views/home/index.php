@@ -108,7 +108,7 @@
         <div class="card-foot">
           <span class="price">За запитом</span>
           <?php /* адреса живе в атрибуті href — правиться, але на місці не показується */ ?>
-          <a class="btn btn-gold btn-sm" href="<?= e(Content::title('course_1_link', '#')) ?>" target="_blank" rel="noopener"<?= edit_mark('course_1_link') ?>>Записатись</a>
+          <a class="btn btn-gold btn-sm" href="<?= e(safe_url(Content::title('course_1_link', '#'))) ?>" target="_blank" rel="noopener"<?= edit_mark('course_1_link') ?>>Записатись</a>
         </div>
       </div>
     </div>
@@ -173,7 +173,7 @@
     <?php if ($videos): ?>
       <div class="grid grid-3" style="margin-bottom:26px">
         <?php foreach ($videos as $v): ?>
-          <a class="card" href="<?= e($v['url']) ?>" target="_blank" rel="noopener">
+          <a class="card" href="<?= e(safe_url($v['url'])) ?>" target="_blank" rel="noopener">
             <div class="card-img" style="aspect-ratio:16/9"><img src="<?= e($v['thumb']) ?>" alt="<?= e($v['title']) ?>" loading="lazy"><?php if (!empty($v['is_short'])): ?><span class="badge red" style="background:#FF0000;color:#fff">▶ Shorts</span><?php endif; ?></div>
             <div class="card-body">
               <div class="card-title" style="font-size:16px"><?= e($v['title']) ?></div>
@@ -191,7 +191,7 @@
         ['TikTok', 'social_tiktok', '<svg viewBox="0 0 24 24" width="20" height="20"><path fill="#f6ecd9" d="M16.6 2h3.1c.2 1.9 1.4 3.6 3.3 4v3.1c-1.2 0-2.4-.4-3.4-1v6.9a6.9 6.9 0 1 1-6.9-6.9c.3 0 .7 0 1 .1v3.3a3.6 3.6 0 1 0 2.9 3.5V2z"/></svg>'],
       ];
       foreach ($mini as [$name, $ckey, $icon]): ?>
-        <a class="chip" href="<?= e(Content::title($ckey, '#')) ?>" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:9px;text-transform:none;letter-spacing:0;font-size:13.5px"<?= edit_mark($ckey) ?>><?= $icon ?><?= e($name) ?></a>
+        <a class="chip" href="<?= e(safe_url(Content::title($ckey, '#'))) ?>" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:9px;text-transform:none;letter-spacing:0;font-size:13.5px"<?= edit_mark($ckey) ?>><?= $icon ?><?= e($name) ?></a>
       <?php endforeach; ?>
     </div>
   </div>

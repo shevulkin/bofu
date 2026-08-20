@@ -244,7 +244,7 @@
         <tr>
           <td>
             <?php if ($r['qr']): ?>
-              <a href="<?= e((string)$r['qr']) ?>" target="_blank" rel="noopener"><?= e((string)$r['fiscal_number']) ?></a>
+              <a href="<?= e(safe_url((string)$r['qr'])) ?>" target="_blank" rel="noopener"><?= e((string)$r['fiscal_number']) ?></a>
             <?php else: ?><?= e((string)$r['fiscal_number']) ?><?php endif; ?>
             <?php if (!empty($r['is_test'])): ?><span class="dim"> · тестова</span><?php endif; ?>
           </td>

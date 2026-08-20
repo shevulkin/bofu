@@ -30,7 +30,7 @@
       <div class="partner-grid">
         <?php foreach ($partners as $p):
               $tag = $p['url'] ? 'a' : 'div';
-              $attr = $p['url'] ? ' href="' . e($p['url']) . '" target="_blank" rel="noopener"' : ''; ?>
+              $attr = $p['url'] ? ' href="' . e(safe_url($p['url'])) . '" target="_blank" rel="noopener"' : ''; ?>
           <<?= $tag ?> class="partner<?= $p['url'] ? ' is-link' : '' ?>"<?= $attr ?>>
             <div class="partner-logo">
               <?php if (!empty($p['logo'])): ?>

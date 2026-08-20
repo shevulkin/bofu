@@ -99,7 +99,7 @@
     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:16px">
       <button class="btn btn-gold btn-sm" type="submit" name="_action" value="save">💾 Зберегти</button>
       <?php if (!empty($p['url'])): ?>
-        <a class="btn btn-line btn-xs" href="<?= e($p['url']) ?>" target="_blank" rel="noopener">Відкрити сайт →</a>
+        <a class="btn btn-line btn-xs" href="<?= e(safe_url($p['url'])) ?>" target="_blank" rel="noopener">Відкрити сайт →</a>
       <?php endif; ?>
       <?php /* Видалення без умов: на партнері, на відміну від бренду, не висять
                товари, тож після нього нічого не лишається без відповіді */ ?>
