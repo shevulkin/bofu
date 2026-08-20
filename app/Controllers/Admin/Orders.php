@@ -570,7 +570,7 @@ class Orders
         $discount = (float)$totals['discount'];
 
         $userId = Customers::resolve($phone, $name);
-        $number = 'BOFU-' . date('ymd') . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 4));
+        $number = OrderFlow::newNumber();
 
         try {
             $placed = OrderFlow::place([

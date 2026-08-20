@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 namespace Controllers\Admin;
 
-use DB, View, Auth, Catalog, Roles, AuthTokens, Telegram, Viber, RateLimit;
+use DB, View, Auth, Catalog, Roles, AuthTokens, AuthLog, Telegram, Viber, RateLimit;
 
 class Users
 {
@@ -32,6 +32,12 @@ class Users
                     // телефон пишемо, лише якщо поле було у формі
                     if (array_key_exists('phone', $_POST)) $upd['phone'] = $phone;
                     DB::update('users', $upd, 'id = ?', [$uid]);
+                    // Вимкнений акаунт не пускає в кабінет (див. Auth::user), тобто
+                    // це така сама зміна доступу, як зняття ролі, — і питання
+                    // «чому людина раптом не може увійти» ставлять частіше за всі інші
+                    if ((int)$user['active'] !== (int)$upd['active']) {
+                        AuthLog::write($uid, $upd['active'] ? 'user_enabled' : 'user_disabled', '', Auth::id());
+                    }
                     $had = self::storeCount($uid);
                     self::saveRoles($uid, $roles);
                     self::saveStores($uid, (array)($_POST['stores'] ?? []), $roles);
@@ -141,11 +147,27 @@ class Users
         $managed = Roles::assignable();
         $current = array_map(fn($r) => (string)$r['role'],
             DB::all('SELECT role FROM user_roles WHERE user_id = ?', [$uid]));
-        foreach (array_diff(array_intersect($current, $managed), $roles) as $r) {
+        $removed = array_diff(array_intersect($current, $managed), $roles);
+        $added = array_diff($roles, $current);
+        foreach ($removed as $r) {
             DB::delete('user_roles', 'user_id = ? AND role = ?', [$uid, $r]);
         }
-        foreach (array_diff($roles, $current) as $r) {
+        foreach ($added as $r) {
             DB::insert('user_roles', ['user_id' => $uid, 'role' => $r, 'created_at' => now()]);
+        }
+        /*
+         * Видача прав — найважливіший рядок журналу з усіх.
+         *
+         * Пишемо лише зміну, а не кожне збереження форми: інакше журнал
+         * заповнюється рядками «нічого не змінилось», і в ньому перестають
+         * шукати. actor_id тут обов'язковий і не дорівнює user_id: суть події в
+         * тому, що ОДНА людина змінила права ІНШІЙ.
+         */
+        if ($removed || $added) {
+            $parts = [];
+            if ($added) $parts[] = 'додано: ' . implode(', ', array_map([Roles::class, 'label'], $added));
+            if ($removed) $parts[] = 'знято: ' . implode(', ', array_map([Roles::class, 'label'], $removed));
+            AuthLog::write($uid, 'roles_changed', implode('; ', $parts), Auth::id());
         }
     }
 
@@ -226,12 +248,26 @@ class Users
      */
     public static function saveStores(int $uid, array $ids, array $roles): void
     {
+        $before = array_map(fn($r) => (int)$r['store_id'],
+            DB::all('SELECT store_id FROM seller_stores WHERE user_id = ?', [$uid]));
         DB::delete('seller_stores', 'user_id = ?', [$uid]);
-        if (!in_array(Roles::SELLER, $roles, true)) return;   // немає ролі — немає й точок
+        if (!in_array(Roles::SELLER, $roles, true)) {   // немає ролі — немає й точок
+            if ($before) AuthLog::write($uid, 'stores_changed', 'доступ до точок відкликано разом із роллю продавця', Auth::id());
+            return;
+        }
         $valid = array_map(fn($r) => (int)$r['id'], DB::all('SELECT id FROM stores'));
         $want = array_values(array_unique(array_intersect(array_map('intval', $ids), $valid)));
         foreach ($want as $sid) {
             DB::insert('seller_stores', ['user_id' => $uid, 'store_id' => $sid]);
+        }
+        // Доступ до точки — це доступ до цін, залишків і замовлень цієї точки,
+        // тобто така сама зміна повноважень, як і роль
+        sort($before);
+        $after = $want; sort($after);
+        if ($before !== $after) {
+            AuthLog::write($uid, 'stores_changed',
+                'точки: ' . ($after ? implode(', ', $after) : 'жодної') .
+                ' (було: ' . ($before ? implode(', ', $before) : 'жодної') . ')', Auth::id());
         }
     }
 }

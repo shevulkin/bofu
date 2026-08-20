@@ -92,7 +92,31 @@ class PayController
      */
     public static function notify(): never
     {
-        $res = Acquiring::handleNotify($_POST, self::ip());
+        /*
+         * Стеля для чужих.
+         *
+         * Вхід відкритий для всього інтернету — інакше шлюз до нас не
+         * достукається. Підпис не пропустить підробку, але сам перебір номерів
+         * оплати нічого не коштує тому, хто його робить, і коштує нам записом у
+         * журнал на кожен запит.
+         *
+         * Адреси шлюзу з документації ліміту не підлягають: краще прийняти
+         * зайвий запит, ніж відкинути справжнє «оплату отримано». А якщо
+         * перелік адрес застарів, шлюз усе одно має триста запитів на годину —
+         * при кількох на платіж це запас у сотні разів.
+         */
+        $ip = self::ip();
+        $known = Acquiring::NOTIFY_IPS[Acquiring::env()] ?? [];
+        if ($ip !== '' && !in_array($ip, $known, true)) {
+            if (!RateLimit::hit('pay_notify', 300, 3600, $ip)) {
+                Acquiring::log("notify: стеля запитів вичерпана для $ip");
+                http_response_code(429);
+                header('Content-Type: text/plain; charset=utf-8');
+                exit("Too many requests\n");
+            }
+        }
+
+        $res = Acquiring::handleNotify($_POST, $ip);
         header('Content-Type: text/plain; charset=utf-8');
         // 200 навіть на відмову: код відповіді тут нічого не означає, рішення
         // магазину лежить у тілі (Response.action). Помилка HTTP змусила б

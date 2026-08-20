@@ -7,7 +7,7 @@ declare(strict_types=1);
  */
 class Schema
 {
-    public const VERSION = 47;
+    public const VERSION = 48;
 
     /** Оновлення існуючої бази до поточної версії без втрати даних */
     public static function upgrade(): void
@@ -694,6 +694,22 @@ class Schema
             self::seedRules();                       // нова подія «оплату отримано»
             if (Settings::get('acq_env', '') === '') Settings::set('acq_env', 'test');
             if (Settings::get('acq_auto_fiscal', '') === '') Settings::set('acq_auto_fiscal', '1');
+        }
+        if ($ver < 48) {
+            /*
+             * Журнал входів і змін доступів.
+             *
+             * Стрічка подій у замовлення була завжди — видно, хто що зробив із
+             * конкретним замовленням. А от на питання «хто заходив у кабінет»,
+             * «хто видав людині права» і «хто змінив платіжні реквізити»
+             * відповісти було нічим. Саме ці три ставлять першими, коли
+             * розбираються, як сталося те, що сталося.
+             *
+             * Заднім числом журнал не заповнюється: те, що не записали, не
+             * відновити. Тому таблиця починається з дня оновлення, і це
+             * нормально — важливо, щоб вона почалась.
+             */
+            self::createAll();
         }
         Settings::set('schema_version', (string)self::VERSION);
     }
@@ -1468,6 +1484,23 @@ class Schema
             'rate_hits' => [
                 'id' => 'id', 'action' => 'str', 'ident' => 'str', 'created_at' => 'ts',
             ],
+            /*
+             * Журнал входів і змін доступів (див. AuthLog).
+             *
+             * user_id — кого стосується, actor_id — хто зробив. Вони різні рівно
+             * тоді, коли це найважливіше: адміністратор видав комусь права або
+             * вимкнув чужий акаунт. Один стовпець замість двох перетворив би
+             * «Петро зняв права Олені» на «щось сталося з Оленою».
+             *
+             * Секретів тут немає за побудовою: у detail лежить опис словами
+             * («змінено ключ Нової Пошти»), а не значення. Журнал читає людина,
+             * і він потрапляє в кожен дамп бази.
+             */
+            'auth_log' => [
+                'id' => 'id', 'user_id' => 'int null', 'actor_id' => 'int null',
+                'event' => 'str', 'detail' => 'text null',
+                'ip' => 'str null', 'agent' => 'str null', 'created_at' => 'ts',
+            ],
             'migrations_log' => [ 'id' => 'id', 'name' => 'str', 'ran_at' => 'ts' ],
         ];
     }
@@ -1503,6 +1536,9 @@ class Schema
             // чеки, які лишились без відповіді
             'fiscal_receipts' => ['order_id', 'parent_id', 'tag', 'status', 'of_receipt_id'],
             'rate_hits' => ['action', 'ident', 'created_at'],
+            // user_id — «покажи все про цю людину», created_at — «покажи, що
+            // було того дня». Саме ці два питання й ставлять до журналу.
+            'auth_log' => ['user_id', 'actor_id', 'event', 'created_at'],
             'subscribers' => ['token'],
             'order_items' => ['order_id'],
             // order_ref — за ним шлюз упізнає платіж у NOTIFY; status — за ним

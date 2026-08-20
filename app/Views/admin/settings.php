@@ -188,27 +188,45 @@
              крапки — звірити його з кабінетом сервісу неможливо. */ ?>
     <div class="form-grid form-grid-1">
       <?php foreach ($text_keys as $key => $label): ?>
-        <?php $secret = str_contains($key, 'secret') || str_contains($key, 'token') || str_contains($key, 'key'); ?>
+        <?php
+          /*
+           * Секретність поля вирішує перелік у контролері, а не назва.
+           *
+           * Раніше тут стояла здогадка по підрядку («є слово key — отже,
+           * секрет»). Вона однаково помилялась в обидва боки: ключ Google Maps
+           * ховала, хоч він і так їде в HTML кожної сторінки з картою, а нове
+           * поле без слова-підказки показала б відкрито.
+           */
+          $secret = Controllers\Admin\SettingsAdmin::isSecret($key);
+          $hint = $secret ? Controllers\Admin\SettingsAdmin::secretHint($key) : '';
+        ?>
         <div class="field" data-help-title="<?= e($label) ?>"
              data-help="Значення для інтеграції «<?= e($label) ?>».
 
 Візьміть його в кабінеті відповідного сервісу й вставте сюди повністю, без пробілів на початку та в кінці.
-
+<?= $secret ? "\nЗбережений ключ сюди не повертається — сторінка його не показує нікому, зокрема й розширенням браузера. Порожнє поле означає «не змінювати», а прибрати збережений можна галкою.\n" : '' ?>
 Порожнє поле означає, що інтеграція вимкнена: повʼязаний з нею канал сповіщень не працюватиме, навіть якщо його перемикач увімкнений.
 
 Перевірте зʼєднання кнопкою нижче до того, як зберігати.">
-          <label><?= e($label) ?></label>
+          <label><?= e($label) ?>
+            <?php if ($secret): ?>
+              <span class="dim" style="font-weight:400">— <?= e($hint !== '' ? $hint : 'не задано') ?></span>
+            <?php endif; ?>
+          </label>
           <?php if ($secret): ?>
-            <?php /* Крапки лишаються за замовчуванням — ключі не мають світитись
-                     на екрані просто так. Але звірити збережене з тим, що в
-                     кабінеті сервісу, треба вміти, інакше єдиний спосіб
-                     переконатись — перезаписати наосліп. */ ?>
-            <div class="field-secret">
-              <input type="password" name="text[<?= e($key) ?>]"
-                     value="<?= e(Settings::get($key, '')) ?>" autocomplete="off" spellcheck="false">
-              <button type="button" class="field-eye" data-eye
-                      title="Показати значення" aria-label="Показати значення">👁</button>
-            </div>
+            <?php /* Значення не рендериться взагалі — те саме правило, що й для
+                     приватного ключа платіжного шлюзу нижче. Звірити збережене з
+                     кабінетом сервісу дає підпис поруч із назвою: довжина й
+                     чотири останні символи. Цього досить, щоб побачити, що ключ
+                     не той, і замало, щоб ним скористатись. */ ?>
+            <input type="password" name="text[<?= e($key) ?>]" value=""
+                   autocomplete="off" spellcheck="false"
+                   placeholder="<?= $hint !== '' ? 'Залиште порожнім, щоб не змінювати' : 'Вставте ключ із кабінету сервісу' ?>">
+            <?php if ($hint !== ''): ?>
+              <label class="checkbox" style="margin-top:8px">
+                <input type="checkbox" name="secret_clear[<?= e($key) ?>]" value="1"><span>Прибрати збережений ключ</span>
+              </label>
+            <?php endif; ?>
           <?php else: ?>
             <input type="text" name="text[<?= e($key) ?>]"
                    value="<?= e(Settings::get($key, '')) ?>" autocomplete="off" spellcheck="false">
@@ -728,9 +746,11 @@ SUCCESS_URL / FAILURE_URL — сюди повертається сам поку�
     var body = new FormData();
     body.append('_csrf', '<?= e(Csrf::token()) ?>');
     var keyField = document.querySelector('[name="text[np_api_key]"]');
-    // поле з ключем показане крапками: порожнє означає «не міняли», тоді
-    // сервер візьме збережений
-    if (keyField && keyField.value.trim() && keyField.value.indexOf('•') === -1) body.append('key', keyField.value.trim());
+    // Збережений ключ у поле не підставляється взагалі, тож порожнє поле
+    // означає «не міняли» — тоді сервер бере збережений сам. Надсилаємо лише
+    // те, що людина щойно вписала: інакше новий ключ неможливо було б
+    // перевірити до збереження.
+    if (keyField && keyField.value.trim()) body.append('key', keyField.value.trim());
     fetch('<?= e(url('/api/np/senders')) ?>', {method: 'POST', body: body, credentials: 'same-origin'})
       .then(function(r){ return r.json() })
       .then(function(d){
