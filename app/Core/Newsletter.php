@@ -29,6 +29,27 @@ class Newsletter
         return $row !== null && (int)$row['active'] === 1;
     }
 
+    /**
+     * Приписати наявний рядок підписника до акаунта — і більше нічого.
+     *
+     * Адресу могли підписати ще на чекауті, коли акаунта не було: рядок висить
+     * без господаря, і профіль питає «підписатись?» у того, кому листи вже
+     * ходять. Тут ми лише проставляємо user_id.
+     *
+     * Чого цей метод НЕ робить — не підписує. Згода на розсилку належить
+     * людині, а не наслідком входу: якщо рядка немає або вона колись
+     * відписалась, так і лишається. Саме тому це окремий метод, а не
+     * параметр subscribe(), — щоб «звʼязати» не можна було випадково
+     * написати там, де малось на увазі «підписати».
+     */
+    public static function linkUser(string $email, int $userId): void
+    {
+        $email = self::normEmail($email);
+        if ($email === null) return;
+        DB::query('UPDATE subscribers SET user_id = ? WHERE email = ? AND user_id IS NULL',
+            [$userId, $email]);
+    }
+
     /** Підписати (або повторно активувати) адресу. Повертає false, якщо email некоректний. */
     public static function subscribe(string $email, ?string $name = null, ?int $userId = null, string $source = 'checkout'): bool
     {
