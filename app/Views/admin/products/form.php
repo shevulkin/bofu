@@ -54,11 +54,17 @@ $roEdit = $canEdit ? '' : 'disabled';
 
 Якщо категорія неправильна, товар просто не знайдуть у потрібному розділі.">
         <label>Категорія</label>
+        <?php /* data-type на кожному пункті: скрипт лишає в списку лише ті
+                 категорії, що відповідають обраному типу товару. Заборона все
+                 одно на сервері (Products::categoryTypeError) — тут зручність,
+                 щоб не обирати те, що потім не збережеться. */ ?>
         <select name="category_id" id="catSelect" <?= $roEdit ?>>
           <?php foreach ($categories as $c): ?>
-            <option value="<?= (int)$c['id'] ?>" <?= ($p['category_id'] ?? 0) == $c['id'] ? 'selected' : '' ?>><?= e(cat_label($c)) ?></option>
+            <option value="<?= (int)$c['id'] ?>" data-type="<?= e((string)($c['type'] ?? 'product')) ?>"
+                    <?= ($p['category_id'] ?? 0) == $c['id'] ? 'selected' : '' ?>><?= e(cat_label($c)) ?></option>
           <?php endforeach; ?>
         </select>
+        <p class="field-hint" id="catTypeHint" hidden></p>
       </div>
       <div class="field" data-help-title="Артикул (SKU)"
            data-help="Ваш внутрішній код товару для обліку: «MED-LIP-05».

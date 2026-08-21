@@ -222,6 +222,50 @@
     reindex();
   });
 
+  /*
+   * Категорії — лише ті, що відповідають типу товару.
+   *
+   * Курс у категорії «Мед» нічого не ламає на вітрині (там він однаково не
+   * зʼявиться), але ламає облік: фільтр за категорією перестає відповідати на
+   * питання «скільки в мене курсів». Тому список звужується під обраний тип.
+   *
+   * Пункти саме ховаються, а не видаляються: тип міняють туди й назад, і
+   * відновлювати викинуті з DOM довелося б із памʼяті.
+   *
+   * Забороняє все одно сервер (Products::categoryTypeError) — адреса
+   * збереження відома, і category_id підставляється в POST руками. Тут лише
+   * зручність: не пропонувати те, що потім не збережеться.
+   */
+  var typeSel = document.querySelector('select[name="type"]');
+  var catHint = document.getElementById('catTypeHint');
+  var TYPE_LABELS = { product: 'Товар', service: 'Послуга', video: 'Відео', course: 'Курс' };
+  function syncCategories() {
+    if (!typeSel || !catSel) return;
+    var want = typeSel.value || 'product';
+    var fit = 0, current = null;
+    Array.prototype.forEach.call(catSel.options, function (o) {
+      var ok = (o.dataset.type || 'product') === want;
+      o.hidden = !ok;
+      o.disabled = !ok;
+      if (ok) { fit++; if (current === null) current = o; }
+      if (o.selected && !ok) o.selected = false;
+    });
+    // Обрана категорія не підійшла — беремо першу придатну, щоб форма не
+    // лишалась із порожнім вибором, який мовчки провалиться при збереженні
+    if (fit && !catSel.selectedOptions.length && current) current.selected = true;
+    if (catHint) {
+      if (fit === 0) {
+        catHint.hidden = false;
+        catHint.textContent = 'Для типу «' + (TYPE_LABELS[want] || want)
+          + '» ще немає жодної категорії. Створіть її в розділі «Категорії» — інакше товар не збережеться.';
+      } else {
+        catHint.hidden = true;
+      }
+    }
+  }
+  if (typeSel) typeSel.addEventListener('change', syncCategories);
+  syncCategories();
+
   // вимкнені поля не відправляються — знімаємо блокування перед сабмітом
   if (form) form.addEventListener('submit', function () {
     vRows && vRows.querySelectorAll('.variant-row.deleted').forEach(function (row) {
