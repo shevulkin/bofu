@@ -173,6 +173,73 @@
     if (note && saved === '') note.textContent = 'Усі зміни збережено';
   });
 
+  // Списки на телефоні: таблиця розкладається на стос карток.
+  //
+  // Вісім колонок на 390px давали горизонтальну прокрутку з nowrap: щоб
+  // побачити статус замовлення, продавець тягнув таблицю вбік, і жодного рядка
+  // не було видно цілком. Картка показує той самий рядок згори вниз —
+  // прокрутка лишається одна, вертикальна.
+  //
+  // Підписи беремо з шапки таблиці, тому шаблонів це не торкається взагалі:
+  // додали колонку — вона підпишеться сама. Саме перемикання робить CSS у
+  // медіазапиті, тут лише розмітка; на ширшому екрані таблиця лишається
+  // таблицею, і ці атрибути ні на що не впливають.
+  //
+  // Таблиці-матриці (магазин × варіант, масове редагування) так розкладати не
+  // можна: там клітинка означає перетин двох заголовків, і підпис з одного
+  // бреше. Впізнаємо їх за обʼєднаними клітинками в шапці або другим її
+  // ярусом — окремий клас проставляти в шаблонах не доводиться.
+  Array.prototype.forEach.call(document.querySelectorAll('table.tbl'), function (tbl) {
+    if (tbl.classList.contains('tbl-grid')) return;
+
+    // Рядок шапки — той, де всі клітинки <th>. Саме «всі»: рядок-підзаголовок
+    // усередині тіла теж має <th>, і ховати його не можна.
+    function isHead(row) {
+      if (!row || !row.cells.length) return false;
+      for (var i = 0; i < row.cells.length; i++) if (row.cells[i].tagName !== 'TH') return false;
+      return true;
+    }
+    var rows = Array.prototype.slice.call(tbl.rows);
+    var head = null, headAt = -1;
+    for (var r = 0; r < rows.length; r++) if (isHead(rows[r])) { head = rows[r]; headAt = r; break; }
+    if (!head) return;
+    if (isHead(rows[headAt + 1])) return;                  // двоярусна шапка — матриця
+    for (var h = 0; h < head.cells.length; h++) {
+      var c = head.cells[h];
+      if (c.colSpan > 1 || c.rowSpan > 1) return;          // згруповані колонки — теж матриця
+    }
+
+    var labels = Array.prototype.map.call(head.cells, function (th) { return th.textContent.trim(); });
+    head.setAttribute('data-head', '');
+    tbl.setAttribute('data-cards', '');
+
+    rows.forEach(function (row) {
+      if (row === head || isHead(row)) return;
+      var titled = false;
+      Array.prototype.forEach.call(row.cells, function (td, i) {
+        var label = labels[i] || '';
+        // Роль вирішує, де клітинка стане в картці. Порядок у розмітці для
+        // таблиці правильний, а для картки — ні: кнопка «Відкрити» стоїть
+        // останньою колонкою, і в картці їй теж місце внизу, але на всю
+        // ширину, а статус має бути вгорі, а не між сумою й датою.
+        var role = '';
+        // Саме прямий нащадок. Пілюля трапляється й усередині інших колонок —
+        // у списку замовлень колонка «Магазини» показує стан кожної точки
+        // окремо, — і за простим пошуком углиб вона видавала б себе за статус
+        // усього замовлення: втрачала підпис і лізла нагору картки.
+        if (td.querySelector(':scope > .status-pill')) role = 'status';
+        else if (label === '' && td.querySelector('.btn')) role = 'action';
+        else if (label === '' && td.querySelector('img') && td.textContent.trim() === '') role = 'media';
+        else if (!titled && label !== '') { role = 'title'; titled = true; }
+
+        if (role) td.setAttribute('data-role', role);
+        // Підписуємо все, крім того, що говорить саме за себе: статус-пілюля,
+        // фото й кнопка підпису не потребують, а «Статус: Нове» — це шум.
+        if (label !== '' && role !== 'status' && role !== 'title') td.setAttribute('data-label', label);
+      });
+    });
+  });
+
   // Режим підказок. «?» угорі вмикає його, далі клік по будь-якому полі з
   // data-help пояснює, що це поле робить. Розмітці досить двох речей:
   // кнопки з [data-help-toggle] і атрибутів data-help на полях.

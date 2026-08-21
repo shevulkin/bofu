@@ -1182,8 +1182,136 @@ body.help-on [data-help] *{pointer-events:none}
   .admin-main{padding:18px 14px}
   .stat-grid{grid-template-columns:1fr 1fr}
   .admin-mobilebar{display:flex;align-items:center;gap:14px;padding:12px 16px;background:var(--bg2);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:70}
-  .tbl{display:block;overflow-x:auto;white-space:nowrap}
+  /* Матриці картками не розкладаються (див. admin.js) — їм лишається
+     прокрутка вбік, як було в усіх таблиць до цього */
+  .tbl:not([data-cards]){display:block;overflow-x:auto;white-space:nowrap}
   .attr-row,.variant-row{grid-template-columns:1fr}
+}
+
+/* ---------- список рядками замість таблиці ---------- */
+/*
+ * Нижче 900px кожен рядок стає карткою. Розмітку для цього готує admin.js
+ * (data-cards на таблиці, data-label і data-role на клітинках) — тут лише
+ * показ, тож на ширшому екрані все це не діє й таблиця лишається таблицею.
+ *
+ * Порядок у картці не той, що в рядку: спершу те, за чим рядок упізнають
+ * (номер, назва), потім стан, далі подробиці, і кнопка внизу на всю ширину.
+ * У таблиці кнопка стоїть останньою колонкою праворуч і має ширину напису —
+ * на телефоні це ціль завширшки з ніготь у найправішому краю екрана.
+ */
+@media (max-width:900px){
+  .tbl[data-cards],.tbl[data-cards] tbody{display:block;width:100%}
+  .tbl[data-cards] tr[data-head]{display:none}
+  .tbl[data-cards] tr{display:flex;flex-direction:column;gap:7px;
+    background:var(--bg2);border:1px solid var(--line);border-radius:8px;
+    padding:13px 14px;margin-bottom:10px}
+  /* Підсвітка «до видалення» малювалась по td — у картці фон дає сам рядок */
+  .tbl[data-cards] tr:has(.js-del:checked){background:rgba(200,60,50,.09)}
+  .tbl[data-cards] tr:has(.js-del:checked) td{background:none}
+  .tbl[data-cards] td{display:block;padding:0;border:0;white-space:normal;max-width:none;order:1}
+  /* Порожня клітинка в картці — просто порожній рядок, тож її зовсім немає */
+  .tbl[data-cards] td:empty{display:none}
+  /* Підпис ліворуч від значення, але НЕ флексом: у клітинці часто лежить
+     кілька рядків — сума й знижка під нею, номер накладної та її стан, —
+     і флекс поставив би їх поруч, а не одне під одним. Абсолютний підпис
+     лишає вміст клітинки звичайним потоком. */
+  .tbl[data-cards] td[data-label]{position:relative;padding-left:94px;min-height:20px}
+  .tbl[data-cards] td[data-label]::before{content:attr(data-label);position:absolute;
+    left:0;top:3px;width:84px;color:var(--dim);font-size:10.5px;font-weight:700;
+    letter-spacing:.09em;text-transform:uppercase;line-height:1.35}
+
+  .tbl[data-cards] td[data-role=media]{order:-2;align-self:flex-start}
+  .tbl[data-cards] td[data-role=media] img{width:56px;height:56px;border-radius:6px}
+  .tbl[data-cards] td[data-role=title]{order:-1;display:block;font-size:15.5px;line-height:1.35}
+  .tbl[data-cards] td[data-role=status]{order:0;display:block}
+  /* Роздільник під шапкою картки — але лише коли під ним справді щось є */
+  .tbl[data-cards] td[data-role=status]:not(:last-child){padding-bottom:9px;
+    border-bottom:1px solid var(--line)}
+  .tbl[data-cards] td[data-role=action]{order:2;display:block;margin-top:3px}
+  .tbl[data-cards] td[data-role=action] .btn{width:100%;padding:13px 18px;font-size:12px}
+  /* Число праворуч має сенс у стовпчику чисел; у картці стовпчика немає */
+  .tbl[data-cards] td.num{text-align:left}
+  /* Поля в редагованих списках на всю ширину картки, а не в 78px колонки */
+  .tbl[data-cards] td input[type=text],.tbl[data-cards] td input[type=number],
+  .tbl[data-cards] td select{width:100%;min-width:0}
+}
+
+/* ---------- нижня панель стафу ---------- */
+/*
+ * Головна навігація на телефоні. Шухляда за ☰ висить у верхньому лівому куті,
+ * куди великий палець не дістає, і коштує два дотики; продавець же цілий день
+ * ходить між чотирма розділами. Тому вони внизу, під пальцем.
+ *
+ * На ширшому екрані панелі немає взагалі: там бічне меню видно завжди, і
+ * дублювати його знизу означало б забирати висоту ні за що.
+ */
+.adm-nav{display:none}
+@media (max-width:900px){
+  :root{--adm-nav-h:58px}
+  .adm-nav{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:75;
+    /* Панель жести «назад» і смужку iPhone не перекриває: висота росте на
+       safe-area, а не притискається до самого краю скла */
+    padding-bottom:env(safe-area-inset-bottom);
+    background:rgba(26,22,17,.97);backdrop-filter:blur(10px);
+    border-top:1px solid var(--line2);box-shadow:0 -8px 26px rgba(0,0,0,.5)}
+  .adm-nav-a{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;
+    justify-content:center;gap:3px;height:var(--adm-nav-h);padding:0 2px;
+    background:none;border:0;cursor:pointer;color:var(--muted);font-family:inherit;
+    text-decoration:none;transition:color .15s}
+  .adm-nav-a:hover{color:var(--text)}
+  .adm-nav-ico{position:relative;display:flex;line-height:0}
+  .adm-nav-ico svg{width:22px;height:22px}
+  /* Підпис обовʼязковий: піктограма «коробка» однаково читається як товари,
+     склад і замовлення, і без слова панель перетворюється на ребус */
+  .adm-nav-t{font-size:10.5px;font-weight:700;letter-spacing:.03em;
+    max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .adm-nav-a.is-on{color:var(--gold)}
+  /* Скільки розмов торгу чекають відповіді — видно з будь-якого екрана */
+  .adm-nav-badge{position:absolute;top:-5px;left:12px;min-width:16px;height:16px;
+    padding:0 4px;border-radius:9px;background:var(--gold);color:var(--bg);
+    font-size:10px;font-weight:800;line-height:16px;text-align:center}
+  /* Незакритий продаж: не число, а те, що він узагалі є */
+  .adm-nav-dot{position:absolute;top:-2px;left:15px;width:8px;height:8px;
+    border-radius:50%;background:var(--gold);animation:cePulse 2s ease-in-out infinite}
+
+  /* ── місце під панеллю ──
+     Усе, що приліплене до низу екрана, зсувається на її висоту, інакше вона
+     накриє саме те, заради чого туди дивляться: кнопку «Зберегти» й суму
+     набраного чека. */
+  .admin-main{padding-bottom:calc(var(--adm-nav-h) + env(safe-area-inset-bottom) + 20px)}
+  .admin-save{bottom:calc(var(--adm-nav-h) + env(safe-area-inset-bottom))}
+  body.is-admin .pos-bar{bottom:calc(var(--adm-nav-h) + env(safe-area-inset-bottom))}
+  body.is-admin.pos-on .admin-main{padding-bottom:calc(var(--adm-nav-h) + 96px)}
+  /* Кнопка підказок стояла над «Зберегти» — тепер над панеллю */
+  body.is-admin .help-btn.is-on{top:auto;bottom:calc(var(--adm-nav-h) + env(safe-area-inset-bottom) + 14px)}
+  /* На касі панелі немає (там низ зайнятий чеком), тож і зсувати нічого */
+  body.pos-screen .admin-main{padding-bottom:18px}
+}
+
+/* ---------- палець замість курсора в адмінці ---------- */
+/*
+ * 44px — той самий поріг, що вже діє на вітрині (див. .chip у чекауті). У
+ * стафному інтерфейсі його не було, і найдрібнішими виявились кнопки з
+ * найдорожчою помилкою: пробити чек у ДПС, створити накладну, скасувати
+ * замовлення. Промах там відкочується не Ctrl+Z, а поверненням.
+ *
+ * Ширину не чіпаємо — лише висоту: кнопки в рядках таблиць стоять поруч, і
+ * розтягнута на всю ширину «Відкрити» зламала б розкладку.
+ */
+@media (max-width:900px){
+  .admin-main .btn,.admin-main .chip{min-height:44px}
+  .admin-main .btn-sm,.admin-main .btn-xs{padding-top:0;padding-bottom:0}
+  /* Дрібні поля в рядках теж під палець: у них цілять так само часто */
+  .admin-main input[type=text],.admin-main input[type=number],.admin-main input[type=tel],
+  .admin-main input[type=email],.admin-main input[type=date],.admin-main select,
+  .admin-main textarea{min-height:44px;font-size:16px}
+  /* 16px вище — не про читабельність: усе, що дрібніше, Safari на iPhone
+     зустрічає масштабуванням сторінки при кожному дотику в поле */
+  .admin-main textarea{min-height:88px}
+  .admin-main input[type=checkbox],.admin-main input[type=radio]{width:20px;height:20px}
+  /* Смужка збереження над панеллю: кнопка на всю ширину, бо вона там одна
+     головна, і в неї цілять не дивлячись */
+  .admin-save .btn-gold{flex:1;min-width:160px}
 }
 
 /* ---------- перемикач режиму перегляду ---------- */
