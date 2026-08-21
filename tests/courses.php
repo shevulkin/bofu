@@ -92,6 +92,23 @@ final class CoursesTest
         $this->ok('адреси в цифрового замовлення немає',
             OrderFlow::deliveryAddress(['delivery' => 'digital', 'city' => 'Київ']) === '');
 
+        $this->group('курс не потрапляє в каталог');
+        // У курсу своя сторінка, і в каталозі йому нема чого робити: ціна там
+        // оцінюється поруч із банками меду, а фільтри («в наявності», вага,
+        // бренд) до нього не застосовні взагалі
+        $ids = fn(array $rows) => array_map(fn($r) => (int)$r['id'], $rows);
+        $found = $ids(Catalog::search([]));
+        $this->ok('пошуком по каталогу курс не знаходиться',
+            !in_array((int)$course['id'], $found, true));
+        $this->ok('а звичайний товар — знаходиться',
+            in_array((int)$honey['id'], $found, true));
+        // Пошук по назві теж не має віддавати курс: людина шукає мед
+        $this->ok('і за назвою не спливає',
+            !in_array((int)$course['id'], $ids(Catalog::search(['q' => 'Тест'])), true));
+        $catTypes = array_column(Catalog::categories(), 'type');
+        $this->ok('розділу «Курси» в меню каталогу немає',
+            !in_array(Courses::TYPE, $catTypes, true));
+
         $this->group('доступ після оплати');
         $uid = DB::insert('users', ['email' => 'stud-' . bin2hex(random_bytes(4)) . '@example.com',
             'name' => 'Студент', 'role' => 'customer', 'active' => 1, 'created_at' => now()]);
@@ -139,6 +156,21 @@ final class CoursesTest
             'SELECT expires_at FROM course_access WHERE user_id = ? AND product_id = ?',
             [$uid, $tid])) - time()) / 86400;
         $this->ok('продовження додається до залишку, а не заміняє його', $left > 14);
+
+        $this->group('що бачить той, хто вже купив');
+        // «До кошика» на курсі, за який уже заплачено, — найгірше, що може
+        // показати сторінка: пропонує купити вдруге те, що вже твоє. Тому
+        // «куплений» — питання окреме від «відкритий зараз»: протухлий курс
+        // купують ще раз свідомо, і напис на кнопці там інший.
+        $this->ok('гість власником не рахується', !Courses::owned(null, $cid));
+        $this->ok('чужий курс не вважається купленим', !Courses::owned($uid, (int)$honey['id']));
+        Courses::grant($uid, $cid, null, null);
+        $this->ok('після покупки — власник', Courses::owned($uid, $cid));
+        DB::query('UPDATE course_access SET expires_at = ? WHERE user_id = ? AND product_id = ?',
+            [date('Y-m-d H:i:s', time() - 86400), $uid, $cid]);
+        $this->ok('протухлий лишається купленим', Courses::owned($uid, $cid));
+        $this->ok('але вже не відкритим', !Courses::isOpen($uid, $cid));
+        DB::query('DELETE FROM course_access WHERE user_id = ?', [$uid]);
 
         $this->group('сертифікати');
         $dn = 'TST-' . strtoupper(bin2hex(random_bytes(3)));

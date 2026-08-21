@@ -420,6 +420,14 @@ class Products
                 'low_stock_threshold' => ($_POST['low_stock_threshold'] ?? '') === '' ? null : (int)$_POST['low_stock_threshold'],
                 // Строк доступу до курсу; порожньо — назавжди (див. Courses::grant)
                 'access_days' => ($_POST['access_days'] ?? '') === '' ? null : max(1, (int)$_POST['access_days']),
+                // Тексти сторінки курсу. array_key_exists, а не ?? '': блок
+                // показується лише курсам, і для решти товарів полів у формі
+                // немає — беззастережний запис затер би їх порожнечею при
+                // кожному збереженні картки меду.
+                ...(array_key_exists('learn_outcomes', $_POST)
+                    ? ['learn_outcomes' => trim((string)$_POST['learn_outcomes']) ?: null] : []),
+                ...(array_key_exists('program', $_POST)
+                    ? ['program' => trim((string)$_POST['program']) ?: null] : []),
                 // Вага однієї штуки — за нею форма накладної рахує вагу посилки
                 'weight' => self::weight($_POST['weight'] ?? ''),
                 'taxgrp' => self::taxGroup($_POST['taxgrp'] ?? ''),
@@ -626,6 +634,14 @@ class Products
                 'low_stock_threshold' => ($_POST['low_stock_threshold'] ?? '') === '' ? null : (int)$_POST['low_stock_threshold'],
                 // Строк доступу до курсу; порожньо — назавжди (див. Courses::grant)
                 'access_days' => ($_POST['access_days'] ?? '') === '' ? null : max(1, (int)$_POST['access_days']),
+                // Тексти сторінки курсу. array_key_exists, а не ?? '': блок
+                // показується лише курсам, і для решти товарів полів у формі
+                // немає — беззастережний запис затер би їх порожнечею при
+                // кожному збереженні картки меду.
+                ...(array_key_exists('learn_outcomes', $_POST)
+                    ? ['learn_outcomes' => trim((string)$_POST['learn_outcomes']) ?: null] : []),
+                ...(array_key_exists('program', $_POST)
+                    ? ['program' => trim((string)$_POST['program']) ?: null] : []),
                 'weight' => self::weight($_POST['weight'] ?? ''),
                 'taxgrp' => self::taxGroup($_POST['taxgrp'] ?? ''),
                 'uktzed' => trim($_POST['uktzed'] ?? '') ?: null,

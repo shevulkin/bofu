@@ -9,7 +9,10 @@ class Home
 {
     public static function index(): never
     {
-        $featured = DB::all('SELECT * FROM products WHERE active = 1 AND featured = 1 ORDER BY id LIMIT 6');
+        // Курси сюди не потрапляють: у них своя сторінка й свій спосіб подачі,
+        // а в стрічці «хітів» поруч із медом вони лише збивають ціну з пантелику
+        $featured = DB::all("SELECT * FROM products WHERE active = 1 AND featured = 1
+                             AND type <> 'course' ORDER BY id LIMIT 6");
         Catalog::preloadBrands($featured);   // бренди карток — одним запитом, а не по одному
         $gallery = json_decode(Content::get('gallery', 'body', '[]'), true) ?: [];
         $faq = json_decode(Content::get('faq', 'body', '[]'), true) ?: [];
@@ -82,6 +85,38 @@ class Home
             'courses' => Courses::forUser($uid),
             'diplomas' => \Diplomas::forUser($uid),
             'page_title' => 'Моє навчання — ' . cfg('app_name'),
+        ]);
+    }
+
+    /**
+     * Сторінка одного курсу.
+     *
+     * Окремий маршрут і окремий шаблон, а не /product/{slug}: товарна сторінка
+     * показує вагу, залишок на складі й «схожі товари». На курсі за 14 900 це
+     * читається як недбалість — вага в навчання, склад у відео й добірка меду
+     * під програмою.
+     */
+    public static function course(string $slug): never
+    {
+        $p = Courses::bySlug($slug);
+        if (!$p) { http_response_code(404); View::show('errors/404'); }
+        $uid = \Auth::id();
+        View::show('home/course', [
+            'prod' => $p,
+            'facts' => Catalog::attrs((int)$p['id']),
+            'photos' => Catalog::images((int)$p['id']),
+            'owned' => Courses::owned($uid, (int)$p['id']),
+            'open' => $uid !== null && Courses::isOpen((int)$uid, (int)$p['id']),
+            // Скільки дипломів уже видано за цим курсом — доказ, а не обіцянка
+            'graduates' => (int)DB::val('SELECT COUNT(*) FROM diplomas WHERE product_id = ? AND active = 1',
+                [(int)$p['id']]),
+            'faq' => json_decode(Content::get('faq_course', 'body', '[]'), true) ?: [],
+            'page_title' => $p['name'] . ' — ' . cfg('app_name'),
+            'meta_description' => (string)($p['short_desc'] ?? ''),
+            'jsonld' => array_values(array_filter([
+                JsonLd::course($p['name'], (string)($p['short_desc'] ?? '')),
+                JsonLd::breadcrumbs([['Головна', '/'], ['Курси', '/courses'], [$p['name'], null]]),
+            ])),
         ]);
     }
 

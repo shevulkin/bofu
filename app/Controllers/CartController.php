@@ -19,7 +19,9 @@ class CartController
         // Запитуємо їх лише коли кошик справді порожній.
         $suggest = [];
         if (!$rows) {
-            $suggest = DB::all('SELECT * FROM products WHERE active = 1 AND featured = 1 ORDER BY id LIMIT 4');
+            // «Може зацікавити» у порожньому кошику — про товари, а не про курси
+            $suggest = DB::all("SELECT * FROM products WHERE active = 1 AND featured = 1
+                                AND type <> 'course' ORDER BY id LIMIT 4");
             Catalog::preloadBrands($suggest);
         }
         View::show('cart/index', [

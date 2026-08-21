@@ -283,6 +283,9 @@ class App
         if (preg_match('~^/product/([a-z0-9-]+)$~', $path, $m)) { Controllers\Shop::product($m[1]); }
         if ($path === '/about') { Controllers\Home::about(); }
         if ($path === '/courses') { Controllers\Home::courses(); }
+        // Курс має власну сторінку, а не /product/{slug}: товарний шаблон
+        // показував би вагу, залишок на складі й «схожі товари»
+        if (preg_match('~^/course/([a-z0-9-]+)$~', $path, $m)) { Controllers\Home::course($m[1]); }
         if ($path === '/gallery') { Controllers\Home::gallery(); }
         if ($path === '/social') { Controllers\Home::social(); }
         if ($path === '/stores') { Controllers\Home::stores(); }
