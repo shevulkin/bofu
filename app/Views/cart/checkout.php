@@ -36,9 +36,10 @@
                давали б на половині магазинів послідовність 1, 2, 4. */ ?>
       <?php $step = 0; ?>
       <div class="co-step">
-        <h3 class="co-step-h"><span class="co-num"><?= ++$step ?></span>Доставка</h3>
+        <h3 class="co-step-h"><span class="co-num"><?= ++$step ?></span><?= !empty($digital) ? 'Доступ' : 'Доставка' ?></h3>
 
-        <?php if ($addresses): ?>
+        <?php /* Збережені адреси цифровому замовленню теж ні до чого */ ?>
+        <?php if ($addresses && empty($digital)): ?>
           <div class="field">
             <label>Мої адреси</label>
             <div class="variants" id="addrChips">
@@ -63,6 +64,24 @@
           </div>
         <?php endif; ?>
 
+        <?php
+        /*
+         * Курс нікуди не їде. Питати в того, хто купує відео, місто, відділення
+         * й номер будинку — питати нізащо, і кожне таке питання ще й виглядає
+         * як помилка сайту («навіщо їм моя адреса?»).
+         *
+         * Ховаємо блок цілком, а не робимо «ще один варіант доставки»: вибору
+         * тут немає, і показувати перемикач з єдиним пунктом означало б удавати
+         * вибір. Спосіб проставить сервер за вмістом кошика (Checkout::place).
+         */
+        ?>
+        <?php if (!empty($digital)): ?>
+          <div class="field">
+            <label>Доступ до курсу</label>
+            <p class="dim" style="margin:6px 0 0">Везти нічого не треба: після оплати курс
+              відкриється у вашому кабінеті, а на пошту прийде лист із посиланням.</p>
+          </div>
+        <?php else: ?>
         <div class="field">
           <label>Спосіб доставки</label>
           <div class="variants" id="deliveryChips">
@@ -139,6 +158,7 @@
             <span>Запамʼятати цю адресу — наступного разу не доведеться вводити</span>
           </label>
         <?php endif; ?>
+        <?php endif; /* /не цифровий кошик */ ?>
       </div><!-- /крок 1 -->
 
       <div class="co-step">
@@ -340,6 +360,10 @@
   showNpType(npType());
 
   function showFor(v){
+    // У цифровому замовленні блоку доставки на сторінці немає взагалі —
+    // ховати нічого, і звертання до відсутніх вузлів зупинило б увесь скрипт
+    // разом із рештою чекауту
+    if (!np || !pk || !ot) return;
     np.style.display = v === 'np' ? '' : 'none';
     pk.style.display = v === 'pickup' ? '' : 'none';
     ot.style.display = v === 'other' ? '' : 'none';
@@ -529,7 +553,11 @@
   // незакритий крок помітний одразу, а не після відмови форми на кнопці.
   var steps = document.querySelectorAll('.co-step');
   function stepDone(i){
-    var d = document.querySelector('#deliveryChips input:checked');
+    var chips = document.getElementById('deliveryChips');
+    // Цифрове замовлення: блоку доставки на сторінці немає взагалі, і питати
+    // з нього нічого. Крок закритий за побудовою — везти нема чого.
+    if (!chips) { if (i === 0) return true; }
+    var d = chips ? chips.querySelector('input:checked') : null;
     var v = d ? d.value : 'np';
     if (i === 0) {
       if (v === 'np') {

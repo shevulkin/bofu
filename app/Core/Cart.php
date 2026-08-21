@@ -91,8 +91,12 @@ class Cart
      */
     public static function limit(int $productId, ?int $variantId): ?int
     {
-        $p = DB::row('SELECT made_to_order FROM products WHERE id = ? AND active = 1', [$productId]);
+        $p = DB::row('SELECT made_to_order, type FROM products WHERE id = ? AND active = 1', [$productId]);
         if (!$p) return 0;
+        // Курсу не буває «мало»: доступ до відео продається скільки завгодно
+        // разів. Це властивість самого курсу, а не галка в картці, — інакше
+        // забута галка «під замовлення» робила б курс «немає в наявності».
+        if (Courses::isCourse($p)) return null;
         if (!empty($p['made_to_order'])) return null;
         return min(self::MAX_QTY, OrderFlow::sellable($productId, $variantId));
     }

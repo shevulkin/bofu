@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 namespace Controllers;
 
-use DB, View, Catalog, Content, Settings, Csrf, JsonLd;
+use DB, View, Catalog, Content, Settings, Csrf, JsonLd, Courses;
 
 class Home
 {
@@ -43,8 +43,20 @@ class Home
         // Свій набір питань, а не спільний із головною: сюди приходять по
         // навчання, і питання про повернення меду тут лише збиває.
         $faq = json_decode(Content::get('faq_course', 'body', '[]'), true) ?: [];
+        /*
+         * Курси беруться з каталогу, а не з текстового блоку.
+         *
+         * Досі сторінка показувала один незмінний абзац і кнопку на форму
+         * стороннього сайту — тобто студент не бачив ані що саме купує, ані
+         * скільки це коштує, а магазин не бачив покупки взагалі: гроші й заявка
+         * жили деінде. Тепер курс — товар (див. Courses), тож ним керує та сама
+         * картка в адмінці, що й банкою меду: назва, опис, фото, ціна.
+         */
+        $courses = Courses::all();
+        Catalog::preloadBrands($courses);
         View::show('home/courses', [
             'faq' => $faq,
+            'courses' => $courses,
             'page_title' => 'Курси бджільництва — ' . cfg('app_name'),
             'meta_description' => 'Авторський курс промислового бджільництва на технологіях США: практика на діючій пасіці, диплом із перевіркою справжності.',
             'jsonld' => array_values(array_filter([
