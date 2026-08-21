@@ -31,9 +31,17 @@ final class EmailAuthTest
 
     public function run(): int
     {
+        /*
+         * Пошту підміняємо на весь набір. Інакше перевірки залежали б від того,
+         * чи налаштований mail() на машині, де їх запускають: у розробника він
+         * не працює завжди, на сервері працює — і той самий набір давав би різні
+         * результати. Заразом жоден справжній лист нікуди не піде.
+         */
+        Notify::useMailer(fn(string $to, string $s, string $t): bool => true);
         try {
             $this->testNormEmail();
             $this->testSendCode();
+            $this->testSendFailure();
             $this->testRateLimitPerAddress();
             $this->testWrongCode();
             $this->testCreatesAccount();
@@ -45,6 +53,7 @@ final class EmailAuthTest
             $this->testClaimOrders();
             $this->testMaskEmail();
         } finally {
+            Notify::useMailer(null);
             $this->tearDown();
         }
         echo "\n" . ($this->fail === 0
@@ -127,6 +136,64 @@ final class EmailAuthTest
 
         $bad = EmailAuth::sendCode('не пошта');
         $this->ok('некоректна адреса — відмова з поясненням', empty($bad['ok']) && !empty($bad['error']));
+    }
+
+    /**
+     * Лист не пішов — форма мусить це сказати.
+     *
+     * Досі sendCode() повертав ok навіть тоді, коли mail() відповів false:
+     * покупець бачив «Код надіслано. Введіть його нижче» й чекав листа, якого
+     * ніхто не відправляв. На хостингу без робочої пошти це означало, що вхід
+     * поштою мовчки не працює взагалі — і не видно, чому.
+     */
+    private function testSendFailure(): void
+    {
+        $this->group('лист не пішов — про це кажуть');
+        $email = $this->mail();
+
+        /*
+         * Перевіряємо поведінку БОЙОВОГО режиму, тож debug на час перевірки
+         * гасимо. У розробника він увімкнений (config.local.php), і там невдача
+         * вхід навмисно не спиняє — пошти на машині немає ніколи, а код лежить
+         * у storage/logs/php-error.log. Без цієї підміни той самий набір давав
+         * би різні результати в розробника й на сервері.
+         */
+        $debugWas = $GLOBALS['bofu_config']['debug'] ?? false;
+        $GLOBALS['bofu_config']['debug'] = false;
+
+        Notify::useMailer(fn(string $to, string $s, string $t): bool => false);
+        $res = EmailAuth::sendCode($email);
+        Notify::useMailer(fn(string $to, string $s, string $t): bool => true);
+
+        $this->ok('відповідь — відмова, а не «надіслано»', empty($res['ok']));
+        $this->ok('і з поясненням для людини', !empty($res['error']));
+        $this->ok('токена назовні не віддали', empty($res['token']));
+
+        // Код, якого ніхто не отримав, не має лежати живим ще чверть години:
+        // інакше він лишається робочим ключем, який висить у базі просто так
+        $row = DB::row("SELECT * FROM auth_tokens WHERE purpose = 'email_code' AND email = ? ORDER BY id DESC LIMIT 1", [$email]);
+        $this->ok('створений код одразу погашено', $row && (int)$row['used'] === 1);
+
+        // Відмова стосується нашої пошти, а не адреси, тож про існування
+        // акаунта вона не розповідає нічого — перевіряємо на знайомій адресі
+        $known = $this->mail();
+        $this->mkUser(['email' => $known]);
+        Notify::useMailer(fn(string $to, string $s, string $t): bool => false);
+        $res2 = EmailAuth::sendCode($known);
+        Notify::useMailer(fn(string $to, string $s, string $t): bool => true);
+        $this->ok('для знайомої адреси відповідь така сама',
+            empty($res2['ok']) && ($res2['error'] ?? '') === ($res['error'] ?? '!'));
+
+        // А тепер те, заради чого зроблено виняток: у режимі розробки та сама
+        // невдача вхід не спиняє, інакше локально поштою не увійти взагалі
+        $GLOBALS['bofu_config']['debug'] = true;
+        Notify::useMailer(fn(string $to, string $s, string $t): bool => false);
+        $dev = EmailAuth::sendCode($this->mail());
+        Notify::useMailer(fn(string $to, string $s, string $t): bool => true);
+        $this->ok('у режимі розробки вхід продовжується попри невдачу',
+            !empty($dev['ok']) && !empty($dev['token']));
+
+        $GLOBALS['bofu_config']['debug'] = $debugWas;
     }
 
     private function testRateLimitPerAddress(): void
