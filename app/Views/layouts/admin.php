@@ -1,4 +1,19 @@
-<?php /** @var string $content */ $cur = request_path(); ?>
+<?php
+/** @var string $content */
+$cur = request_path();
+/*
+ * Черга торгу потрібна одразу двом місцям — пункту меню й нижній панелі, — а
+ * запит під нею не безкоштовний: він ще й гасить протухлі розмови. Рахуємо
+ * один раз тут і передаємо далі числом.
+ */
+$offers_todo = Offers::todoCount();
+/*
+ * Каса на телефоні вже займає низ екрана своїм чеком, і друга смужка під ним
+ * лишила б від плитки товарів смужку. Та й ходити кудись посеред продажу саме
+ * що не треба: з каси виходять через ☰, свідомо.
+ */
+$pos_screen = rtrim($cur, '/') === '/admin/orders/new';
+?>
 <!DOCTYPE html>
 <html lang="uk">
 <head>
@@ -13,7 +28,7 @@
 <link rel="stylesheet" href="<?= e(asset('css/fonts.css')) ?>">
 <link rel="stylesheet" href="<?= e(asset_v('css/app.css')) ?>">
 </head>
-<body>
+<body class="is-admin<?= $pos_screen ? ' pos-screen' : '' ?>">
 <div class="admin-mobilebar">
   <button class="mobile-menu-btn" style="display:flex" onclick="document.querySelector('.admin-side').classList.toggle('open')">☰</button>
   <b><?= Auth::isAdmin() ? 'Адмінпанель' : 'Кабінет продавця' ?></b>
@@ -45,7 +60,7 @@
             // Число в пункті — єдине місце, де черга торгу нагадує про себе
             // сама. Розмова, помічена через тиждень, дорівнює відмові:
             // покупець на той час уже купив деінде.
-            ['/admin/offers', 'Торг' . (($n = Offers::todoCount()) > 0 ? ' · ' . $n : ''),
+            ['/admin/offers', 'Торг' . ($offers_todo > 0 ? ' · ' . $offers_todo : ''),
                 Auth::can('offers.manage') && Offers::enabled()],
             ['/admin/orders/new', Pos::active() ? '🛒 Каса · продаж триває' : 'Каса (новий продаж)', Auth::can('orders.create')],
             // Пункт зʼявляється лише там, де налаштована каса: без токена він
@@ -143,6 +158,10 @@ window.BOFU = { base: '<?= e(url('/')) ?>', vapid: '<?= e(Settings::get('vapid_p
 </script>
 <script src="<?= e(asset_v('js/admin.js')) ?>" defer></script>
 <?php /* На самій касі смужка зайва — чек там і так перед очима */ ?>
-<?php if (Pos::active() && rtrim($cur, '/') !== '/admin/orders/new') echo View::partial('partials/pos_bar'); ?>
+<?php if (Pos::active() && !$pos_screen) echo View::partial('partials/pos_bar'); ?>
+<?php /* Нижня панель — лише на телефоні (сховану ширшим за 900px робить CSS).
+         Стоїть після смужки продажу навмисно: коли обидві на екрані, смужка
+         має лежати НАД панеллю, і природний порядок у потоці це і дає. */ ?>
+<?php if (!$pos_screen) echo View::partial('partials/admin_nav', ['offers_todo' => $offers_todo]); ?>
 </body>
 </html>
