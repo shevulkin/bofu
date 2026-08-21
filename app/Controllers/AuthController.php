@@ -128,7 +128,22 @@ class AuthController
         // увійти власним номером: сайт його приймав, а вхід — ні.
         $phone = AuthTokens::normPhoneAny($_POST['phone'] ?? '');
         if (!$phone) json_response(['ok' => false, 'error' => 'Некоректний номер']);
-        $user = DB::row('SELECT * FROM users WHERE phone = ? AND active = 1', [$phone]);
+        /*
+         * Тільки підтверджений номер, і саме в пошуку, а не перевіркою після.
+         *
+         * Номер у профілі можна вписати будь-який — свій, чужий, з оголошення.
+         * Підтверджує його лише Telegram, який засвідчує contact.user_id проти
+         * from.id (див. users.phone_verified_at). Доки пошук цього не питав,
+         * акаунт із вписаним чужим номером перехоплював вхід його справжнього
+         * власника: код летів у месенджер того, хто номер вписав.
+         *
+         * Непідтверджений номер провалюється в «акаунта ще немає» нижче — і це
+         * не відмовка, а рівно та відповідь, яка потрібна: там написано увійти
+         * через Telegram, а це і є спосіб довести номер. Заразом такий вхід
+         * нічого не розповідає про чужий акаунт.
+         */
+        $user = DB::row('SELECT * FROM users WHERE phone = ? AND active = 1
+                         AND phone_verified_at IS NOT NULL', [$phone]);
         /*
          * Код можна надіслати лише в чат, який уже підтверджений.
          *
@@ -215,7 +230,16 @@ class AuthController
             AuthLog::write(null, 'login_failed', 'невірний код для номера ' . self::maskPhone((string)$st['phone']));
             json_response(['ok' => false, 'error' => 'Невірний код']);
         }
-        $user = DB::row('SELECT * FROM users WHERE phone = ? AND active = 1', [$row['phone']]);
+        /*
+         * Та сама умова, що й у phoneStart, і повторена вона не про всяк випадок.
+         *
+         * Між надсиланням коду й його введенням минає час, і за цей час
+         * підтвердження могло злетіти — його скидає будь-яка зміна номера
+         * (Profile, Admin\Users). Без умови тут код, виписаний ще підтвердженому
+         * акаунту, впускав би в нього вже після того, як номер став чужим.
+         */
+        $user = DB::row('SELECT * FROM users WHERE phone = ? AND active = 1
+                         AND phone_verified_at IS NOT NULL', [$row['phone']]);
         if (!$user) json_response(['ok' => false, 'error' => 'Акаунт не знайдено']);
         DB::update('auth_tokens', ['used' => 1], 'id = ?', [$row['id']]);
         unset($_SESSION['phone_login']);

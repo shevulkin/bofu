@@ -125,10 +125,18 @@ final class LoginMethodsTest
         $this->ok('технічна адреса .local входу не дає',
             !LoginMethods::forUser($offline)['email']['ready']);
 
-        $tg = $this->user(['tg_chat_id' => '12345678']);
+        $tg = $this->user(['tg_chat_id' => '12345678', 'phone_verified_at' => now()]);
         $stTg = LoginMethods::forUser($tg);
         $this->ok('підключений Telegram дає свій спосіб', $stTg['telegram']['ready']);
         $this->ok('і заразом код на телефон', $stTg['phone']['ready']);
+
+        // Месенджер каже лише «є куди надіслати», а не «номер його». Вписати в
+        // профіль можна чужий номер, і без цієї умови його власник, входячи
+        // своїм номером, слав би код у чужий месенджер.
+        $unverified = $this->user(['tg_chat_id' => '87654321']);
+        $stUnv = LoginMethods::forUser($unverified);
+        $this->ok('сам Telegram входу за номером ще не відкриває', !$stUnv['phone']['ready']);
+        $this->ok('а вхід через сам Telegram лишається', $stUnv['telegram']['ready']);
     }
 
     /** Поки вибору не робили — працює все, що налаштоване */
@@ -136,7 +144,7 @@ final class LoginMethodsTest
     {
         $this->group('за замовчуванням');
 
-        $u = $this->user(['tg_chat_id' => '2222']);
+        $u = $this->user(['tg_chat_id' => '2222', 'phone_verified_at' => now()]);
         $this->ok('у базі немає жодного рядка вибору', LoginMethods::allowed((int)$u['id']) === []);
         $this->ok('Telegram пускає', LoginMethods::permits($u, 'telegram'));
         $this->ok('код на телефон пускає', LoginMethods::permits($u, 'phone'));
@@ -223,7 +231,7 @@ final class LoginMethodsTest
         $this->ok('і названо його людині', ($ch['label'] ?? '') === 'Telegram');
         $this->ok('адресат — саме підтверджений чат', ($ch['to'] ?? '') === '6666');
 
-        $viberOnly = $this->user(['viber_id' => 'vb-7777']);
+        $viberOnly = $this->user(['viber_id' => 'vb-7777', 'phone_verified_at' => now()]);
         $ch2 = LoginMethods::codeChannel($viberOnly);
         $this->ok('лише Viber — код піде у Viber', ($ch2['channel'] ?? '') === 'viber');
         $this->ok('Viber теж дає код на телефон', LoginMethods::permits($viberOnly, 'phone'));
