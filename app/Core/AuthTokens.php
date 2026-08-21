@@ -116,11 +116,52 @@ class AuthTokens
     }
 
     /** Створити код входу за телефоном; false якщо перевищено ліміт */
+    /**
+     * Пауза між двома кодами на один номер.
+     *
+     * Кнопка «Надіслати ще раз» без паузи перетворює будь-який вхід на кнопку
+     * «завалити людину повідомленнями»: адресу чи номер вводить хто завгодно, а
+     * приходить воно власнику. Хвилина — це і є та пауза, після якої лист чи
+     * повідомлення точно вже або дійшло, або не дійде.
+     */
+    public const RESEND_SEC = 60;
+
+    /**
+     * Скільки секунд лишилось чекати до наступного коду. 0 — можна зараз.
+     *
+     * Рахуємо від ОСТАННЬОГО створеного коду, а не від першого: інакше пауза
+     * діяла б лише один раз за годину.
+     */
+    public static function resendWait(string $purpose, string $field, string $value): int
+    {
+        $last = DB::val("SELECT created_at FROM auth_tokens WHERE purpose = ? AND $field = ? ORDER BY id DESC LIMIT 1",
+            [$purpose, $value]);
+        if (!$last) return 0;
+        $wait = self::RESEND_SEC - (time() - strtotime((string)$last));
+        return $wait > 0 ? $wait : 0;
+    }
+
+    /**
+     * Погасити всі невикористані коди цього призначення для цього адресата.
+     *
+     * Новий код зобовʼязаний робити старий недійсним. Інакше після трьох
+     * натискань «ще раз» у людини на руках три робочі коди одночасно, кожен
+     * живе свій строк, і кожен — окремий ключ до акаунта. Один запит замість
+     * одного ключа: діє рівно останній надісланий.
+     */
+    public static function dropPending(string $purpose, string $field, string $value): void
+    {
+        DB::query("UPDATE auth_tokens SET used = 1 WHERE purpose = ? AND $field = ? AND used = 0",
+            [$purpose, $value]);
+    }
+
     public static function createPhoneCode(string $phone): array|false
     {
         $recent = (int)DB::val("SELECT COUNT(*) FROM auth_tokens WHERE purpose = 'phone_code' AND phone = ? AND created_at > ?",
             [$phone, date('Y-m-d H:i:s', time() - 3600)]);
         if ($recent >= 3) return false;
+        if (self::resendWait('phone_code', 'phone', $phone) > 0) return false;
+        self::dropPending('phone_code', 'phone', $phone);
         $code = (string)random_int(100000, 999999);
         $t = self::create('phone_code', null, ['phone' => $phone, 'code' => $code], 5);
         return ['token' => $t['token'], 'code' => $code];

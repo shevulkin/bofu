@@ -50,6 +50,13 @@
       <div class="field" id="emailCodeField" style="display:none"><label>Код з листа</label><input type="text" id="emailCodeInput" placeholder="123456" inputmode="numeric" autocomplete="one-time-code"></div>
       <button class="btn btn-gold btn-sm" id="emailSendBtn" type="button">Отримати код</button>
       <button class="btn btn-gold btn-sm" id="emailVerifyBtn" type="button" style="display:none">Увійти</button>
+      <?php /* Лист загубився — і до цього моменту зробити з цим не можна було
+               нічого: кнопка «Отримати код» ховалась назавжди, лишалась сама
+               «Увійти», а вводити не було чого. Єдиним виходом було
+               перезавантажити сторінку — здогадатись до цього мусив покупець
+               сам. Стеля в три листи на адресу за годину нікуди не ділась, і
+               саме вона тут захист, а не прихована кнопка. */ ?>
+      <button class="btn btn-line btn-sm" id="emailResendBtn" type="button" style="display:none">Надіслати ще раз</button>
       <?php /* Про теку «Спам» сказано наперед, а не після скарги: лист іде
                звичайним mail() з хостингу, і поки на домені не налаштовані
                SPF і DKIM, частина поштових служб кладе його саме туди. */ ?>
@@ -63,6 +70,8 @@
       <div class="field" id="codeField" style="display:none"><label>Код з месенджера</label><input type="text" id="codeInput" placeholder="123456" inputmode="numeric"></div>
       <button class="btn btn-gold btn-sm" id="phoneSendBtn" type="button">Отримати код</button>
       <button class="btn btn-gold btn-sm" id="codeVerifyBtn" type="button" style="display:none">Увійти</button>
+      <?php /* Те саме, що й у пошті: месенджер теж буває мовчазний */ ?>
+      <button class="btn btn-line btn-sm" id="phoneResendBtn" type="button" style="display:none">Надіслати ще раз</button>
       <p class="dim" style="margin-top:8px">Код прийде у ваш Telegram або Viber, привʼязаний до акаунта.</p>
     </div>
 
@@ -124,18 +133,50 @@
     if (pBox) pBox.style.display = 'none';
     box.style.display = box.style.display === 'none' ? 'block' : 'none';
   });
+  /*
+   * Відлік на кнопці «Надіслати ще раз».
+   *
+   * Пауза все одно тримається на сервері — тут лише видно, скільки лишилось.
+   * Без цього кнопка або мовчки відмовляє, або людина тисне її раз за разом,
+   * не розуміючи, чому нічого не відбувається.
+   */
+  function cooldown(btn, sec, label){
+    if (!btn) return;
+    var left = sec;
+    btn.disabled = true;
+    btn.textContent = label + ' (' + left + ')';
+    clearInterval(btn._t);
+    btn._t = setInterval(function(){
+      if (--left > 0) { btn.textContent = label + ' (' + left + ')'; return; }
+      clearInterval(btn._t);
+      btn.disabled = false;
+      btn.textContent = label;
+    }, 1000);
+  }
+
   var emailSend = document.getElementById('emailSendBtn');
-  if (emailSend) emailSend.addEventListener('click', function(){
+  var emailResend = document.getElementById('emailResendBtn');
+  function emailStart(resent){
     var fd = new FormData();
     fd.append('_csrf', csrf); fd.append('email', document.getElementById('emailInput').value);
-    fetch(base + '/auth/email/start', {method:'POST', body: fd}).then(r=>r.json()).then(function(d){
-      if (!d.ok) { show(d.error || 'Помилка', d.kind); return; }
-      show('Код надіслано. Введіть його нижче — і не забувайте про теку «Спам».', 'ok');
+    return fetch(base + '/auth/email/start', {method:'POST', body: fd}).then(r=>r.json()).then(function(d){
+      if (!d.ok) {
+        show(d.error || 'Помилка', d.kind);
+        // Сервер сам каже, скільки чекати — не вигадуємо це на клієнті
+        if (d.retry_after) cooldown(emailResend, d.retry_after, 'Надіслати ще раз');
+        return;
+      }
+      show(resent
+        ? 'Новий код надіслано. Попередній більше не діє.'
+        : 'Код надіслано. Введіть його нижче — і не забувайте про теку «Спам».', 'ok');
       document.getElementById('emailCodeField').style.display = 'block';
       document.getElementById('emailVerifyBtn').style.display = 'inline-flex';
-      emailSend.style.display = 'none';
+      if (emailSend) emailSend.style.display = 'none';
+      if (emailResend) { emailResend.style.display = 'inline-flex'; cooldown(emailResend, 60, 'Надіслати ще раз'); }
     });
-  });
+  }
+  if (emailSend) emailSend.addEventListener('click', function(){ emailStart(false); });
+  if (emailResend) emailResend.addEventListener('click', function(){ emailStart(true); });
   var emailVer = document.getElementById('emailVerifyBtn');
   if (emailVer) emailVer.addEventListener('click', function(){
     var fd = new FormData();
@@ -153,20 +194,29 @@
     box.style.display = box.style.display === 'none' ? 'block' : 'none';
   });
   var sendBtn = document.getElementById('phoneSendBtn');
-  if (sendBtn) sendBtn.addEventListener('click', function(){
+  var phoneResend = document.getElementById('phoneResendBtn');
+  function phoneStart(resent){
     var fd = new FormData();
     fd.append('_csrf', csrf); fd.append('phone', document.getElementById('phoneInput').value);
-    fetch(base + '/auth/phone/start', {method:'POST', body: fd}).then(r=>r.json()).then(function(d){
-      if (!d.ok) { show(d.error || 'Помилка', d.kind); return; }
+    return fetch(base + '/auth/phone/start', {method:'POST', body: fd}).then(r=>r.json()).then(function(d){
+      if (!d.ok) {
+        show(d.error || 'Помилка', d.kind);
+        if (d.retry_after) cooldown(phoneResend, d.retry_after, 'Надіслати ще раз');
+        return;
+      }
       // Сервер сам каже, у який месенджер і на який номер пішов код: у людини
       // може бути підключений і Telegram, і Viber, і «перевірте месенджер»
       // означало б відкрити обидва
-      show((d.where || ('Код надіслано у ' + d.via + '.')) + ' Введіть його нижче.', 'ok');
+      show((d.where || ('Код надіслано у ' + d.via + '.'))
+         + (resent ? ' Попередній більше не діє.' : ' Введіть його нижче.'), 'ok');
       document.getElementById('codeField').style.display = 'block';
       document.getElementById('codeVerifyBtn').style.display = 'inline-flex';
-      sendBtn.style.display = 'none';
+      if (sendBtn) sendBtn.style.display = 'none';
+      if (phoneResend) { phoneResend.style.display = 'inline-flex'; cooldown(phoneResend, 60, 'Надіслати ще раз'); }
     });
-  });
+  }
+  if (sendBtn) sendBtn.addEventListener('click', function(){ phoneStart(false); });
+  if (phoneResend) phoneResend.addEventListener('click', function(){ phoneStart(true); });
   var verBtn = document.getElementById('codeVerifyBtn');
   if (verBtn) verBtn.addEventListener('click', function(){
     var fd = new FormData();

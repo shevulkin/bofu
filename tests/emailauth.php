@@ -42,6 +42,7 @@ final class EmailAuthTest
             $this->testNormEmail();
             $this->testSendCode();
             $this->testSendFailure();
+            $this->testResendRules();
             $this->testRateLimitPerAddress();
             $this->testWrongCode();
             $this->testCreatesAccount();
@@ -96,6 +97,20 @@ final class EmailAuthTest
         ]);
         $this->orders[] = $id;
         return $id;
+    }
+
+    /**
+     * Відмотати паузу між кодами.
+     *
+     * Між двома листами на одну адресу є хвилина (AuthTokens::RESEND_SEC), і це
+     * правильно — але набір тестів не має її висиджувати. Робимо створений код
+     * «старішим» рівно так, як це зробив би час, і йдемо далі. Там, де
+     * перевіряється сама пауза, цей помічник, звісно, не викликається.
+     */
+    private function agePendingCode(string $email): void
+    {
+        DB::query("UPDATE auth_tokens SET created_at = ? WHERE purpose = 'email_code' AND email = ?",
+            [date('Y-m-d H:i:s', time() - AuthTokens::RESEND_SEC - 5), $email]);
     }
 
     /** Код із бази: у тесті ми на місці листоноші, який має право зазирнути в лист */
@@ -196,11 +211,52 @@ final class EmailAuthTest
         $GLOBALS['bofu_config']['debug'] = $debugWas;
     }
 
+    /**
+     * Повторне надсилання: пауза між листами й смерть попереднього коду.
+     *
+     * Кнопка «ще раз» без паузи — це кнопка «завалити чужу скриньку»: адресу
+     * вводить хто завгодно, а приходить воно власнику. А без погашення старого
+     * коду три натискання дають три робочі ключі до акаунта одночасно, кожен зі
+     * своїм строком життя.
+     */
+    private function testResendRules(): void
+    {
+        $this->group('повторне надсилання');
+        $email = $this->mail();
+
+        $first = EmailAuth::sendCode($email);
+        $this->ok('перший код пішов', !empty($first['ok']));
+
+        $tooSoon = EmailAuth::sendCode($email);
+        $this->ok('одразу другий не дають', empty($tooSoon['ok']));
+        $this->ok('і кажуть, скільки чекати',
+            !empty($tooSoon['retry_after']) && $tooSoon['retry_after'] <= AuthTokens::RESEND_SEC);
+
+        // Відмотуємо годинник: створений код «постарішав» на паузу. Так само,
+        // як це зробить сам час, тільки без хвилини очікування в наборі тестів.
+        DB::query("UPDATE auth_tokens SET created_at = ? WHERE purpose = 'email_code' AND email = ?",
+            [date('Y-m-d H:i:s', time() - AuthTokens::RESEND_SEC - 5), $email]);
+
+        $firstCode = $this->codeOf($first['token']);
+        $second = EmailAuth::sendCode($email);
+        $this->ok('після паузи новий код дають', !empty($second['ok']));
+        $this->ok('це справді інший токен', ($second['token'] ?? '') !== ($first['token'] ?? ''));
+
+        // Головне: старий ключ більше не відчиняє
+        $old = EmailAuth::verify((string)$first['token'], $firstCode);
+        $this->ok('попередній код більше не діє', empty($old['ok']));
+
+        $new = EmailAuth::verify((string)$second['token'], $this->codeOf($second['token']));
+        $this->ok('останній надісланий код працює', !empty($new['ok']));
+    }
+
     private function testRateLimitPerAddress(): void
     {
         $this->group('стеля кодів на одну адресу');
         $email = $this->mail();
-        for ($i = 0; $i < 3; $i++) EmailAuth::sendCode($email);
+        // Пауза між листами тут не предмет перевірки — відмотуємо її, щоб
+        // четвертий код упирався саме в годинну стелю, а не в хвилинну паузу
+        for ($i = 0; $i < 3; $i++) { EmailAuth::sendCode($email); $this->agePendingCode($email); }
         $fourth = EmailAuth::sendCode($email);
         // Стеля саме на адресу, а не лише на IP: інакше зміна IP знімала б
         // обмеження з конкретної скриньки, і форма ставала б засобом її залити
@@ -253,6 +309,7 @@ final class EmailAuthTest
         $a = EmailAuth::verify($first['token'], $this->codeOf($first['token']));
         $this->users[] = (int)$a['user_id'];
 
+        $this->agePendingCode($email);
         $second = EmailAuth::sendCode($email);
         $b = EmailAuth::verify($second['token'], $this->codeOf($second['token']));
         $this->ok('id той самий', (int)$a['user_id'] === (int)$b['user_id']);

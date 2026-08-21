@@ -85,7 +85,11 @@ class AuthController
     {
         Csrf::verify();
         $res = EmailAuth::sendCode($_POST['email'] ?? '');
-        if (!$res['ok']) json_response(['ok' => false, 'error' => $res['error'] ?? 'Помилка']);
+        if (!$res['ok']) {
+            json_response(['ok' => false, 'error' => $res['error'] ?? 'Помилка',
+                // скільки чекати до наступного листа — кнопка «ще раз» покаже відлік
+                'retry_after' => $res['retry_after'] ?? null]);
+        }
         // Токен живе в сесії, а не в формі: інакше його видно в розмітці, і
         // код можна було б звіряти з чужим листом у тому ж браузері.
         if (!empty($res['token'])) $_SESSION['email_login'] = ['token' => $res['token'], 'tries' => 0];
@@ -198,7 +202,16 @@ class AuthController
         }
 
         $c = AuthTokens::createPhoneCode($phone);
-        if ($c === false) json_response(['ok' => false, 'error' => 'Забагато спроб. Спробуйте за годину.']);
+        if ($c === false) {
+            // Дві причини відмови, і людині вони не однакові: одна минає за
+            // хвилину, друга — за годину. Мовчазне «забагато спроб» на обидві
+            // означало б, що той, кому лишилось чекати 40 секунд, іде геть.
+            $wait = AuthTokens::resendWait('phone_code', 'phone', $phone);
+            json_response($wait > 0
+                ? ['ok' => false, 'retry_after' => $wait,
+                   'error' => 'Код уже надіслано. Попросити новий можна через ' . $wait . ' с.']
+                : ['ok' => false, 'error' => 'Забагато спроб. Спробуйте за годину.']);
+        }
         $text = 'Код входу на сайт ' . cfg('app_name') . ': ' . $c['code'] . ' (діє 5 хвилин)';
 
         if ($ch['channel'] === 'telegram') Telegram::send($ch['to'], $text);
