@@ -369,8 +369,29 @@ class Auth
     /** Знайти або створити користувача Google */
     public static function loginWithGoogle(array $profile): void
     {
-        $user = DB::row('SELECT * FROM users WHERE google_id = ? OR email = ?', [$profile['sub'], $profile['email']]);
+        /*
+         * Спершу за google_id, і лише потім за поштою — двома запитами, а не
+         * одним `OR`.
+         *
+         * З `OR` база вільна повернути будь-який із двох рядків, коли існують
+         * обидва: один уже привʼязаний до цього Google, інший — просто з такою
+         * самою адресою. Діставшись другого, ми писали б у нього google_id,
+         * який уже стоїть у першого, і вхід падав би на унікальному індексі —
+         * тобто рівно тоді, коли в людини два записи, вона не увійшла б взагалі.
+         */
+        $user = DB::row('SELECT * FROM users WHERE google_id = ?', [$profile['sub']])
+             ?: DB::row('SELECT * FROM users WHERE email = ?', [$profile['email']]);
         if ($user) {
+            /*
+             * Вимкнений акаунт входу не дає — як і на решті шляхів (пошта,
+             * телефон, бот кажуть про це прямо). Мовчазний session_regenerate
+             * тут виглядав як успішний вхід із «Вітаємо!», після якого людина
+             * бачила себе гостем: Auth::user() читає лише active = 1.
+             */
+            if (!$user['active']) {
+                flash('error', 'Цей акаунт вимкнено. Зверніться, будь ласка, до магазину.');
+                redirect('/');
+            }
             DB::update('users', [
                 'google_id' => $profile['sub'],
                 'name' => $profile['name'] ?? $user['name'],
@@ -388,7 +409,12 @@ class Auth
                 'role' => Roles::CUSTOMER, 'active' => 1,
                 'email_verified_at' => now(), 'created_at' => now(),
             ]);
+            Newsletter::linkUser((string)$profile['email'], $id);
         }
+        // Google віддає лише підтверджені адреси — тобто скринька доведена так
+        // само, як кодом із листа. Отже й замовлення, зроблені гостем на цю
+        // адресу, належать цій людині (Customers::claimOrdersByEmail).
+        Customers::claimOrdersByEmail($id, (string)$profile['email']);
         self::login($id);
     }
 }
