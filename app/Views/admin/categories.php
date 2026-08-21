@@ -7,7 +7,19 @@
  */
 $roots = array_values(array_filter($cats, fn($c) => !($c['depth'] ?? 0)));
 ?>
-<div class="admin-head"><h1 class="h-serif">Категорії</h1></div>
+<?php /* Опт мав тут свою колонку й переважив сторінку: рядок шкали в кожному
+         рядку разом із посиланням «змінити» читався гучніше за назву й
+         вкладеність, заради яких у категорії й заходять. Редагувати його
+         звідси все одно було не можна. Лишаємо одне посилання — щоб той, хто
+         за звичкою прийшов сюди, не шукав його наосліп. */ ?>
+<div class="admin-head">
+  <h1 class="h-serif">Категорії</h1>
+  <a class="btn btn-line btn-sm" href="<?= e(url('/admin/wholesale')) ?>"
+     data-help-title="Оптові знижки"
+     data-help="Шкали «від скількох штук дешевше» переїхали на власну сторінку — там вони всі разом, і видно, скільки товарів кожна справді зачіпає.
+
+Тут їх більше немає навмисно: у категорії заходять по назву, вкладеність і порядок, а колонка з опту переважувала саме це.">Оптові знижки →</a>
+</div>
 <form class="admin-card" method="post" action="<?= e(url('/admin/categories')) ?>" style="display:flex;gap:14px;align-items:end;flex-wrap:wrap">
   <?= Csrf::field() ?><input type="hidden" name="_action" value="add">
   <div style="flex:1;min-width:200px" data-help-title="Назва нової категорії"
@@ -73,14 +85,6 @@ $roots = array_values(array_filter($cats, fn($c) => !($c['depth'] ?? 0)));
 Нуль означає порожню полицю в каталозі — покупець зайде в розділ і нічого не побачить.
 
 Поки тут не нуль, категорію не можна видалити: хрестик у колонці «Видалити» буде заблокований.">Товарів</th>
-      <th data-help-title="Колонка «Опт»"
-          data-help="Оптова шкала цього розділу: від скількох штук і на скільки відсотків дешевше.
-
-Діє на всі товари розділу й усіх його підрозділів — крім тих, у кого в картці задана власна шкала: вона розділ замінює, а не доповнює.
-
-«—» означає, що свого опту в розділі немає. Тоді товари беруть загальну шкалу магазину, якщо вона заповнена, а якщо ні — опту на них немає.
-
-Редагується не тут, а на сторінці «Оптові знижки»: там видно всі шкали разом і скільки товарів кожна справді зачіпає. Посилання «змінити» веде одразу до потрібного розділу.">Опт</th>
       <th class="num w-sort" data-help-title="Колонка «Порядок»"
           data-help="Порядок категорій у меню й каталозі. Менше число — вище в списку.
 
@@ -127,16 +131,6 @@ $roots = array_values(array_filter($cats, fn($c) => !($c['depth'] ?? 0)));
         </td>
         <td class="muted"><?= e(['product'=>'Товари','service'=>'Послуги','video'=>'Відео','course'=>'Курси'][$c['type']] ?? $c['type']) ?></td>
         <td class="muted num"><?= (int)$c['cnt'] ?></td>
-        <?php $ladder = $tiers[(int)$c['id']] ?? []; ?>
-        <td style="font-size:13px">
-          <?php if ($ladder): ?>
-            <?= e(QtyDiscounts::line($ladder)) ?>
-          <?php else: ?>
-            <span class="muted">—</span>
-          <?php endif; ?>
-          <a href="<?= e(url('/admin/wholesale?tier_cat=' . (int)$c['id'])) ?>"
-             style="margin-left:6px;white-space:nowrap"><?= $ladder ? 'змінити' : 'задати' ?></a>
-        </td>
         <td class="num"><input type="number" name="cat[<?= (int)$c['id'] ?>][sort]" value="<?= (int)$c['sort'] ?>"></td>
         <td class="col-mid"><input type="checkbox" name="cat[<?= (int)$c['id'] ?>][active]" <?= $c['active'] ? 'checked' : '' ?>></td>
         <td class="col-mid col-del">
