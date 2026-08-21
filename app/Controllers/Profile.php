@@ -140,6 +140,8 @@ class Profile
             'mail_email' => Newsletter::normEmail((string)$fresh['email']),
             'subscribed' => Newsletter::isSubscribed(Newsletter::normEmail((string)$fresh['email'])),
             'tg_ready' => Telegram::configured(),
+            // Кнопка «Моє навчання» — лише коли там уже щось є
+            'has_learning' => \Courses::forUser((int)$u['id']) !== [] || \Diplomas::forUser((int)$u['id']) !== [],
             'tg_bot' => Telegram::configured() ? Telegram::username() : '',
             'viber_ready' => Viber::configured(),
             'viber_uri' => Viber::configured() ? Viber::uri() : '',

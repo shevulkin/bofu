@@ -20,6 +20,7 @@ final class CoursesTest
     private int $fail = 0;
     private array $products = [];
     private array $cats = [];
+    private array $users = [];
 
     private function ok(string $what, bool $cond): void
     {
@@ -91,6 +92,71 @@ final class CoursesTest
         $this->ok('адреси в цифрового замовлення немає',
             OrderFlow::deliveryAddress(['delivery' => 'digital', 'city' => 'Київ']) === '');
 
+        $this->group('доступ після оплати');
+        $uid = DB::insert('users', ['email' => 'stud-' . bin2hex(random_bytes(4)) . '@example.com',
+            'name' => 'Студент', 'role' => 'customer', 'active' => 1, 'created_at' => now()]);
+        $this->users[] = $uid;
+        $cid = (int)$course['id'];
+
+        $this->ok('до покупки курс закритий', !Courses::isOpen($uid, $cid));
+
+        Courses::grant($uid, $cid, null, null);            // безстроково
+        $this->ok('після видачі — відкритий', Courses::isOpen($uid, $cid));
+        $this->ok('зʼявився в «Моїх курсах»', count(Courses::forUser($uid)) === 1);
+
+        // Повторна покупка не має плодити другий рядок: інакше кабінет показав
+        // би той самий курс двічі, а «до якої дати» стало б питанням із двома
+        // відповідями
+        Courses::grant($uid, $cid, null, 30);
+        $this->ok('друга видача не плодить рядків', count(Courses::forUser($uid)) === 1);
+        $this->ok('і не робить безстроковий доступ строковим',
+            Courses::forUser($uid)[0]['expires_at'] === null);
+
+        // Строковий доступ перевіряємо на окремому курсі, щоб не чіпати той,
+        // що вище відкритий назавжди
+        $timed = $this->product(Courses::TYPE);
+        $tid = (int)$timed['id'];
+        Courses::grant($uid, $tid, null, 10);
+        $only = fn(int $pid) => array_values(array_filter(Courses::forUser($uid),
+            fn($r) => (int)$r['product']['id'] === $pid));
+        $this->ok('строковий доступ має дату кінця', $only($tid)[0]['expires_at'] !== null);
+        $this->ok('і поки не протух', !$only($tid)[0]['expired']);
+
+        // Протухлий доступ лишається видимим — із позначкою, а не зникає:
+        // «купив, а воно пропало» читається як обман, а не як кінець строку
+        DB::query('UPDATE course_access SET expires_at = ? WHERE user_id = ? AND product_id = ?',
+            [date('Y-m-d H:i:s', time() - 86400), $uid, $tid]);
+        $this->ok('протухлий курс закритий', !Courses::isOpen($uid, $tid));
+        $this->ok('але з кабінету не зникає',
+            count($only($tid)) === 1 && $only($tid)[0]['expired']);
+
+        // Продовження рахується від пізнішої дати, а не від «сьогодні»: інакше
+        // друга покупка, зроблена завчасно, вкорочувала б доступ
+        DB::query('UPDATE course_access SET expires_at = ? WHERE user_id = ? AND product_id = ?',
+            [date('Y-m-d H:i:s', time() + 5 * 86400), $uid, $tid]);
+        Courses::grant($uid, $tid, null, 10);
+        $left = (strtotime((string)DB::val(
+            'SELECT expires_at FROM course_access WHERE user_id = ? AND product_id = ?',
+            [$uid, $tid])) - time()) / 86400;
+        $this->ok('продовження додається до залишку, а не заміняє його', $left > 14);
+
+        $this->group('сертифікати');
+        $dn = 'TST-' . strtoupper(bin2hex(random_bytes(3)));
+        $did = DB::insert('diplomas', ['number' => $dn, 'student' => 'Студент',
+            'course' => 'Курс на бланку', 'user_id' => $uid, 'product_id' => $cid, 'active' => 1]);
+        $this->ok('диплом видно у випускника', count(Diplomas::forUser($uid)) === 1);
+        // Назва з бланка головніша за назву товару: курс у каталозі
+        // перейменують, а на виданому дипломі має лишитись надрукований текст
+        $this->ok('назва береться з бланка',
+            Diplomas::courseLabel(Diplomas::forUser($uid)[0]) === 'Курс на бланку');
+        $this->ok('без тексту підставляється назва курсу',
+            Diplomas::courseLabel(['course' => '', 'product_id' => $cid]) === $course['name']);
+        // Анульований диплом — не досягнення, і в кабінеті йому не місце
+        DB::query('UPDATE diplomas SET active = 0 WHERE id = ?', [$did]);
+        $this->ok('анульований у кабінеті не показується', Diplomas::forUser($uid) === []);
+        DB::query('DELETE FROM diplomas WHERE id = ?', [$did]);
+        DB::query('DELETE FROM course_access WHERE user_id = ?', [$uid]);
+
         $this->group('курси в замовленні знаходяться по всьому дереву');
         // Позиції лежать у ПІДзамовленні — саме там, де їх шукати найлегше забути
         $parent = DB::insert('orders', ['number' => 'TSTC-' . bin2hex(random_bytes(4)),
@@ -107,6 +173,7 @@ final class CoursesTest
 
         DB::pdo()->prepare('DELETE FROM order_items WHERE order_id = ?')->execute([$child]);
         foreach ([$child, $parent] as $o) DB::pdo()->prepare('DELETE FROM orders WHERE id = ?')->execute([$o]);
+        foreach ($this->users as $id) DB::pdo()->prepare('DELETE FROM users WHERE id = ?')->execute([$id]);
         foreach ($this->products as $id) DB::pdo()->prepare('DELETE FROM products WHERE id = ?')->execute([$id]);
         foreach ($this->cats as $id) DB::pdo()->prepare('DELETE FROM categories WHERE id = ?')->execute([$id]);
 

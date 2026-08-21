@@ -67,6 +67,24 @@ class Home
         ]);
     }
 
+    /**
+     * Кабінет студента: куплені курси й отримані сертифікати.
+     *
+     * Одна сторінка на дві теми, а не дві окремі, бо в обох випадках питання те
+     * саме — «що я маю з навчання». Розділяти їх на два пункти меню означало б
+     * змусити людину гадати, у якому з них шукати.
+     */
+    public static function learning(): never
+    {
+        if (!\Auth::check()) { flash('error', 'Увійдіть, щоб бачити свої курси.'); redirect('/'); }
+        $uid = (int)\Auth::id();
+        View::show('account/learning', [
+            'courses' => Courses::forUser($uid),
+            'diplomas' => \Diplomas::forUser($uid),
+            'page_title' => 'Моє навчання — ' . cfg('app_name'),
+        ]);
+    }
+
     public static function gallery(): never
     {
         $gallery = json_decode(Content::get('gallery', 'body', '[]'), true) ?: [];
@@ -182,6 +200,14 @@ class Home
     {
         View::show('home/diploma', [
             'result' => null,
+            /*
+             * Номер із посилання ЛИШЕ підставляється в поле — окремою змінною,
+             * а не як «результат». Перевірку робить POST, і підсунути номер у
+             * $result означало б показати вердикт («не знайдено») ще до того,
+             * як щось перевіряли: у масиві немає ключа ok, і шаблон чесно вивів
+             * би відмову на порожньому місці.
+             */
+            'prefill' => trim((string)($_GET['number'] ?? '')),
             'page_title' => 'Перевірка диплому — ' . cfg('app_name'),
             'meta_description' => 'Перевірте справжність диплома випускника курсів бджільництва за його номером.',
         ]);

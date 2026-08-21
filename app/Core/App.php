@@ -318,6 +318,8 @@ class App
         if ($path === '/checkout/promo' && $method === 'POST') { RateLimit::guard('promo', 40, 3600, null, true); Controllers\Checkout::applyPromo(); }
         if (preg_match('~^/order/success/([a-f0-9]{32})$~', $path, $m)) { Controllers\Checkout::success($m[1]); }
         if ($path === '/orders') { Controllers\Checkout::myOrders(); }
+        // Куплені курси й отримані сертифікати — те, що людина «має з навчання»
+        if ($path === '/learning') { Controllers\Home::learning(); }
 
         // --- оплата карткою ---
         // Замовлення впізнається за тим самим токеном, що й сторінка «прийнято»:

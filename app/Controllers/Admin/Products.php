@@ -418,6 +418,8 @@ class Products
                 'featured' => isset($_POST['featured']) ? 1 : 0,
                 'made_to_order' => isset($_POST['made_to_order']) ? 1 : 0,
                 'low_stock_threshold' => ($_POST['low_stock_threshold'] ?? '') === '' ? null : (int)$_POST['low_stock_threshold'],
+                // Строк доступу до курсу; порожньо — назавжди (див. Courses::grant)
+                'access_days' => ($_POST['access_days'] ?? '') === '' ? null : max(1, (int)$_POST['access_days']),
                 // Вага однієї штуки — за нею форма накладної рахує вагу посилки
                 'weight' => self::weight($_POST['weight'] ?? ''),
                 'taxgrp' => self::taxGroup($_POST['taxgrp'] ?? ''),
@@ -622,6 +624,8 @@ class Products
                 'featured' => isset($_POST['featured']) ? 1 : 0,
                 'made_to_order' => isset($_POST['made_to_order']) ? 1 : 0,
                 'low_stock_threshold' => ($_POST['low_stock_threshold'] ?? '') === '' ? null : (int)$_POST['low_stock_threshold'],
+                // Строк доступу до курсу; порожньо — назавжди (див. Courses::grant)
+                'access_days' => ($_POST['access_days'] ?? '') === '' ? null : max(1, (int)$_POST['access_days']),
                 'weight' => self::weight($_POST['weight'] ?? ''),
                 'taxgrp' => self::taxGroup($_POST['taxgrp'] ?? ''),
                 'uktzed' => trim($_POST['uktzed'] ?? '') ?: null,
