@@ -9,7 +9,8 @@ class Shop
 {
     public static function index(?string $pathSlug = null): never
     {
-        $cats = Catalog::categories();
+        // Саме shopCategories: у меню каталогу курсам не місце (див. Catalog)
+        $cats = Catalog::shopCategories();
 
         /*
          * Категорія приходить зі шляху (/shop/med). Параметр ?cat= лишається

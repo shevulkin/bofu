@@ -105,9 +105,28 @@ final class CoursesTest
         // Пошук по назві теж не має віддавати курс: людина шукає мед
         $this->ok('і за назвою не спливає',
             !in_array((int)$course['id'], $ids(Catalog::search(['q' => 'Тест'])), true));
-        $catTypes = array_column(Catalog::categories(), 'type');
-        $this->ok('розділу «Курси» в меню каталогу немає',
-            !in_array(Courses::TYPE, $catTypes, true));
+        /*
+         * Два списки розділів, і плутати їх дорого в обидва боки.
+         *
+         * Вітрина не має показувати «Курси» розділом каталогу — туди вже веде
+         * окремий пункт меню. Адмінка ж мусить бачити ВСІ розділи: інакше
+         * курсу нема що призначити, і зберегти його неможливо взагалі. Саме
+         * так і сталося, коли виключення, зроблене заради вітрини, потрапило
+         * в спільний метод.
+         */
+        $courseCatId = (int)DB::val('SELECT category_id FROM products WHERE id = ?', [(int)$course['id']]);
+        $inList = fn(array $rows) => in_array($courseCatId, array_map(fn($c) => (int)$c['id'], $rows), true);
+
+        $this->ok('в адмінському списку курсова категорія Є', $inList(Catalog::categories()));
+        $this->ok('у вітринному — немає', !$inList(Catalog::shopCategories()));
+        $this->ok('на головній (кореневі розділи) — немає', !$inList(Catalog::rootCategories()));
+        // Меню в шапці будується деревом без аргументу — саме там курс і виліз
+        $treeIds = [];
+        foreach (Catalog::categoryTree() as $root) {
+            $treeIds[] = (int)$root['id'];
+            foreach ($root['children'] ?? [] as $kid) $treeIds[] = (int)$kid['id'];
+        }
+        $this->ok('у меню «Магазин» — немає', !in_array($courseCatId, $treeIds, true));
 
         $this->group('доступ після оплати');
         $uid = DB::insert('users', ['email' => 'stud-' . bin2hex(random_bytes(4)) . '@example.com',

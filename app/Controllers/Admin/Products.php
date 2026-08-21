@@ -334,6 +334,40 @@ class Products
         return $out;
     }
 
+    /**
+     * Тип товару й тип його категорії мусять збігатися.
+     *
+     * Курс у категорії «Мед» нічого не ламає — на вітрину він однаково не
+     * потрапляє, бо відсіюється за типом. Ламається інше: облік. Фільтр за
+     * категорією перестає відповідати на питання «скільки в мене курсів», а
+     * той, хто відкриє «Мед» в адмінці, побачить там курс і вирішить, що це
+     * помилка даних.
+     *
+     * Перевірка саме на сервері, а не лише вибором у формі: адреса збереження
+     * відома, і category_id підставляється в POST руками. Форма фільтрує
+     * список для зручності, забороняє — цей метод.
+     *
+     * @return string порожньо, якщо все гаразд; інакше — що саме не так
+     */
+    private static function categoryTypeError(string $type, int $categoryId): string
+    {
+        $labels = ['product' => 'Товар', 'service' => 'Послуга', 'video' => 'Відео', 'course' => 'Курс'];
+        if (!isset($labels[$type])) $type = 'product';
+        $cat = $categoryId ? DB::row('SELECT name, type FROM categories WHERE id = ?', [$categoryId]) : null;
+        if (!$cat) return 'Оберіть категорію.';
+        $catType = (string)($cat['type'] ?? 'product');
+        if ($catType === $type) return '';
+
+        // Немає жодної придатної категорії — кажемо про це прямо, бо інакше
+        // людина шукатиме в списку те, чого там не буде
+        $has = (int)DB::val('SELECT COUNT(*) FROM categories WHERE type = ? AND active = 1', [$type]);
+        return $has === 0
+            ? 'Для типу «' . $labels[$type] . '» ще немає жодної категорії. '
+              . 'Створіть її в розділі «Категорії» з типом «' . $labels[$type] . '», а тоді поверніться сюди.'
+            : 'Категорія «' . $cat['name'] . '» призначена для іншого типу ('
+              . ($labels[$catType] ?? $catType) . '). Оберіть категорію типу «' . $labels[$type] . '».';
+    }
+
     private static function bulkInput(): array
     {
         return [
@@ -402,6 +436,8 @@ class Products
         if (is_post()) {
             $name = trim($_POST['name'] ?? '');
             if ($name === '') { flash('error', 'Вкажіть назву'); redirect('/admin/products/new'); }
+            $typeErr = self::categoryTypeError($_POST['type'] ?? 'product', (int)($_POST['category_id'] ?? 0));
+            if ($typeErr !== '') { flash('error', $typeErr); redirect('/admin/products/new'); }
             $slug = slugify($name);
             $i = 1; $base = $slug;
             while (DB::row('SELECT 1 FROM products WHERE slug = ?', [$slug])) $slug = $base . '-' . (++$i);
@@ -618,6 +654,8 @@ class Products
 
         // Основне збереження (картка товару — лише з products.manage)
         if ($canCard) {
+            $typeErr = self::categoryTypeError($_POST['type'] ?? $p['type'], (int)($_POST['category_id'] ?? $p['category_id']));
+            if ($typeErr !== '') { flash('error', $typeErr); redirect('/admin/products/' . $id); }
             DB::update('products', [
                 'name' => trim($_POST['name'] ?? $p['name']),
                 'category_id' => (int)($_POST['category_id'] ?? $p['category_id']),
