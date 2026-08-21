@@ -706,6 +706,42 @@ footer{border-top:1px solid var(--line);padding:88px 0 40px;margin-top:64px}
 .modal h3{font-family:var(--serif);font-size:26px;margin-bottom:8px}
 .modal .stack{display:flex;flex-direction:column;gap:10px;margin-top:20px}
 
+/* ---------- відповідь вікна входу ---------- */
+/*
+ * Те, що сайт відповів на дію: код надіслано, код невірний, на цей номер ще
+ * немає акаунта.
+ *
+ * Було звичайним .dim-абзацом — тобто виглядало точнісінько як три пояснювальні
+ * абзаци, що вже стоять у цьому ж вікні. Людина натискала «Отримати код», сайт
+ * відповідав абзацом того ж кольору й розміру, що й текст навколо, і відповідь
+ * просто не читалась як відповідь: її сприймали за черговий опис.
+ *
+ * Тому рамка, підкладка й знак ліворуч. Знак несе те саме, що й колір, — інакше
+ * повідомлення розрізняються лише червоним проти золотого, а це найгірший спосіб
+ * розрізняти важливе.
+ */
+.auth-note{display:flex;gap:10px;align-items:flex-start;margin-top:14px;
+  padding:12px 14px;border-radius:4px;font-size:13.5px;line-height:1.5;
+  border:1px solid var(--line2);background:var(--bg3);color:var(--muted)}
+.auth-note::before{content:attr(data-sign);flex:0 0 20px;width:20px;height:20px;
+  border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-size:12px;font-weight:800;line-height:1;margin-top:1px}
+/* Вказівка, що робити далі. Не помилка: людина нічого не зробила не так —
+   акаунта на цей номер справді ще немає, і нижче написано, як його завести. */
+.auth-note.is-info{border-color:var(--line2);background:var(--bg3);color:var(--text)}
+.auth-note.is-info::before{background:var(--gold);color:var(--bg)}
+/* Дія вдалась і чекає продовження — код пішов, лишилось його ввести */
+.auth-note.is-ok{border-color:var(--gold);background:rgba(240,180,41,.1);color:var(--text)}
+.auth-note.is-ok::before{background:var(--gold);color:var(--bg)}
+/* Помилка: сталося не те, чого людина хотіла */
+.auth-note.is-error{border-color:var(--danger);background:rgba(200,60,50,.12);color:var(--danger2)}
+.auth-note.is-error::before{background:var(--danger);color:var(--text)}
+/* Нове повідомлення на місці старого інакше лишилось би непоміченим: текст
+   змінився, а на екрані ніщо не ворухнулось */
+@keyframes authNote{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+.auth-note.is-new{animation:authNote .22s ease-out}
+@media (prefers-reduced-motion:reduce){.auth-note.is-new{animation:none}}
+
 /* ---------- top button ---------- */
 .to-top{position:fixed;right:22px;bottom:22px;z-index:60;background:var(--gold);color:var(--bg);border:none;border-radius:50%;
   width:46px;height:46px;font-size:19px;cursor:pointer;display:none;box-shadow:0 4px 18px rgba(0,0,0,.4)}
