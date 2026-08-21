@@ -77,9 +77,26 @@ class Shop
         // «Інші категорії» — це вся гілка, а не сама категорія: підрозділ того
         // самого розділу для покупця не «інше», він щойно звідти
         $branch = $current ? Catalog::branchIds((int)$current['id']) : [];
-        // Курси в каталозі не показуються взагалі — і в цьому блоці теж
-        $other = DB::all("SELECT * FROM products WHERE active = 1 AND featured = 1 AND type <> 'course'" .
-            ($branch ? ' AND category_id NOT IN (' . implode(',', $branch) . ')' : '') . $skip . ' ORDER BY id LIMIT 4');
+        /*
+         * Курси в каталозі не показуються взагалі — і в цьому блоці теж.
+         *
+         * Обраний магазин цей блок теж мусить поважати. Інакше виходило так:
+         * покупець фільтрує «Магазин №1», товар зникає з видачі, бо його там
+         * немає, — і той самий товар одразу повертається порадою внизу. Фільтр
+         * при цьому виглядає зламаним, хоч і працює: людина бачить не «його
+         * тут немає», а «сайт мене не слухає».
+         */
+        $otherWhere = ''; $otherArgs = [];
+        if (!empty($filters['store_id'])) {
+            $otherWhere = ' AND ' . Catalog::inStockSql();
+            $otherArgs[] = (int)$filters['store_id'];
+        }
+        // Псевдонім p обовʼязковий: умову «є в цьому магазині» написано через
+        // нього (Catalog::inStockSql), і без аліаса запит падає на p.id
+        $other = DB::all("SELECT p.* FROM products p WHERE p.active = 1 AND p.featured = 1 AND p.type <> 'course'" .
+            ($branch ? ' AND p.category_id NOT IN (' . implode(',', $branch) . ')' : '')
+            . ($shownIds ? ' AND p.id NOT IN (' . implode(',', $shownIds) . ')' : '') . $otherWhere
+            . ' ORDER BY p.id LIMIT 4', $otherArgs);
         Catalog::preloadBrands($other);
 
         View::show('shop/index', [

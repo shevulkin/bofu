@@ -474,6 +474,16 @@ class Catalog
     }
 
     /** SQL-умова «є в наявності в магазині» з урахуванням варіантів (для p.id у зовнішньому запиті) */
+    /**
+     * Та сама умова «є в цьому магазині» для запитів поза search().
+     *
+     * Один текст на обидва місця навмисно: блок порад під каталогом мусить
+     * розуміти «є в наявності» так само, як сам каталог, — інакше товар, який
+     * фільтр щойно прибрав, повертається порадою, і фільтр виглядає зламаним.
+     * Очікує один параметр — id магазину.
+     */
+    public static function inStockSql(): string { return self::IN_STOCK_EXISTS; }
+
     private const IN_STOCK_EXISTS =
         'EXISTS (SELECT 1 FROM store_stock ss
                  LEFT JOIN product_variants pv ON pv.id = ss.variant_id
