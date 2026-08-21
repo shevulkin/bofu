@@ -638,11 +638,33 @@ class Notify
         return $text === '' ? '' : '=?UTF-8?B?' . base64_encode($text) . '?=';
     }
 
-    public static function email(array $user, string $text, array $vars, string $event = ''): void
+    /**
+     * Підміна відправлення — для тестів.
+     *
+     * Той самий прийом, що й Telegram::useToken(): назовні нічого не міняється,
+     * а набір перевірок перестає залежати від того, чи налаштована пошта на
+     * машині, де його запускають. Без цього тести входу проходили б на сервері
+     * й падали в розробника — або, що гірше, писали б комусь справжні листи.
+     *
+     * @var null|callable(string $to, string $subject, string $text):bool
+     */
+    private static $mailer = null;
+
+    /** Підмінити відправника листів (null — повернути звичайний mail()) */
+    public static function useMailer(?callable $fn): void { self::$mailer = $fn; }
+
+    /**
+     * @return bool чи прийняв сервер лист до відправлення. Для листів про
+     *         замовлення це довідка, і викликач має право її не читати; для
+     *         коду входу — ні: доки sendCode() вірив у безумовний успіх, форма
+     *         казала «код надіслано» навіть тоді, коли mail() повернув false, і
+     *         людина чекала листа, якого ніхто не відправляв.
+     */
+    public static function email(array $user, string $text, array $vars, string $event = ''): bool
     {
-        if (empty($user['email'])) return;
+        if (empty($user['email'])) return false;
         $to = filter_var((string)$user['email'], FILTER_VALIDATE_EMAIL);
-        if (!$to) return;
+        if (!$to) return false;
 
         $from  = self::mailFrom($event);
         $reply = self::mailReplyTo();
@@ -670,15 +692,20 @@ class Notify
          * доставка краща за її відсутність.
          */
         $envelope = preg_match('~^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+$~', $from) === 1;
-        $sent = $envelope
-            ? @mail($to, $subject, $text, $headers, '-f' . $from)
-            : @mail($to, $subject, $text, $headers);
-        if (!$sent && $envelope) $sent = @mail($to, $subject, $text, $headers);
+        if (self::$mailer !== null) {
+            $sent = (bool)(self::$mailer)($to, $subject, $text);
+        } else {
+            $sent = $envelope
+                ? @mail($to, $subject, $text, $headers, '-f' . $from)
+                : @mail($to, $subject, $text, $headers);
+            if (!$sent && $envelope) $sent = @mail($to, $subject, $text, $headers);
+        }
 
         // Мовчазна невдача тут виглядає як «код не приходить», і причини не
         // видно ніде. В лог іде подія й прикрита адреса: журнал читає людина,
         // і він потрапляє в кожен дамп.
         if (!$sent) self::log('email fail (' . ($event ?: 'без події') . ') → ' . EmailAuth::maskEmail($to));
+        return $sent;
     }
 
     public static function push(array $user, string $text): void
