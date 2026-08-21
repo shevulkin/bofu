@@ -9,6 +9,27 @@ $tierCats = array_values(array_filter($categories, fn($c) => ($c['type'] ?? 'pro
 $tierCatName = '';
 foreach ($categories as $c) if ((int)$c['id'] === (int)$tier_cat) $tierCatName = (string)$c['name'];
 $idle = array_filter($ladders, fn($l) => $l['uses'] === 0);
+
+/*
+ * Розділи, у яких шкала вже є, зі списку прибираємо.
+ *
+ * «Задати шкалу» обіцяє нову, а обравши там розділ із наявною шкалою, людина
+ * потрапляла у ФОРМУ ЇЇ РЕДАГУВАННЯ — з уже заповненими рядками, яких вона не
+ * вводила. Виглядало це так, ніби сайт щось вигадав сам; насправді ж наявні
+ * шкали редагують кнопкою «Змінити» у таблиці вище, де поруч видно, скільки
+ * товарів кожна зачіпає.
+ *
+ * Виняток один: розділ, який редагують ЗАРАЗ. Без нього перехід із «Змінити»
+ * приводив би до списку, у якому обраного пункту немає, і форма мовчки
+ * перекидалась би на загальну шкалу — тобто кнопка «Змінити» перестала б
+ * працювати саме тоді, коли її натиснули.
+ */
+$withLadder = [];
+foreach ($ladders as $l) {
+    if (preg_match('~tier_cat=(\d+)~', (string)($l['link'] ?? ''), $m)) $withLadder[(int)$m[1]] = true;
+}
+$tierCats = array_values(array_filter($tierCats,
+    fn($c) => empty($withLadder[(int)$c['id']]) || (int)$c['id'] === (int)$tier_cat));
 ?>
 <div class="admin-head"><h1 class="h-serif">Оптові знижки</h1></div>
 
@@ -56,6 +77,9 @@ $idle = array_filter($ladders, fn($l) => $l['uses'] === 0);
       <tr>
         <th style="width:34%">Де задано</th>
         <th>Шкала</th>
+        <?php /* «Діє на: 1» без одиниці читалось як завгодно — один розділ?
+                 одна позиція шкали? один магазин? Тепер число йде разом зі
+                 словом, і питання не виникає. */ ?>
         <th class="num" data-help-title="Колонка «Діє на»"
             data-help="Скільки активних товарів беруть саме цю шкалу.
 
@@ -67,8 +91,8 @@ $idle = array_filter($ladders, fn($l) => $l['uses'] === 0);
           <td><?= e($l['label']) ?></td>
           <td><?= e(QtyDiscounts::line($l['tiers'])) ?></td>
           <td class="num"><?= $l['uses'] === 0
-                ? '<span class="muted">нікого</span>'
-                : '<b>' . (int)$l['uses'] . '</b>' ?></td>
+                ? '<span class="muted">жоден товар</span>'
+                : '<b>' . e(plural_n((int)$l['uses'], 'товар', 'товари', 'товарів')) . '</b>' ?></td>
           <td class="col-mid">
             <?php if ($l['link']): ?>
               <a class="btn btn-line btn-xs" href="<?= e(url($l['link'])) ?>">Змінити</a>
@@ -89,7 +113,10 @@ $idle = array_filter($ladders, fn($l) => $l['uses'] === 0);
 </div>
 
 <div class="admin-card">
-  <h2 class="h-serif">Задати шкалу</h2>
+  <?php /* Заголовок каже правду про те, що зараз у формі. «Задати шкалу» над
+           уже заповненими рядками читалось як «сайт щось вигадав сам»: людина
+           не вводила цих чисел, а вони стоять. */ ?>
+  <h2 class="h-serif"><?= $tier_rows ? 'Змінити шкалу' : 'Задати шкалу' ?></h2>
 
   <form method="get" action="<?= e(url('/admin/wholesale')) ?>"
         style="display:flex;gap:12px;align-items:end;flex-wrap:wrap;margin-bottom:18px">
@@ -108,6 +135,11 @@ $idle = array_filter($ladders, fn($l) => $l['uses'] === 0);
           <option value="<?= (int)$c['id'] ?>"<?= (int)$tier_cat === (int)$c['id'] ? ' selected' : '' ?>><?= e(cat_label($c)) ?></option>
         <?php endforeach; ?>
       </select>
+      <?php /* Порожній список без пояснення виглядав би як несправність */ ?>
+      <?php if (!$tierCats): ?>
+        <p class="field-hint">Усі розділи вже мають свою шкалу — змінити будь-яку можна кнопкою
+          «Змінити» в таблиці вище.</p>
+      <?php endif; ?>
     </div>
     <noscript><button class="btn btn-line btn-sm" type="submit">Показати</button></noscript>
   </form>
