@@ -540,8 +540,28 @@ input:disabled,select:disabled,textarea:disabled{opacity:.45;cursor:not-allowed}
    привертати увагу, а торг — двері, які людина відчиняє лише тоді, коли ціна
    її не влаштувала. Кричати про них означало б натякати, що ціна на сайті
    несправжня. */
-.offer-box{border:1px solid var(--line);border-radius:4px;padding:16px 18px;margin:0 0 22px;background:var(--bg2)}
-.offer-box h3{font-size:13px;text-transform:uppercase;letter-spacing:.07em;color:var(--dim);margin:0 0 12px}
+/* ---------- торг ---------- */
+/*
+ * Згорнутий торг — рядок, а не блок.
+ *
+ * Розгорнута форма з полями «скільки штук» і «ваша ціна» стояла під кожним
+ * товаром, і під банкою за 150 грн теж. Півекрана, віддані запрошенню
+ * поторгуватись, кажуть про товар більше, ніж опис: що ціна умовна й що тут
+ * прийнято торгуватись. Для магазину, який продає свій мед за свою ціну, це не
+ * та розмова — тож рамка й підкладка зʼявляються лише коли блок розкрили.
+ */
+.offer-box{margin:0 0 22px;border:1px solid transparent;border-radius:4px}
+.offer-box[open]{border-color:var(--line);background:var(--bg2);padding:16px 18px}
+.offer-toggle{list-style:none;cursor:pointer;display:inline-flex;align-items:center;gap:8px;
+  color:var(--muted);font-size:13.5px;padding:6px 0;transition:color .15s;
+  border-bottom:1px dashed var(--line2);width:auto}
+.offer-toggle::-webkit-details-marker{display:none}
+.offer-toggle::marker{content:''}
+.offer-toggle::after{content:'▾';color:var(--gold);font-size:11px;transition:transform .15s}
+.offer-box[open] .offer-toggle{color:var(--text);font-size:13px;text-transform:uppercase;
+  letter-spacing:.07em;border-bottom:0;margin-bottom:12px;padding:0}
+.offer-box[open] .offer-toggle::after{transform:rotate(180deg)}
+.offer-toggle:hover{color:var(--gold)}
 .offer-fields{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end}
 .offer-field{display:flex;flex-direction:column;gap:5px;flex:1 1 150px}
 .offer-field span{font-size:12.5px;color:var(--dim)}
@@ -1998,3 +2018,20 @@ body.ce-on [data-ce].ce-just-saved{outline:2px solid var(--ok);outline-offset:3p
   .course-diploma{padding:20px 18px}
   .course-diploma .btn{width:100%}
 }
+
+/* ---------- наявність по точках ---------- */
+/*
+ * Згорнута з тієї ж причини, що й торг: головну відповідь («є / немає / буде
+ * під замовлення») людина вже отримала кнопкою й рядком про виготовлення.
+ * Список точок відповідає на друге питання — «а де саме забрати», — і його
+ * ставлять лише ті, хто збирається їхати.
+ */
+.avail-box{margin:0 0 4px}
+.avail-toggle{list-style:none;cursor:pointer;display:inline-flex;align-items:center;gap:8px;
+  color:var(--muted);font-size:13.5px;padding:6px 0;border-bottom:1px dashed var(--line2)}
+.avail-toggle::-webkit-details-marker{display:none}
+.avail-toggle::marker{content:''}
+.avail-toggle::after{content:'▾';color:var(--gold);font-size:11px;transition:transform .15s}
+.avail-box[open] .avail-toggle{border-bottom:0;margin-bottom:6px}
+.avail-box[open] .avail-toggle::after{transform:rotate(180deg)}
+.avail-toggle:hover{color:var(--gold)}
