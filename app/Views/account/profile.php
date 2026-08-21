@@ -36,7 +36,14 @@
              стоїть перед формами, а не рядком під ними. Персоналу вона ще
              потрібніша: у шапці в нього «Адмінпанель» замість «Мої замовлення»,
              і власні покупки шукати більше ніде. */ ?>
-    <p style="margin-top:18px"><a class="btn btn-line" href="<?= e(url('/orders')) ?>">📦 Мої замовлення</a></p>
+    <?php /* «Моє навчання» показуємо лише тим, кому є що там показати: кнопка
+             в порожній розділ — обіцянка, за якою нічого немає. */ ?>
+    <p style="margin-top:18px;display:flex;gap:10px;flex-wrap:wrap">
+      <a class="btn btn-line" href="<?= e(url('/orders')) ?>">📦 Мої замовлення</a>
+      <?php if (!empty($has_learning)): ?>
+        <a class="btn btn-line" href="<?= e(url('/learning')) ?>">🎓 Моє навчання</a>
+      <?php endif; ?>
+    </p>
 
     <form class="admin-card" method="post" action="<?= e(url('/profile')) ?>" style="margin-top:22px">
       <?= Csrf::field() ?>

@@ -7,7 +7,7 @@
     <div class="diploma-box">
       <form method="post" action="<?= e(url('/diploma/check')) ?>" style="display:flex;gap:12px">
         <?= Csrf::field() ?>
-        <input type="text" name="number" placeholder="BOFU-2024-001" value="<?= e($result['number'] ?? '') ?>" required style="flex:1">
+        <input type="text" name="number" placeholder="BOFU-2024-001" value="<?= e($result['number'] ?? ($prefill ?? '')) ?>" required style="flex:1">
         <button class="btn btn-gold" type="submit">Перевірити</button>
       </form>
       <?php if ($result !== null): ?>

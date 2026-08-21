@@ -313,6 +313,15 @@ class Auth
         $_SESSION['auth_seen'] = time();
         self::stopSimulating();
         AuthLog::write($userId, 'login');
+        /*
+         * Курси, оплачені до того, як зʼявився акаунт.
+         *
+         * Гість купує курс, а кабінет заводить згодом — тією ж поштою, і
+         * замовлення переходить йому (Customers::claimOrdersByEmail). На момент
+         * оплати давати доступ не було кому, тож даємо тут: вхід — єдине місце,
+         * де точно відомо і хто людина, і що вона вже за собою забрала.
+         */
+        Courses::claimAfterLogin($userId);
     }
 
     public static function logout(): void

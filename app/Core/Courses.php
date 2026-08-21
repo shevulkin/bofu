@@ -102,17 +102,104 @@ class Courses
     /**
      * Відкрити доступ до курсів цього замовлення.
      *
-     * Поки що лише запис у журнал — відео ще знімається, дивитись нема чого.
-     * Але місце виклику вже правильне, і це головне: доступ дають гроші, а не
-     * статус «виконано», який продавець ставить рукою. Коли зʼявиться таблиця
-     * доступів, змінюватиметься тіло цього методу, а не десяток місць, звідки
-     * його кличуть.
+     * Кличеться там, де гроші підтверджені, — не за статусом «Доставлено», який
+     * ставить продавець рукою і який до цифрового замовлення й не застосовний.
+     *
+     * Гість без акаунта доступу не отримує, і вдавати протилежне нема сенсу:
+     * показувати курс нема кому й ніде. Купівля не пропадає — замовлення лежить
+     * із його поштою, і щойно він увійде тією ж адресою, Customers::
+     * claimOrdersByEmail() віддасть замовлення йому; лишиться повторний виклик
+     * звідси (див. claimAfterLogin).
      */
     public static function grantFor(int $orderId, ?int $userId): void
     {
-        $courses = self::inOrder($orderId);
-        if (!$courses) return;
-        $names = implode(', ', array_column($courses, 'name'));
-        AuthLog::write($userId, 'course_paid', $names . ' (замовлення #' . $orderId . ')');
+        if (!$userId) return;
+        foreach (self::inOrder($orderId) as $course) {
+            self::grant($userId, (int)$course['id'], $orderId, $course['access_days'] ?? null);
+        }
+    }
+
+    /**
+     * Один доступ. Повторний виклик не плодить рядків і не вкорочує строк.
+     *
+     * Той самий курс купують удруге — наприклад, коли строк вийшов. Тоді
+     * доступ ПОДОВЖУЄТЬСЯ, а не заводиться поруч другим рядком: інакше кабінет
+     * показував би той самий курс двічі, а «до якої дати» стало б питанням із
+     * двома відповідями.
+     */
+    public static function grant(int $userId, int $productId, ?int $orderId, $accessDays): void
+    {
+        $days = ($accessDays === null || $accessDays === '') ? null : max(1, (int)$accessDays);
+        $until = $days === null ? null : date('Y-m-d H:i:s', time() + $days * 86400);
+
+        $has = DB::row('SELECT * FROM course_access WHERE user_id = ? AND product_id = ?', [$userId, $productId]);
+        if ($has) {
+            // Безстроковий доступ строковим уже не робимо: відібрати те, що
+            // людина купила назавжди, не може ані нова покупка, ані правка
+            // строку в картці курсу.
+            if ($has['expires_at'] === null || $until === null) {
+                DB::update('course_access', ['expires_at' => null], 'id = ?', [(int)$has['id']]);
+                return;
+            }
+            // Продовжуємо від пізнішої з двох дат, а не від «сьогодні»: інакше
+            // друга покупка, зроблена завчасно, вкорочувала б доступ
+            $base = max(strtotime((string)$has['expires_at']), time());
+            DB::update('course_access', ['expires_at' => date('Y-m-d H:i:s', $base + $days * 86400)],
+                'id = ?', [(int)$has['id']]);
+            return;
+        }
+        DB::insert('course_access', [
+            'user_id' => $userId, 'product_id' => $productId, 'order_id' => $orderId,
+            'granted_at' => now(), 'expires_at' => $until,
+        ]);
+    }
+
+    /**
+     * Курси, відкриті цій людині: сам курс плюс строк.
+     *
+     * Протухлі не ховаємо — показуємо з позначкою. «Курс зник із кабінету» —
+     * найгірше пояснення того, що строк вийшов: людина вирішує, що її обікрали,
+     * а не що доступ скінчився.
+     *
+     * @return array<array{product:array,expires_at:?string,expired:bool}>
+     */
+    public static function forUser(int $userId): array
+    {
+        $rows = DB::all(
+            "SELECT a.expires_at, p.* FROM course_access a
+                JOIN products p ON p.id = a.product_id
+             WHERE a.user_id = ? ORDER BY a.granted_at DESC", [$userId]);
+        $out = [];
+        foreach ($rows as $r) {
+            $exp = $r['expires_at'];
+            unset($r['expires_at']);
+            $out[] = ['product' => $r, 'expires_at' => $exp,
+                      'expired' => $exp !== null && strtotime((string)$exp) < time()];
+        }
+        return $out;
+    }
+
+    /** Чи відкритий курс саме зараз — питання доступу до відео, а не до списку */
+    public static function isOpen(int $userId, int $productId): bool
+    {
+        $r = DB::row('SELECT expires_at FROM course_access WHERE user_id = ? AND product_id = ?',
+            [$userId, $productId]);
+        if (!$r) return false;
+        return $r['expires_at'] === null || strtotime((string)$r['expires_at']) >= time();
+    }
+
+    /**
+     * Видати доступ за вже оплаченими замовленнями цієї людини.
+     *
+     * Потрібно там, де замовлення знайшло господаря пізніше за оплату: гість
+     * купив курс, а кабінет завів згодом тією ж поштою (Customers::
+     * claimOrdersByEmail). На момент оплати давати доступ не було кому.
+     */
+    public static function claimAfterLogin(int $userId): void
+    {
+        $orders = DB::all(
+            "SELECT id FROM orders WHERE user_id = ? AND parent_id IS NULL AND paid_at IS NOT NULL",
+            [$userId]);
+        foreach ($orders as $o) self::grantFor((int)$o['id'], $userId);
     }
 }

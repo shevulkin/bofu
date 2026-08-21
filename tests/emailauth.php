@@ -119,11 +119,28 @@ final class EmailAuthTest
         return (string)DB::val("SELECT code FROM auth_tokens WHERE token = ?", [$token]);
     }
 
+    /**
+     * Прибираємо за адресами, а не лише за зібраними id.
+     *
+     * Половину акаунтів тут створює не тест, а сам код під перевіркою:
+     * EmailAuth::verify() на невідому адресу заводить користувача — у цьому й
+     * полягає перевірка. У $this->users такий id не потрапляє, і кожен прогін
+     * лишав по кілька рядків у базі назавжди. Адреса ж відома завжди: усі вони
+     * видані self::mail() і закінчуються на @bofu.test.
+     */
     private function tearDown(): void
     {
         foreach ($this->orders as $id) DB::delete('orders', 'id = ?', [$id]);
-        foreach ($this->users as $id) { DB::delete('user_roles', 'user_id = ?', [$id]); DB::delete('users', 'id = ?', [$id]); }
-        foreach ($this->emails as $e) DB::delete('auth_tokens', 'email = ?', [$e]);
+        foreach ($this->emails as $e) {
+            DB::delete('auth_tokens', 'email = ?', [$e]);
+            $uid = DB::val('SELECT id FROM users WHERE email = ?', [$e]);
+            if ($uid) $this->users[] = (int)$uid;
+        }
+        foreach (array_unique($this->users) as $id) {
+            DB::delete('course_access', 'user_id = ?', [$id]);
+            DB::delete('user_roles', 'user_id = ?', [$id]);
+            DB::delete('users', 'id = ?', [$id]);
+        }
     }
 
     private function testNormEmail(): void
