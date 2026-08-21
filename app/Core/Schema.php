@@ -7,7 +7,7 @@ declare(strict_types=1);
  */
 class Schema
 {
-    public const VERSION = 51;
+    public const VERSION = 52;
 
     /** Оновлення існуючої бази до поточної версії без втрати даних */
     public static function upgrade(): void
@@ -711,6 +711,22 @@ class Schema
              */
             self::createAll();
         }
+        if ($ver < 52) {
+            /*
+             * Два поля сторінки курсу: «чого навчитесь» і програма.
+             *
+             * Обидва — простий текст, по пункту в рядку. Не JSON і не окрема
+             * таблиця «модулів»: пунктів десяток, редагує їх людина, а не
+             * інтеграція, і кожна зайва сутність тут — це ще одна форма, у якій
+             * доведеться клацати замість того, щоб просто написати список.
+             *
+             * Порожні поля означають, що блок на сторінці не показується
+             * взагалі, — курс без програми виглядає скромніше, ніж курс із
+             * заголовком «Програма» й порожнечею під ним.
+             */
+            self::addColumn('products', 'learn_outcomes', 'text null');
+            self::addColumn('products', 'program', 'text null');
+        }
         if ($ver < 51) {
             /*
              * Кабінет студента: куплені курси й отримані сертифікати.
@@ -1058,6 +1074,9 @@ class Schema
                 'base_price' => 'num null', // null => "За запитом"
                 'old_price' => 'num null',
                 'type' => "str default 'product'", // product|service|video|course
+                // Сторінка курсу: результати навчання й програма, по пункту в
+                // рядку. Читаються лише для type = course (див. home/course).
+                'learn_outcomes' => 'text null', 'program' => 'text null',
                 'unit' => 'str null',
                 'active' => 'bool default 1', 'featured' => 'bool default 0',
                 'made_to_order' => 'bool default 1', // виробник: можна замовити без наявності

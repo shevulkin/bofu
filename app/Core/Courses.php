@@ -179,6 +179,22 @@ class Courses
         return $out;
     }
 
+    /**
+     * Чи цей курс уже куплений — саме куплений, а не «відкритий зараз».
+     *
+     * Різниця істотна для того, що бачить людина. Кнопка «До кошика» на
+     * курсі, за який уже заплачено, — найгірше, що може показати сторінка:
+     * вона пропонує купити вдруге те, що вже твоє, і жодного натяку, куди йти
+     * дивитись. Тому питання «чи купував» окреме від «чи не вийшов строк»:
+     * протухлий курс купують ще раз свідомо, і кнопка тоді інша.
+     */
+    public static function owned(?int $userId, int $productId): bool
+    {
+        if (!$userId) return false;
+        return DB::row('SELECT id FROM course_access WHERE user_id = ? AND product_id = ?',
+            [$userId, $productId]) !== null;
+    }
+
     /** Чи відкритий курс саме зараз — питання доступу до відео, а не до списку */
     public static function isOpen(int $userId, int $productId): bool
     {

@@ -77,7 +77,8 @@ class Shop
         // «Інші категорії» — це вся гілка, а не сама категорія: підрозділ того
         // самого розділу для покупця не «інше», він щойно звідти
         $branch = $current ? Catalog::branchIds((int)$current['id']) : [];
-        $other = DB::all('SELECT * FROM products WHERE active = 1 AND featured = 1' .
+        // Курси в каталозі не показуються взагалі — і в цьому блоці теж
+        $other = DB::all("SELECT * FROM products WHERE active = 1 AND featured = 1 AND type <> 'course'" .
             ($branch ? ' AND category_id NOT IN (' . implode(',', $branch) . ')' : '') . $skip . ' ORDER BY id LIMIT 4');
         Catalog::preloadBrands($other);
 

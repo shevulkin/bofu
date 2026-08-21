@@ -1896,3 +1896,105 @@ body.ce-on [data-ce].ce-just-saved{outline:2px solid var(--ok);outline-offset:3p
   color: var(--gold);
 }
 
+
+/* ---------- курси ---------- */
+/*
+ * Картка курсу горизонтальна, і це не про смак.
+ *
+ * Товарна картка вертикальна з великим фото зверху: банку меду впізнають саме
+ * по банці, і рішення ухвалюють за секунду. З курсом навпаки — дивляться не на
+ * картинку, а на те, що написано, і фото на пів екрана лише відсуває текст,
+ * заради якого сюди прийшли. Ті самі дані, інша вага.
+ */
+.course-list{display:flex;flex-direction:column;gap:18px;margin-top:36px}
+.course-card{display:grid;grid-template-columns:280px 1fr;background:var(--bg2);
+  border:1px solid var(--line);border-radius:6px;overflow:hidden;transition:border-color .2s}
+.course-card:hover{border-color:var(--line2)}
+/* Пропорція 4:3, а не квадрат: у кадр курсу лягає пасіка й люди, а не банка */
+.course-card-img{position:relative;aspect-ratio:4/3;background:var(--bg3);display:block;overflow:hidden}
+.course-card-img img{width:100%;height:100%;object-fit:cover;transition:transform .35s ease}
+.course-card:hover .course-card-img img{transform:scale(1.03)}
+.course-card-img .ph{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:40px;opacity:.35}
+/* «Ваш курс» — перше, що має впасти в око тому, хто вже заплатив */
+.course-badge{position:absolute;left:12px;top:12px;background:var(--gold);color:var(--bg);
+  font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;
+  padding:5px 10px;border-radius:3px}
+.course-card-body{padding:24px 26px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.course-card-title{font-family:var(--serif);font-size:24px;line-height:1.15;margin:0}
+.course-card-title a{color:var(--text)}
+.course-card-title a:hover{color:var(--gold)}
+.course-card-desc{color:var(--muted);font-size:14.5px;line-height:1.55;margin:0}
+/* Факти в рядок: тривалість, формат, група — те, що вирішує «чи мені підходить» */
+.course-facts{list-style:none;display:flex;flex-wrap:wrap;gap:8px 26px;margin:2px 0 0;padding:0}
+.course-facts li{display:flex;flex-direction:column;gap:2px}
+.course-facts span{color:var(--dim);font-size:10.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase}
+.course-facts b{color:var(--text);font-size:14px;font-weight:600}
+.course-card-foot{margin-top:auto;padding-top:6px;display:flex;align-items:center;
+  justify-content:space-between;gap:16px;flex-wrap:wrap}
+.course-card-foot .price{font-family:var(--sans);font-size:22px;font-weight:700;color:var(--gold)}
+.course-card-foot .price s{color:var(--dim);font-size:15px;font-weight:400;margin-right:8px}
+.course-expired{color:var(--dim);font-size:13px}
+
+@media (max-width:760px){
+  /* На телефоні фото зверху — колонка в 280px там лишила б тексту третину
+     ширини, а курс читають, а не роздивляються */
+  .course-card{grid-template-columns:1fr}
+  .course-card-img{aspect-ratio:16/9}
+  .course-card-body{padding:20px 18px}
+  .course-card-title{font-size:20px}
+  .course-card-foot .btn{width:100%}
+}
+
+/* ---------- сторінка курсу ---------- */
+.course-hero-img{position:relative;border-radius:8px;overflow:hidden;aspect-ratio:16/9;background:var(--bg3)}
+.course-hero-img img{width:100%;height:100%;object-fit:cover}
+/* Факти під заголовком — крупніше, ніж у картці: тут вони частина обкладинки */
+.course-facts-lg{gap:14px 40px;margin-top:24px}
+.course-facts-lg b{font-size:16px}
+.course-buy{display:flex;align-items:center;gap:20px;flex-wrap:wrap;margin-top:28px;
+  padding-top:24px;border-top:1px solid var(--line)}
+.course-buy .price{font-family:var(--sans);font-weight:700;color:var(--gold)}
+.course-buy .price s{color:var(--dim);font-size:19px;font-weight:400;margin-right:10px}
+.course-buy form{margin:0}
+/* Куплений курс: повідомлення на всю ширину — це головне, що людина має тут
+   побачити, а не рядок збоку від кнопки */
+.course-owned-note{flex-basis:100%;display:flex;flex-direction:column;gap:4px;
+  background:rgba(240,180,41,.1);border:1px solid var(--gold);border-radius:6px;padding:14px 16px}
+.course-owned-note b{color:var(--gold)}
+.course-owned-note span{color:var(--muted);font-size:13.5px;line-height:1.5}
+
+/* Результати навчання — галками, а не крапками: список крапок читається як
+   зміст, а тут кожен рядок — обіцянка, яку курс виконує */
+.course-learn{list-style:none;margin:18px 0 0;padding:0;display:grid;gap:12px}
+.course-learn li{position:relative;padding-left:32px;color:var(--text);font-size:15.5px;line-height:1.55}
+.course-learn li::before{content:'✓';position:absolute;left:0;top:-1px;width:20px;height:20px;
+  border-radius:50%;background:var(--gold);color:var(--bg);font-size:12px;font-weight:800;
+  display:flex;align-items:center;justify-content:center}
+
+.course-text{color:var(--muted);font-size:15.5px;line-height:1.75;margin-top:14px}
+
+.course-program{list-style:none;counter-reset:none;margin:18px 0 0;padding:0;display:grid;gap:2px}
+.course-program li{display:grid;grid-template-columns:44px 1fr;gap:14px;align-items:start;
+  padding:14px 0;border-bottom:1px solid var(--line)}
+.course-program li:last-child{border-bottom:0}
+.course-program li span{width:30px;height:30px;border-radius:50%;border:1px solid var(--line2);
+  color:var(--gold);font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center}
+.course-program li div{color:var(--text);font-size:15.5px;line-height:1.5;padding-top:4px}
+
+.course-gallery{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:18px}
+.course-gallery img{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:6px}
+
+/* Диплом із перевіркою — те, чим цей курс відрізняється від «курсу з
+   інстаграма». Досі про перевірку знав лише той, хто сам знайшов /diploma. */
+.course-diploma{margin-top:48px;display:flex;align-items:center;justify-content:space-between;
+  gap:24px;flex-wrap:wrap;background:var(--bg2);border:1px solid var(--line);
+  border-left:3px solid var(--gold);border-radius:6px;padding:24px 26px}
+
+@media (max-width:760px){
+  .course-facts-lg{gap:12px 24px}
+  .course-buy{gap:14px}
+  .course-buy .btn{width:100%}
+  .course-gallery{grid-template-columns:repeat(2,1fr)}
+  .course-diploma{padding:20px 18px}
+  .course-diploma .btn{width:100%}
+}
