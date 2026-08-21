@@ -32,6 +32,11 @@
       <button class="btn btn-line" id="emailLoginBtn" type="button">Увійти за поштою</button>
     </div>
 
+    <?php /* Відповідь сайту стоїть над обома формами, а не між ними: раніше
+             для пошти вона зʼявлялась під полем, а для телефону — над, і те
+             саме повідомлення доводилось шукати щоразу в іншому місці. */ ?>
+    <div id="loginHint" class="auth-note" role="status" aria-live="polite" style="display:none"></div>
+
     <div id="emailLoginBox" style="display:none;margin-top:14px">
       <div class="field"><label>Пошта</label><input type="email" id="emailInput" placeholder="you@ukr.net" autocomplete="email"></div>
       <div class="field" id="emailCodeField" style="display:none"><label>Код з листа</label><input type="text" id="emailCodeInput" placeholder="123456" inputmode="numeric" autocomplete="one-time-code"></div>
@@ -43,7 +48,6 @@
       <p class="dim" style="margin-top:8px">Надішлемо код одним листом. Якщо його немає за хвилину —
         подивіться в теці «Спам»: код видно прямо в темі листа.</p>
     </div>
-    <div id="loginHint" class="dim" style="margin-top:12px;display:none"></div>
 
     <div id="phoneLoginBox" style="display:none;margin-top:14px">
       <div class="field"><label>Номер телефону</label><input type="tel" id="phoneInput" placeholder="067 123 45 67"></div>
@@ -66,7 +70,24 @@
   var base = '<?= e(url('/')) ?>'.replace(/\/$/, '');
   var csrf = '<?= e(Csrf::token()) ?>';
   var hint = document.getElementById('loginHint');
-  function show(msg){ if(hint){hint.style.display='block';hint.textContent=msg;} }
+  /*
+   * kind: 'info' — що робити далі, 'ok' — вийшло, 'error' — не вийшло.
+   * Типово 'error': сюди потрапляє все, що сервер повернув як помилку, і
+   * мовчазне перефарбовування невдачі в нейтральне було б гіршим за помилку.
+   */
+  var SIGN = { info: 'i', ok: '✓', error: '!' };
+  function show(msg, kind){
+    if (!hint) return;
+    kind = SIGN[kind] ? kind : 'error';
+    hint.style.display = 'flex';
+    hint.textContent = msg;
+    hint.setAttribute('data-sign', SIGN[kind]);
+    // Клас знімається й ставиться заново, щоб анімація програлась і тоді, коли
+    // одне повідомлення змінює інше: інакше текст підмінявся б беззвучно
+    hint.className = 'auth-note is-' + kind;
+    void hint.offsetWidth;
+    hint.classList.add('is-new');
+  }
   function pollStatus(url){
     var n = 0;
     var t = setInterval(function(){
@@ -78,9 +99,9 @@
   }
   function startLogin(startUrl, statusUrl, hintMsg){
     fetch(base + startUrl).then(r=>r.json()).then(function(d){
-      if (!d.ok) { show(d.error || 'Недоступно'); return; }
+      if (!d.ok) { show(d.error || 'Недоступно', d.kind); return; }
       window.open(d.url, '_blank');
-      show(hintMsg);
+      show(hintMsg, 'info');
       pollStatus(statusUrl);
     });
   }
@@ -99,8 +120,8 @@
     var fd = new FormData();
     fd.append('_csrf', csrf); fd.append('email', document.getElementById('emailInput').value);
     fetch(base + '/auth/email/start', {method:'POST', body: fd}).then(r=>r.json()).then(function(d){
-      if (!d.ok) { show(d.error || 'Помилка'); return; }
-      show('Код надіслано. Введіть його нижче — і не забувайте про теку «Спам».');
+      if (!d.ok) { show(d.error || 'Помилка', d.kind); return; }
+      show('Код надіслано. Введіть його нижче — і не забувайте про теку «Спам».', 'ok');
       document.getElementById('emailCodeField').style.display = 'block';
       document.getElementById('emailVerifyBtn').style.display = 'inline-flex';
       emailSend.style.display = 'none';
@@ -127,11 +148,11 @@
     var fd = new FormData();
     fd.append('_csrf', csrf); fd.append('phone', document.getElementById('phoneInput').value);
     fetch(base + '/auth/phone/start', {method:'POST', body: fd}).then(r=>r.json()).then(function(d){
-      if (!d.ok) { show(d.error || 'Помилка'); return; }
+      if (!d.ok) { show(d.error || 'Помилка', d.kind); return; }
       // Сервер сам каже, у який месенджер і на який номер пішов код: у людини
       // може бути підключений і Telegram, і Viber, і «перевірте месенджер»
       // означало б відкрити обидва
-      show((d.where || ('Код надіслано у ' + d.via + '.')) + ' Введіть його нижче.');
+      show((d.where || ('Код надіслано у ' + d.via + '.')) + ' Введіть його нижче.', 'ok');
       document.getElementById('codeField').style.display = 'block';
       document.getElementById('codeVerifyBtn').style.display = 'inline-flex';
       sendBtn.style.display = 'none';
