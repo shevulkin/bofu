@@ -28,19 +28,50 @@ class RateLimit
         return true;
     }
 
-    /** Ліміт вичерпано — коротка відповідь без деталей */
-    public static function reject(bool $json = false): never
+    /**
+     * Скільки секунд до звільнення місця — тобто доки найстаріша спроба у вікні
+     * з нього не випаде. 0 — вже можна.
+     *
+     * Потрібно, щоб відмова називала строк. «Спробуйте за кілька хвилин» —
+     * це не вказівка, а відмашка: людина не знає, чекати їй хвилину чи годину,
+     * і тому просто йде.
+     */
+    public static function retryAfter(string $action, int $limit, int $windowSec, ?string $ident = null): int
+    {
+        $ident = $ident ?? self::ip();
+        try {
+            $oldest = DB::val('SELECT created_at FROM rate_hits WHERE action = ? AND ident = ? AND created_at > ?
+                               ORDER BY created_at ASC LIMIT 1 OFFSET ' . max(0, $limit - 1),
+                [$action, $ident, date('Y-m-d H:i:s', time() - $windowSec)]);
+        } catch (Throwable $e) { return 0; }
+        if (!$oldest) return 0;
+        $wait = $windowSec - (time() - strtotime((string)$oldest));
+        return $wait > 0 ? $wait : 0;
+    }
+
+    /** Ліміт вичерпано — відмова зі строком, а не «спробуйте колись» */
+    public static function reject(bool $json = false, int $retryAfter = 0): never
     {
         http_response_code(429);
-        if ($json) json_response(['ok' => false, 'error' => 'Забагато запитів. Спробуйте за кілька хвилин.'], 429);
+        if ($retryAfter > 0) header('Retry-After: ' . $retryAfter);
+        // Хвилини, а не секунди: чекати доведеться довго, і «за 47 хвилин»
+        // зрозуміліше за «через 2820 с»
+        $min = (int)ceil($retryAfter / 60);
+        $when = $retryAfter > 0
+            ? ($min <= 1 ? ' Спробуйте за хвилину.' : ' Спробуйте за ' . $min . ' хв.')
+            : ' Спробуйте за кілька хвилин.';
+        if ($json) json_response(['ok' => false, 'retry_after' => $retryAfter ?: null,
+            'error' => 'Забагато запитів.' . $when], 429);
         header('Content-Type: text/html; charset=utf-8');
-        exit('Забагато запитів. Спробуйте, будь ласка, за кілька хвилин.');
+        exit('Забагато запитів.' . $when);
     }
 
     /** hit() + reject() одним викликом */
     public static function guard(string $action, int $limit, int $windowSec, ?string $ident = null, bool $json = false): void
     {
-        if (!self::hit($action, $limit, $windowSec, $ident)) self::reject($json);
+        if (!self::hit($action, $limit, $windowSec, $ident)) {
+            self::reject($json, self::retryAfter($action, $limit, $windowSec, $ident));
+        }
     }
 
     /**

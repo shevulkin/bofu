@@ -162,8 +162,13 @@
     return fetch(base + '/auth/email/start', {method:'POST', body: fd}).then(r=>r.json()).then(function(d){
       if (!d.ok) {
         show(d.error || 'Помилка', d.kind);
-        // Сервер сам каже, скільки чекати — не вигадуємо це на клієнті
-        if (d.retry_after) cooldown(emailResend, d.retry_after, 'Надіслати ще раз');
+        // Сервер сам каже, скільки чекати — не вигадуємо це на клієнті.
+        // Відлік вішаємо на ту кнопку, яка зараз на екрані: до першого коду це
+        // «Отримати код», далі — «Надіслати ще раз».
+        if (d.retry_after) {
+          var vis = (emailResend && emailResend.style.display !== 'none') ? emailResend : emailSend;
+          cooldown(vis, d.retry_after, vis === emailSend ? 'Отримати код' : 'Надіслати ще раз');
+        }
         return;
       }
       show(resent
@@ -201,7 +206,10 @@
     return fetch(base + '/auth/phone/start', {method:'POST', body: fd}).then(r=>r.json()).then(function(d){
       if (!d.ok) {
         show(d.error || 'Помилка', d.kind);
-        if (d.retry_after) cooldown(phoneResend, d.retry_after, 'Надіслати ще раз');
+        if (d.retry_after) {
+          var vis = (phoneResend && phoneResend.style.display !== 'none') ? phoneResend : sendBtn;
+          cooldown(vis, d.retry_after, vis === sendBtn ? 'Отримати код' : 'Надіслати ще раз');
+        }
         return;
       }
       // Сервер сам каже, у який месенджер і на який номер пішов код: у людини

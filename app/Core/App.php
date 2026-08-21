@@ -229,15 +229,24 @@ class App
         if ($path === '/auth/tg/status') { Controllers\AuthController::tgStatus(); }
         /*
          * Вхід поштою за одноразовим кодом — для тих, у кого немає ані Google,
-         * ані Telegram. Ліміт удвічі суворіший за телефонний і рахується по IP:
-         * кожен код — це лист, надісланий на вказану адресу, тож без стелі
-         * форма стає безкоштовною поштовою гарматою по чужих скриньках.
-         * Друга стеля, на саму адресу, стоїть усередині (EmailAuth::PER_HOUR) —
-         * інакше зміна IP знімала б обмеження з конкретної жертви.
+         * ані Telegram. Стеля по IP лишається: кожен код — це лист на вказану
+         * адресу, тож без неї форма стає безкоштовною поштовою гарматою по
+         * чужих скриньках. Але вона борониться саме від РОЗСІЮВАННЯ по багатьох
+         * адресах — конкретну жертву захищають дві інші, всередині: пауза між
+         * листами (AuthTokens::RESEND_SEC) і три коди на адресу за годину
+         * (EmailAuth::PER_HOUR). Їх зміною IP не обійти.
+         *
+         * Було 5 на годину — і це виявилось стелею не для бота, а для покупця.
+         * Українські мобільні мережі сидять під NAT, тож один IP — це часто
+         * ціла стільникова сота чи офіс: пʼять листів на всіх, і решта бачить
+         * «Забагато запитів», нічого не зробивши. Двадцять так само не дають
+         * розсіювати (двадцять листів на годину з одного IP — не гармата), але
+         * не замикають двері перед живими людьми.
          */
-        if ($path === '/auth/email/start' && $method === 'POST') { RateLimit::guard('email_start', 5, 3600, null, true); Controllers\AuthController::emailStart(); }
+        if ($path === '/auth/email/start' && $method === 'POST') { RateLimit::guard('email_start', 20, 3600, null, true); Controllers\AuthController::emailStart(); }
         if ($path === '/auth/email/verify' && $method === 'POST') { RateLimit::guard('email_verify', 20, 3600, null, true); Controllers\AuthController::emailVerify(); }
-        if ($path === '/auth/phone/start' && $method === 'POST') { RateLimit::guard('phone_start', 10, 3600, null, true); Controllers\AuthController::phoneStart(); }
+        // Та сама причина, що й у пошти: NAT робить IP спільним для багатьох
+        if ($path === '/auth/phone/start' && $method === 'POST') { RateLimit::guard('phone_start', 20, 3600, null, true); Controllers\AuthController::phoneStart(); }
         if ($path === '/auth/phone/verify' && $method === 'POST') { RateLimit::guard('phone_verify', 20, 3600, null, true); Controllers\AuthController::phoneVerify(); }
         if ($path === '/profile') { Controllers\Profile::index(); }
         if ($path === '/profile/tg/link') { Controllers\Profile::tgLink(); }
