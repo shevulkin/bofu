@@ -828,6 +828,15 @@ class Acquiring
             'paid_at' => (string)($payment['paid_at'] ?? '') ?: now(),
         ], 'id = ?', [(int)$parent['id']]);
 
+        /*
+         * Куплений курс відкривається саме тут — гроші прийшли.
+         *
+         * Не за статусом «Доставлено»: його ставить продавець рукою, а до
+         * цифрового замовлення він і не застосовний — везти нема чого. Доступ
+         * дають гроші, і місце, де це відомо, рівно одне.
+         */
+        Courses::grantFor((int)$parent['id'], $parent['user_id'] ? (int)$parent['user_id'] : null);
+
         $held = (string)$payment['status'] === 'held';
         $sum = number_format((float)$payment['amount'], 2, '.', ' ');
         OrderFlow::log((int)$parent['id'], null, 'note',

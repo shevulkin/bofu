@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 namespace Controllers;
 
-use DB, View, Cart, Csrf, Auth, Catalog, OrderFlow, Settings, AuthTokens, Newsletter, RateLimit, Addresses, Promo, Geo, Acquiring;
+use DB, View, Cart, Csrf, Auth, Catalog, OrderFlow, Settings, AuthTokens, Newsletter, RateLimit, Addresses, Promo, Geo, Acquiring, Courses;
 
 class Checkout
 {
@@ -62,6 +62,9 @@ class Checkout
             // ніж її відсутність — людина вже дійшла до останнього кроку
             'card_enabled' => Acquiring::enabled(),
             'card_test' => Acquiring::env() === 'test',
+            // Самі лише курси — везти нічого, і весь блок доставки зайвий.
+            // Вирішує вміст кошика, а не вибір покупця (див. Courses).
+            'digital' => Courses::cartIsDigital($rows),
             'pre' => ['name' => $u['name'] ?? '', 'phone' => $u['phone'] ?? '', 'email' => $email],
             'subscribed' => Newsletter::isSubscribed($email ?: null),
             'page_title' => 'Оформлення замовлення — ' . cfg('app_name'),
@@ -159,6 +162,20 @@ class Checkout
         if (!$phone) $errors[] = 'Вкажіть коректний номер телефону — без нього ми не зможемо підтвердити замовлення';
         if ($emailRaw !== '' && !$email) $errors[] = 'Email виглядає некоректним — виправте або залиште поле порожнім';
         if (!in_array($delivery, ['np', 'pickup', 'other'], true)) $delivery = 'other';
+
+        /*
+         * Самі лише курси — доставки немає, і вибору теж.
+         *
+         * Спосіб визначає ВМІСТ кошика, а не поле у формі: 'digital' немає
+         * серед варіантів на екрані, і підставити його в POST для замовлення з
+         * медом не вийде — так само, як не вийде обрати Нову Пошту для курсу.
+         * Обидві підміни закінчуються тим, що вирішує сервер за кошиком.
+         *
+         * Ставимо ДО перевірок нижче, щоб вони не питали ані міста, ані
+         * відділення, ані магазину: жодне з цих питань до відео не стосується.
+         */
+        if (Courses::cartIsDigital()) $delivery = 'digital';
+        elseif ($delivery === 'digital') $delivery = 'np';
 
         // Нова Пошта: у відділення чи курʼєром. Ref-и приймаємо лише схожі на
         // справжні (НП роздає UUID) — підставлений рядок інакше ліг би в
